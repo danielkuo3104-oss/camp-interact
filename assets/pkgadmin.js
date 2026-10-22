@@ -94,6 +94,11 @@ var PkgAdmin = (function () {
     el.className = 'pkg-lock' + (LK.other ? ' other' : LK.mine ? ' mine' : ' hidden');
     if (LK.other) {
       var self = L.holder === IA.user.email;
+      // 自己的鎖、但那個分頁超過 2 分半沒心跳（多半已經關掉）：直接改到這個分頁
+      if (self && L.seenAgo > 150 && R.canEditReal && LK.auto !== R.pkg) {
+        LK.auto = R.pkg;
+        A.op('pkglock.take', { data: { pkg: R.pkg, tab: pageTab() } }).then(function (r) { LK.mine = true; LK.other = false; R.lock = r.lock; reload(); }, function () {});
+      }
       el.appendChild(h('span', { class: 'grow' }, self ? '🔒 你在另一個分頁正在編輯這份資料，這個分頁先只能查看。' : '🔒 ' + L.name + ' 正在編輯這份資料（' + fmt(L.active) + ' 有動作）。你現在只能查看；對方離開這個畫面或閒置 30 分鐘後就能編輯。'));
       if (R.canEditReal && (self || R.isAdmin)) el.appendChild(h('button', { class: 'btn sm', onclick: function (e) {
         var go = function () { busy(e.target, function () { return A.op('pkglock.take', { data: { pkg: R.pkg, tab: pageTab() } }); }).then(function (r) { LK.mine = true; LK.other = false; R.lock = r.lock; toast('已改由你編輯'); reload(); }, function () {}); };
@@ -296,33 +301,76 @@ var PkgAdmin = (function () {
   }
   /** 選人：已選的人是可以移除的小圓片，後面打字（有自動完成）或從清單挑來加人；人很多時比整排圓片好用 */
   var PP_SEQ = 0;
-  function peoplePicker(workers, selected, o) {
+  /** 複選：點格子跳出勾選清單（可以打字篩選）；free=true 時也可以直接打清單裡沒有的（例如新的場地） */
+  var MP_OPEN = null;
+  document.addEventListener('mousedown', function (e) { if (MP_OPEN && !MP_OPEN.el.contains(e.target) && !MP_OPEN.pop.contains(e.target)) MP_OPEN.close(); });
+  window.addEventListener('hashchange', function () { if (MP_OPEN) MP_OPEN.close(); });
+  function multiPicker(items, selected, o) {
     o = o || {};
-    var sel_ = (selected || []).map(String), byId = {}, byLabel = {};
-    var label = function (w) { return w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : ''); };
-    (workers || []).forEach(function (w) { byId[w.id] = w; byLabel[label(w)] = w.id; byLabel[w.data.name] = byLabel[w.data.name] || w.id; });
-    var lid = 'ppl' + (++PP_SEQ), el = h('div', { class: 'pp' + (o.compact ? ' compact' : '') }), list = h('datalist', { id: lid }, (workers || []).map(function (w) { return h('option', { value: label(w) }); }));
-    var box = h('span', { class: 'pp-list' });
-    var input = h('input', { class: 'pp-in', list: lid, placeholder: o.placeholder || '＋ 加人', disabled: o.disabled });
+    var sel_ = (selected || []).map(String), byVal = {}, byLabel = {};
+    (items || []).forEach(function (it) { byVal[it.value] = it; byLabel[it.label] = it.value; if (it.short) byLabel[it.short] = byLabel[it.short] || it.value; });
+    var el = h('div', { class: 'pp' + (o.compact ? ' compact' : '') }), box = h('span', { class: 'pp-list' });
+    var input = h('input', { class: 'pp-in', placeholder: o.placeholder || '＋', disabled: o.disabled, autocomplete: 'off' });
+    var pop = h('div', { class: 'mp-pop hidden' }), me, cbs = {}, cntEl = null;
+    var fire = function () { el.dispatchEvent(new Event('change', { bubbles: true })); };
     var draw = function () {
       clear(box);
-      sel_.forEach(function (id, i) {
-        var w = byId[id];
-        box.appendChild(h('span', { class: 'chip on pp-chip' + (w ? '' : ' gone') }, w ? w.data.name : '（已移除）', o.disabled ? null : h('button', { class: 'pp-x', type: 'button', 'aria-label': '移除', onclick: function (e) { e.stopPropagation(); sel_.splice(i, 1); draw(); el.dispatchEvent(new Event('change', { bubbles: true })); } }, '✕')));
+      sel_.forEach(function (v, i) {
+        var it = byVal[v];
+        box.appendChild(h('span', { class: 'chip on pp-chip' + (it || o.free ? '' : ' gone') }, it ? (it.short || it.label) : (o.free ? v : '（已移除）'), o.disabled ? null : h('button', { class: 'pp-x', type: 'button', 'aria-label': '移除', onclick: function (e) { e.stopPropagation(); sel_.splice(i, 1); draw(); drawPop(); fire(); } }, '✕')));
       });
     };
-    var add = function () {
-      var v = input.value.trim(), id = byLabel[v];
-      if (!id) { var hit = (workers || []).filter(function (w) { return w.data.name.indexOf(v) >= 0; }); if (v && hit.length === 1) id = hit[0].id; }
-      if (id && sel_.indexOf(id) < 0) sel_.push(id);
-      if (id || !v) { input.value = ''; draw(); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    // 勾選只更新那一格，不重畫清單（捲到一半不會跳回最上面）
+    var toggle = function (v) { var i = sel_.indexOf(v); if (i >= 0) sel_.splice(i, 1); else sel_.push(v); draw(); if (cbs[v] && !input.value) { cbs[v].checked = i < 0; if (cntEl) cntEl.textContent = '已選 ' + sel_.length; } else drawPop(); fire(); };
+    var drawPop = function () {
+      if (pop.classList.contains('hidden')) return;
+      var st = pop.scrollTop;
+      clear(pop); cbs = {};
+      var q = input.value.trim(), grp = '';
+      var list = (items || []).filter(function (it) { return !q || it.label.indexOf(q) >= 0 || String(it.group || '').indexOf(q) >= 0; });
+      if (o.free && q && !byLabel[q] && sel_.indexOf(q) < 0) pop.appendChild(h('button', { type: 'button', class: 'mp-new', onclick: function () { input.value = ''; toggle(q); input.focus(); } }, '＋ 加入「' + q + '」'));
+      list.forEach(function (it) {
+        if (it.group !== undefined && it.group !== grp) { grp = it.group; pop.appendChild(h('div', { class: 'mp-grp' }, grp || '未分組')); }
+        var cb = cbs[it.value] = h('input', { type: 'checkbox', checked: sel_.indexOf(it.value) >= 0, tabindex: -1 });
+        pop.appendChild(h('label', { class: 'mp-it', onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); toggle(it.value); } }, cb, h('span', null, it.label)));
+      });
+      if (!pop.firstChild) pop.appendChild(h('div', { class: 'small muted', style: { padding: '6px 8px' } }, '沒有符合的'));
+      cntEl = h('span', { class: 'small muted' }, '已選 ' + sel_.length);
+      pop.appendChild(h('div', { class: 'mp-foot' }, cntEl, h('button', { type: 'button', class: 'btn sm', onclick: function () { me.close(); } }, '完成')));
+      pop.scrollTop = st;
     };
-    input.addEventListener('change', add);
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } else if (e.key === 'Backspace' && !input.value && sel_.length) { sel_.pop(); draw(); el.dispatchEvent(new Event('change', { bubbles: true })); } });
-    el.appendChild(box); if (!o.disabled) el.appendChild(input); el.appendChild(list);
-    el.addEventListener('click', function () { input.focus(); });
+    var place = function () { var r = el.getBoundingClientRect(); pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 268)) + 'px'; var below = window.innerHeight - r.bottom; if (below < 260 && r.top > below) { pop.style.top = ''; pop.style.bottom = (window.innerHeight - r.top + 4) + 'px'; } else { pop.style.bottom = ''; pop.style.top = (r.bottom + 4) + 'px'; } };
+    me = {
+      el: el, pop: pop,
+      open: function () { if (o.disabled) return; if (MP_OPEN && MP_OPEN !== me) MP_OPEN.close(); MP_OPEN = me; document.body.appendChild(pop); pop.classList.remove('hidden'); place(); drawPop(); },
+      close: function () { pop.classList.add('hidden'); pop.remove(); if (MP_OPEN === me) MP_OPEN = null; input.value = ''; },
+      get: function () { return sel_.slice(); }, set: function (vs) { sel_ = (vs || []).map(String); draw(); drawPop(); }, input: input
+    };
+    var addTyped = function () {
+      var v = input.value.trim(); if (!v) return;
+      var hit = byLabel[v];
+      if (!hit) { var m = (items || []).filter(function (it) { return it.label.indexOf(v) >= 0; }); if (m.length === 1) hit = m[0].value; }
+      if (!hit && o.free) hit = v;
+      if (hit) { input.value = ''; if (sel_.indexOf(hit) < 0) toggle(hit); else drawPop(); }
+    };
+    input.addEventListener('focus', me.open);
+    input.addEventListener('change', addTyped);
+    input.addEventListener('input', function () { if (pop.classList.contains('hidden')) me.open(); else drawPop(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addTyped(); }
+      else if (e.key === 'Escape' || e.key === 'Tab') me.close();
+      else if (e.key === 'Backspace' && !input.value && sel_.length) { sel_.pop(); draw(); drawPop(); fire(); }
+    });
+    el.appendChild(box); if (!o.disabled) el.appendChild(input);
+    el.addEventListener('click', function () { if (!o.disabled) { input.focus(); me.open(); } });
+    window.addEventListener('scroll', function () { if (MP_OPEN === me) place(); }, true);
     draw();
-    return { el: el, get: function () { return sel_.slice(); }, set: function (ids) { sel_ = (ids || []).map(String); draw(); }, input: input };
+    return me;
+  }
+  function peoplePicker(workers, selected, o) {
+    o = o || {};
+    var ws = (workers || []).slice().sort(function (a, b) { return String(a.data.dept || '').localeCompare(String(b.data.dept || '')); });
+    return multiPicker(ws.map(function (w) { return { value: w.id, label: w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : ''), short: w.data.name, group: w.data.dept || '' }; }), selected, { compact: o.compact, disabled: o.disabled, placeholder: o.placeholder || '＋ 加人' });
   }
   function workerItems(list) { return (list || []).map(function (w) { return { value: w.id, label: w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : '') }; }); }
   function nameOf(list, ids) { var m = {}; (list || []).forEach(function (w) { m[w.id] = w.data.name; }); return (ids || []).map(function (i) { return m[i] || '（已移除）'; }).join('、'); }
@@ -354,6 +402,12 @@ var PkgAdmin = (function () {
     var editor = function (c, v, row) {
       var t = c.type || 'text', e = {};
       if (t === 'people') { var pp = peoplePicker(o.workers || [], v || [], { compact: true, disabled: ro, placeholder: '＋' }); e = { el: pp.el, get: pp.get, set: function (x) { pp.set(x); }, input: pp.input }; }
+      else if (t === 'tags') {
+        // 複選文字（例如好幾個場地）：存成「操場、禮堂」
+        var split = function (x) { return Array.isArray(x) ? x : String(x || '').split(/[、,，]/).map(function (y) { return y.trim(); }).filter(String); };
+        var tp = multiPicker((c.list || []).map(function (x) { return { value: x, label: x }; }), split(v), { compact: true, disabled: ro, free: true, placeholder: '＋' });
+        e = { el: tp.el, get: function () { return tp.get().join('、'); }, set: function (x) { tp.set(split(x)); }, input: tp.input };
+      }
       else if (t === 'switch') { var sw = h('input', { type: 'checkbox', class: 'sw', checked: !!v, disabled: ro }); e = { el: h('label', { class: 'sw-wrap' }, sw, h('span', { class: 'sw-k' })), get: function () { return sw.checked; }, set: function (x) { sw.checked = !!x && x !== '0' && x !== 'false'; }, input: sw }; }
       else if (t === 'time') {
         // 時間用一般文字格：打 930、9:30、1130、11.30 都可以，離開格子自動變成 09:30（不用點時鐘）
@@ -449,6 +503,7 @@ var PkgAdmin = (function () {
     var makeHead = function (k) {
       var lab = h('b', { class: 'grow' });
       var head = h('tr', { class: 'g-grp' }, h('td', { colspan: span }, h('div', { class: 'row' }, lab,
+        ro || !o.groupActions ? null : o.groupActions(k, G),
         ro ? null : h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { var r = G.newRow(k, G.groupEnd(k)); var f = r.tr.querySelector('input:not([type=checkbox])'); if (f) f.focus(); } }, o.addText || '＋ 加一列'))));
       head.dataset.g = k;
       head.lab = lab;
@@ -756,6 +811,36 @@ var PkgAdmin = (function () {
         groupOf: function (v) { return v.activity || ''; }, extraGroups: groups,
         groupOrder: function (keys) { return keys.sort(function (a, b) { var x = groups.indexOf(a), y = groups.indexOf(b); return (x < 0 ? 999 : x) - (y < 0 ? 999 : y); }); },
         groupLabel: function (k, rows) { return (k || '一般工作事項（不屬於某個活動）') + '　' + rows.length + ' 個工作'; },
+        groupActions: function (k) {
+          if (!k) return null;
+          var sa = (D.schedActRows || []).filter(function (a) { return String(a.data.name || '').trim() === k; })[0];
+          var cnt = function () { return D.assign.filter(function (a) { return String(a.data.activity || '').trim() === k; }).length; };
+          var guard = function () { if (dirtyAny()) { toast('還有沒儲存的改動（橘色框），先儲存再改活動', true); return false; } return true; };
+          // 營期流程也有這個活動：一起改名／刪掉（沒有權限就跳過，提醒到營期流程改）
+          var sched = function (fn) { return sa ? fn().then(function () { return ''; }, function (e) { return '（營期流程的活動沒改到：' + e.message + '）'; }) : Promise.resolve(''); };
+          return h('span', { class: 'row', style: { gap: '2px' } },
+            h('button', { class: 'btn sm ghost', type: 'button', title: '活動改名（底下的工作一起改）', onclick: function () {
+              if (!guard()) return;
+              askText('活動改名', '新的活動名稱', k).then(function (n) {
+                n = String(n || '').trim(); if (!n || n === k) return;
+                return A.op('pkg.data', { action: 'update', target: { pkg: 'people', op: 'act.rename', tab: pageTab() }, data: { from: k, to: n } })
+                  .then(function () { return sched(function () { return A.op('pkg.data', { action: 'update', target: { pkg: 'schedule', op: 'activity.save' }, data: Object.assign({}, sa.data, { id: sa.id, name: n }), ver: sa.version }); }); })
+                  .then(function (w) { toast('已改名為「' + n + '」' + w); return reload(); }, fail);
+              });
+            } }, '✎ 改名'),
+            h('button', { class: 'btn sm ghost', type: 'button', title: '刪除這個活動', onclick: function () {
+              if (!guard()) return;
+              var n = cnt(), keep = h('input', { type: 'radio', name: 'actdel', checked: true }), drop = h('input', { type: 'radio', name: 'actdel' });
+              var body = h('div', { class: 'col' }, h('div', null, '刪除活動「' + k + '」' + (sa ? '，營期流程的這個活動也會一起刪掉（流程項目會變成不連活動）' : '') + '。'),
+                n ? h('label', { class: 'check' }, keep, h('span', null, '底下 ' + n + ' 個工作移到「一般工作事項」')) : null,
+                n ? h('label', { class: 'check' }, drop, h('span', null, '底下 ' + n + ' 個工作一起刪除')) : null);
+              modal({ title: '刪除活動', body: body, actions: [{ text: '取消' }, { text: '刪除', cls: 'danger', onClick: function () {
+                return A.op('pkg.data', { action: 'delete', target: { pkg: 'people', op: 'act.remove', tab: pageTab() }, data: { name: k, jobs: drop.checked ? 'delete' : 'move' } })
+                  .then(function () { return sched(function () { return A.op('pkg.data', { action: 'delete', target: { pkg: 'schedule', op: 'activity.delete' }, data: { id: sa.id } }); }); })
+                  .then(function (w) { toast('已刪除活動「' + k + '」' + w); return reload(); });
+              } }] });
+            } }, '🗑 刪除'));
+        },
         blank: function (k) { return { activity: k || '', role: '', detail: '', date: '', need: '', people: [] }; },
         isEmpty: function (v) { return !String(v.role || '').trim() && !(v.people || []).length; },
         validate: function (d) { return !String(d.role).trim() ? '每一列都要填工作（角色）' : ''; },
@@ -904,7 +989,7 @@ var PkgAdmin = (function () {
         { k: 'tone', label: '標示', type: 'select', w: '78px', nopaste: true, opts: [{ value: '', label: '—' }, { value: 'act', label: '活動' }, { value: 'key', label: '重要' }] },
         { k: 'name', label: '活動名稱', w: '170px', list: nameList },
         { k: 'rel', label: '時間關係', type: 'calc', w: '150px', fn: function () { return null; } },
-        { k: 'place', label: '場地', w: '110px', list: D.places.map(function (p) { return p.data.name; }) },
+        { k: 'place', label: '場地', type: 'tags', w: '140px', list: D.places.map(function (p) { return p.data.name; }) },
         { k: 'owner', label: '負責人員', type: 'people', w: '150px' },
         { k: 'staff', label: '關主或參與人員', type: 'people', w: '190px' },
         { k: 'backup', label: '機動人員', type: 'people', w: '130px' },
@@ -1388,23 +1473,55 @@ var PkgAdmin = (function () {
           fl.appendChild(h('div', { class: 'row wrap' }, pick, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, '上傳檔案（PDF、簡報…）'), h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { files.push({ name: '', url: '' }); drawFiles(); } }, '＋ 貼連結（雲端硬碟、網站）')));
         };
         drawFiles();
-        var ph = h('div', { class: 'row wrap' });
+        var ph = h('div', { class: 'col', style: { gap: '10px' } });
+        var pos = Object.assign({ x: 50, y: 50, z: 1 }, d.photoPos || {}), frame = d.frame || 'circle';
         var drawPhoto = function () {
           clear(ph);
           var pick = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
-          pick.addEventListener('change', function () { if (pick.files[0]) upload(pick.files[0], note).then(function (r) { photo = r.img || r.url; drawPhoto(); }, fail); });
+          pick.addEventListener('change', function () { if (pick.files[0]) upload(pick.files[0], note).then(function (r) { photo = r.img || r.url; pos = { x: 50, y: 50, z: 1 }; drawPhoto(); }, fail); });
           var url = inp(photo, { placeholder: '或貼圖片網址 https://', style: { width: '260px' } });
-          url.oninput = function () { photo = url.value.trim(); };
-          ph.appendChild(photo ? h('img', { src: photo, alt: '照片', class: 'cs-photo' }) : h('div', { class: 'cs-photo none' }, '沒有照片'));
-          ph.appendChild(h('div', { class: 'col', style: { gap: '6px' } }, pick, h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, '上傳照片'), photo ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { photo = ''; drawPhoto(); } }, '不放照片') : null), url,
-            h('div', { class: 'hint' }, '教授照片、場館或實驗室照片；不放就不顯示')));
+          url.onchange = function () { photo = url.value.trim(); drawPhoto(); };
+          var btns = h('div', { class: 'col', style: { gap: '6px' } }, pick, h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, photo ? '換照片' : '上傳照片'), photo ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { photo = ''; drawPhoto(); } }, '不放照片') : null), url,
+            h('div', { class: 'hint' }, '教授照片、場館或實驗室照片；不放就不顯示'));
+          if (!photo) { ph.appendChild(h('div', { class: 'row wrap' }, h('div', { class: 'cs-photo none' }, '沒有照片'), btns)); return; }
+          // 調整顯示範圍：拖曳照片移動、滑桿放大；下面同步顯示在各版型的樣子
+          var stage = h('div', { class: 'ph-edit' }), mini = h('div', { class: 'ph-minis' });
+          var zoom = h('input', { type: 'range', min: '1', max: '3', step: '0.05', value: String(pos.z), style: { width: '160px' } });
+          var paint = function () {
+            clear(stage).appendChild(Front.photo(photo, pos, frame, 168));
+            clear(mini);
+            [['清單', frame, 48], ['講者名片', frame, 76]].forEach(function (x) { mini.appendChild(h('div', { class: 'col', style: { gap: '4px', alignItems: 'center' } }, Front.photo(photo, pos, x[1], x[2]), h('span', { class: 'small muted' }, x[0]))); });
+            mini.appendChild(h('div', { class: 'col', style: { gap: '4px', alignItems: 'center', width: '180px' } }, Front.photo(photo, pos, 'wide'), h('span', { class: 'small muted' }, '封面大圖')));
+          };
+          var drag = null;
+          stage.addEventListener('pointerdown', function (e) { drag = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y }; stage.setPointerCapture(e.pointerId); e.preventDefault(); });
+          stage.addEventListener('pointermove', function (e) {
+            if (!drag) return;
+            var k = 100 / 168 / pos.z * 1.6;
+            pos.x = Math.max(0, Math.min(100, Math.round(drag.px - (e.clientX - drag.x) * k)));
+            pos.y = Math.max(0, Math.min(100, Math.round(drag.py - (e.clientY - drag.y) * k)));
+            paint();
+          });
+          stage.addEventListener('pointerup', function () { drag = null; });
+          stage.addEventListener('wheel', function (e) { e.preventDefault(); pos.z = Math.max(1, Math.min(3, Math.round((pos.z - e.deltaY * 0.002) * 100) / 100)); zoom.value = String(pos.z); paint(); }, { passive: false });
+          zoom.oninput = function () { pos.z = Number(zoom.value); paint(); };
+          var frames = h('div', { class: 'row wrap', style: { gap: '6px' } }, Object.keys(Front.FRAMES).map(function (k) {
+            return h('button', { type: 'button', class: 'ph-pick' + (k === frame ? ' on' : ''), title: Front.FRAMES[k], onclick: function () { frame = k; drawPhoto(); } }, Front.photo(photo, pos, k, 34), h('span', null, Front.FRAMES[k]));
+          }));
+          paint();
+          ph.appendChild(h('div', { class: 'row wrap', style: { alignItems: 'flex-start', gap: '16px' } }, stage,
+            h('div', { class: 'col', style: { gap: '8px', flex: '1 1 240px' } },
+              h('div', { class: 'small' }, '拖曳照片調整位置，滑桿（或滑鼠滾輪）放大'),
+              h('div', { class: 'row' }, h('span', { class: 'small muted' }, '放大'), zoom, h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { pos = { x: 50, y: 50, z: 1 }; zoom.value = '1'; paint(); } }, '重設')),
+              h('div', { class: 'small' }, '外框'), frames, btns)));
+          ph.appendChild(h('div', null, h('div', { class: 'small muted', style: { marginBottom: '4px' } }, '在各版型看起來（版型在「設定」選）'), mini));
         };
         drawPhoto();
         form(c.id ? '編輯課程' : '新增課程', [h('div', { class: 'grid2' }, field('類別', type), field('課程名稱', title)),
           h('div', { class: 'grid2' }, field('日期', date), h('div', null, h('div', { class: 'grid2' }, field('開始', st), field('結束', en)), dur)),
           h('div', { class: 'grid2' }, field('地點', place), field('講者／帶隊', speaker)), field('課程描述', desc), field('課程檔案', fl), field('頭貼照片', ph), note,
           h('label', { class: 'check' }, hide, h('span', null, '學員端不顯示（只給工作人員看）'))],
-          function () { return run('course.save', { id: c.id, type: type.value, title: title.value, date: date.value, start: st.value, end: en.value, place: place.value, speaker: speaker.value, desc: desc.value, files: files, photo: photo, hidden: hide.checked }, { ver: c.id ? c.version : undefined }); }, true);
+          function () { return run('course.save', { id: c.id, type: type.value, title: title.value, date: date.value, start: st.value, end: en.value, place: place.value, speaker: speaker.value, desc: desc.value, files: files, photo: photo, photoPos: pos, frame: frame, hidden: hide.checked }, { ver: c.id ? c.version : undefined }); }, true);
       };
       box.appendChild(bar(addBtn('新增課程', function () { edit(); }), h('span', { class: 'hint' }, '課程導覽、參訪導覽、實驗室介紹、其他課程介紹。在編輯器放「課程簡介」畫面，學員端、工作人員端就看得到。')));
       if (!D.courses.length) { box.appendChild(h('div', { class: 'card empty' }, '還沒有課程')); return; }
@@ -1417,7 +1534,7 @@ var PkgAdmin = (function () {
           return hl(h('tr', { style: d.hidden ? { opacity: 0.65 } : null }, h('td', { style: { whiteSpace: 'nowrap' } }, d.date ? dayLabel(d.date) : h('span', { class: 'tag warn' }, '沒日期')),
             h('td', { style: { whiteSpace: 'nowrap' } }, (d.start || '') + (d.end ? '–' + d.end : ''), h('div', { class: 'small muted' }, durText(d.start, d.end))),
             h('td', null, h('b', null, d.title), d.hidden ? h('span', { class: 'tag', style: { marginLeft: '4px' } }, '學員看不到') : null, d.desc ? h('div', { class: 'small muted' }, String(d.desc).slice(0, 60) + (String(d.desc).length > 60 ? '…' : '')) : null),
-            h('td', { class: 'small' }, [d.speaker, d.place].filter(String).join('\n')), h('td', null, (d.files || []).length || ''), h('td', null, d.photo ? h('img', { src: d.photo, alt: '', class: 'cs-thumb' }) : ''),
+            h('td', { class: 'small' }, [d.speaker, d.place].filter(String).join('\n')), h('td', null, (d.files || []).length || ''), h('td', null, d.photo ? Front.photo(d.photo, d.photoPos, d.frame, 40) : ''),
             actions(function () { edit(c); }, function () { del('course.delete', { id: c.id }, d.title); })), c.id);
         })));
       });
