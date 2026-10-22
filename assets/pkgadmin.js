@@ -5,52 +5,153 @@
  */
 
 var PkgAdmin = (function () {
-  var R = null, M = null, TAB = '', Q = {};
+  var R = null, M = null, TAB = '', Q = {}, FLASH = '';
+  /** 這個 Package 的編輯鎖：mine＝在我這個分頁；other＝別人（或我的另一個分頁）正在編輯 */
+  var LK = { pkg: '', mine: false, other: false, timer: null, last: 0, hash: '' };
 
   function open(m, pkg, tab, q) {
     M = m; TAB = tab; Q = q || {};
-    m.appendChild(h('div', { class: 'empty' }, '載入中…'));
+    if (LK.pkg !== pkg) { lockRelease(); clearInterval(LK.timer); LK = { pkg: pkg, mine: false, other: false, timer: setInterval(ping, 60000), last: 0, hash: '' }; }
+    LK.hash = location.hash;
+    A.leaving = leaving;
+    m.appendChild(h('div', { class: 'empty loading' }, '載入中…'));
     load(pkg, true);
   }
   /** cached：剛打開這頁時先用上次的資料（改完資料後的重新載入一定抓最新的） */
   function load(pkg, cached) {
     pkg = pkg || R.pkg;
-    var m0 = M, show = function (r) { if (M !== m0) return; R = r; render(); };
-    var p = cached ? apiCached('getPkgAdmin', [A.camp, pkg], show) : api('getPkgAdmin', A.camp, pkg).then(function (r) { apiCachePut('getPkgAdmin', [A.camp, pkg], r); show(r); });
+    var m0 = M, show = function (r, fresh) {
+      if (M !== m0) return;
+      R = r; R.canEditReal = r.canEdit;
+      var L = r.lock || {};
+      if (!LK.mine) LK.other = !!(L.held && L.holder !== IA.user.email);
+      if (L.held && L.holder === IA.user.email && fresh !== false) ping();   // 我的鎖：確認是不是這個分頁的
+      render();
+    };
+    var p = cached ? apiCached('getPkgAdmin', [A.camp, pkg], show) : api('getPkgAdmin', A.camp, pkg).then(function (r) { apiCachePut('getPkgAdmin', [A.camp, pkg], r); show(r, true); });
     return p.then(null, function (e) { clear(M).appendChild(h('div', { class: 'card' }, h('h2', null, '無法開啟'), h('p', null, e.message))); });
   }
   function reload() { return load(R.pkg); }
 
+  /* ---------------- 編輯鎖（每個 Package 一把，第一次改動時自動取得） ---------------- */
+  document.addEventListener('input', function () { LK.last = Date.now(); }, true);
+  document.addEventListener('click', function () { LK.last = Date.now(); }, true);
+  function lockState(r) {
+    var was = LK.other;
+    LK.mine = r.mine;
+    LK.other = !!(r.lock && r.lock.held && !r.mine);
+    if (R) R.lock = r.lock;
+    if (was !== LK.other && R) {
+      if (!LK.other) toast('對方已結束編輯，現在可以編輯了');
+      reload();
+    } else lockBar();
+  }
+  function ping() {
+    if (!LK.pkg || document.hidden) return;
+    op('pkglock.ping', { camp: A.camp, data: { pkg: LK.pkg, tab: pageTab(), active: Date.now() - LK.last < 60000 } }).then(lockState, function () {});
+  }
+  /** 開始改動：取得鎖；別人搶先了就回到唯讀 */
+  function takeLock() {
+    if (LK.mine || !R || !R.canEditReal) return;
+    op('pkglock.ping', { camp: A.camp, data: { pkg: R.pkg, tab: pageTab(), active: true, take: true } }).then(lockState, function (e) {
+      if (e.code === 'LOCK') { toast(e.message, true); LK.other = true; reload(); }
+    });
+  }
+  function lockRelease() {
+    if (!LK.mine || !LK.pkg) return;
+    LK.mine = false;
+    op('pkglock.release', { camp: A.camp, data: { pkg: LK.pkg, tab: pageTab() } }).then(null, function () {});
+  }
+  window.addEventListener('pagehide', function () {
+    if (!LK.mine || !window.INTERACT_CONFIG) return;
+    var req = { op_id: rid('op', 20), camp_id: A.camp, stage: 'lock', action: 'delete', kind: 'pkglock.release', target: {}, data: { pkg: LK.pkg, tab: pageTab() } };
+    try { navigator.sendBeacon(INTERACT_CONFIG.API_URL, new Blob([JSON.stringify({ fn: 'op', args: [IA.token, req] })], { type: 'text/plain;charset=utf-8' })); } catch (e) {}
+  });
+  /** 離開這個畫面：有沒存的先問；離開這個 Package 就把鎖還回去 */
+  function leaving() {
+    var next = location.hash.slice(1).split('?')[0].split('/');
+    var same = next[0] === 'data' && next[1] === LK.pkg;
+    var go = function () { if (!same) { lockRelease(); clearInterval(LK.timer); LK = { pkg: '', mine: false, other: false, timer: null, last: 0, hash: '' }; } };
+    if (!dirtyAny()) { go(); return; }
+    return new Promise(function (ok) {
+      modal({ title: '還沒儲存', sticky: true, body: h('p', { style: { margin: 0 } }, '這一頁有 ' + dirtyAny() + ' 處改動還沒儲存（橘色框），離開就會不見。'),
+        actions: [{ text: '不儲存，離開', onClick: function () { go(); ok(); } },
+          { text: '留在這頁', cls: 'primary', onClick: function () { history.replaceState(null, '', LK.hash); A.leaving = leaving; A.navMark(); } }] });
+    });
+  }
+  function lockBar() {
+    var el = $('#pkgLock');
+    if (!el || !R) return;
+    clear(el);
+    var L = R.lock || {};
+    el.className = 'pkg-lock' + (LK.other ? ' other' : LK.mine ? ' mine' : ' hidden');
+    if (LK.other) {
+      var self = L.holder === IA.user.email;
+      el.appendChild(h('span', { class: 'grow' }, self ? '🔒 你在另一個分頁正在編輯這份資料，這個分頁先只能查看。' : '🔒 ' + L.name + ' 正在編輯這份資料（' + fmt(L.active) + ' 有動作）。你現在只能查看；對方離開這個畫面或閒置 30 分鐘後就能編輯。'));
+      if (R.canEditReal && (self || R.isAdmin)) el.appendChild(h('button', { class: 'btn sm', onclick: function (e) {
+        var go = function () { busy(e.target, function () { return A.op('pkglock.take', { data: { pkg: R.pkg, tab: pageTab() } }); }).then(function (r) { LK.mine = true; LK.other = false; R.lock = r.lock; toast('已改由你編輯'); reload(); }, function () {}); };
+        if (self) go(); else confirmBox('強制接手', L.name + ' 還沒儲存的內容會留在對方畫面上，對方之後要重新整理再改。確定要接手嗎？', '接手').then(function (ok) { if (ok) go(); });
+      } }, self ? '改在這個分頁編輯' : '強制接手'));
+    } else if (LK.mine) {
+      el.appendChild(h('span', { class: 'grow' }, '✏️ 你正在編輯這份資料，其他人這段時間只能查看。'));
+      el.appendChild(h('button', { class: 'btn sm', onclick: function () {
+        if (dirtyAny()) { toast('還有沒儲存的改動（橘色框），先儲存再結束', true); return; }
+        lockRelease(); lockBar(); toast('已結束編輯，其他人現在可以編輯');
+      } }, '結束編輯'));
+    }
+  }
+  /** 未儲存提示＋第一次改動時取得鎖 */
+  function track(el, get, btn) { return dirtyTrack(el, get, { btn: btn, onDirty: takeLock }); }
+
   /** 送出 Package 操作；成功後重新載入 */
   function run(name, data, o) {
     o = o || {};
-    return A.op('pkg.data', { action: o.action || 'update', target: { pkg: R.pkg, op: name }, data: data, ver: o.ver }).then(function (x) {
+    return A.op('pkg.data', { action: o.action || 'update', target: { pkg: R.pkg, op: name, tab: pageTab() }, data: data, ver: o.ver }).then(function (x) {
+      LK.mine = name !== 'sync' || LK.mine;
+      LK.other = false;
       if (o.msg !== false) toast(o.msg || '已儲存');
+      if (o.flash) FLASH = o.flash;
       reload();
       A.poll();
       return x;
     }, function (e) {
       if (e.code === 'CONFLICT') { toast(e.message, true); reload(); return; }
+      if (e.code === 'LOCK') { toast(e.message, true); LK.other = true; LK.mine = false; reload(); return; }
       throw e;
+    });
+  }
+  /** 一覽表一次存很多列：list=[{op, data, ver, key}]，回傳每列結果（版本衝突的列會標出來） */
+  function runBatch(list, o) {
+    o = o || {};
+    return run('_batch', { list: list }, { action: 'replace', msg: false, flash: o.flash }).then(function (x) {
+      if (!x) return x;
+      var bad = x.results.filter(function (r) { return !r.ok; });
+      if (bad.length) toast('已儲存 ' + x.saved + ' 列；' + bad.length + ' 列沒存成功：' + bad[0].error + (bad.some(function (b) { return b.conflict; }) ? '（別人先改了，已重新載入）' : ''), true);
+      else toast(o.msg || '已儲存 ' + x.saved + ' 列');
+      return x;
     });
   }
   function del(name, data, label) {
     return confirmBox('刪除', '確定要刪除「' + label + '」嗎？', '刪除', true).then(function (ok) { if (ok) return run(name, data, { action: 'delete', msg: '已刪除' }).catch(fail); });
   }
+  function flashOn(el, key) { if (FLASH === key) { FLASH = ''; el.classList.add('saved'); setTimeout(function () { el.classList.remove('saved'); }, 3000); } }
 
   var TABS = {
-    people: [['workers', '工作人員'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['assign', '工作分配'], ['config', '設定']],
+    people: [['workers', '工作人員'], ['assign', '工作分配'], ['setup', '股別與活動'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['config', '設定']],
     schedule: [['items', '營期流程'], ['activities', '活動'], ['rotations', '跑關'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
     studentflow: [['items', '學員行程'], ['pending', '待處理變更'], ['config', '設定']],
-    emergency: [['config', '聯絡與夜間設定'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
+    emergency: [['config', '聯絡與夜間設定'], ['flow', '處理流程圖'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
+    courses: [['list', '課程'], ['config', '設定']],
     scoreboard: [['board', '排行榜'], ['results', 'Game 結果'], ['adjust', '加／扣分'], ['games', 'Game 清單'], ['config', '設定']]
   };
 
   function render() {
     var m = clear(M), tabs = TABS[R.pkg] || [['config', '設定']];
     var tab = TAB && tabs.some(function (t) { return t[0] === TAB; }) ? TAB : tabs[0][0];
+    R.canEdit = R.canEditReal && !LK.other;
     A.title(m, R.name, 'v' + R.version + (R.maintenance ? '　🔧 維護中：' + (R.reason || '') : ''), h('a', { class: 'btn sm', href: '#packages' }, 'Package 管理'));
-    if (!R.canEdit) m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '12px' } }, '你只能查看這個 Package，沒有編輯權限。'));
+    if (!R.canEditReal) m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '12px' } }, '你只能查看這個 Package，沒有編輯權限。'));
+    m.appendChild(h('div', { id: 'pkgLock', class: 'pkg-lock hidden' }));
     if (R.maintenance) m.appendChild(h('div', { class: 'fb-notice', style: { marginBottom: '12px' } }, '模組維護中：暫停寫入（緊急應變的切結書仍可送出）。到「Package 管理」解除維護。'));
     m.appendChild(h('div', { class: 'chips', style: { marginBottom: '14px' } }, tabs.map(function (t) {
       return h('a', { class: 'chip' + (t[0] === tab ? ' on' : ''), href: '#data/' + R.pkg + '/' + t[0], style: { textDecoration: 'none' } }, t[1]);
@@ -60,6 +161,7 @@ var PkgAdmin = (function () {
     m.appendChild(box);
     var fn = (VIEWS[R.pkg] || {})[tab] || (tab === 'config' ? config : null);
     if (fn) fn(box, R.data); else box.appendChild(h('div', { class: 'empty' }, '沒有這個分頁'));
+    lockBar();
   }
 
   /** 人員與分隊每個分頁上方：從報名後台同步（學員、小隊、專輔隨輔、分房），每小時也會自動同步 */
@@ -87,17 +189,260 @@ var PkgAdmin = (function () {
     return h('td', null, h('div', { class: 'row', style: { gap: '4px' } }, edit ? h('button', { class: 'btn sm', onclick: edit }, '編輯') : null, remove ? h('button', { class: 'btn sm ghost', onclick: remove }, '刪除') : null));
   }
   function form(title, fields, onSave, wide) {
+    takeLock();
     modal({ title: title, wide: wide, body: h('div', { class: 'col' }, fields), actions: [{ text: '取消' }, { text: '儲存', cls: 'primary', onClick: onSave }] });
+  }
+  /** 選人：已選的人是可以移除的小圓片，後面打字（有自動完成）或從清單挑來加人；人很多時比整排圓片好用 */
+  var PP_SEQ = 0;
+  function peoplePicker(workers, selected, o) {
+    o = o || {};
+    var sel_ = (selected || []).map(String), byId = {}, byLabel = {};
+    var label = function (w) { return w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : ''); };
+    (workers || []).forEach(function (w) { byId[w.id] = w; byLabel[label(w)] = w.id; byLabel[w.data.name] = byLabel[w.data.name] || w.id; });
+    var lid = 'ppl' + (++PP_SEQ), el = h('div', { class: 'pp' + (o.compact ? ' compact' : '') }), list = h('datalist', { id: lid }, (workers || []).map(function (w) { return h('option', { value: label(w) }); }));
+    var box = h('span', { class: 'pp-list' });
+    var input = h('input', { class: 'pp-in', list: lid, placeholder: o.placeholder || '＋ 加人', disabled: o.disabled });
+    var draw = function () {
+      clear(box);
+      sel_.forEach(function (id, i) {
+        var w = byId[id];
+        box.appendChild(h('span', { class: 'chip on pp-chip' + (w ? '' : ' gone') }, w ? w.data.name : '（已移除）', o.disabled ? null : h('button', { class: 'pp-x', type: 'button', 'aria-label': '移除', onclick: function (e) { e.stopPropagation(); sel_.splice(i, 1); draw(); el.dispatchEvent(new Event('change', { bubbles: true })); } }, '✕')));
+      });
+    };
+    var add = function () {
+      var v = input.value.trim(), id = byLabel[v];
+      if (!id) { var hit = (workers || []).filter(function (w) { return w.data.name.indexOf(v) >= 0; }); if (v && hit.length === 1) id = hit[0].id; }
+      if (id && sel_.indexOf(id) < 0) sel_.push(id);
+      if (id || !v) { input.value = ''; draw(); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    };
+    input.addEventListener('change', add);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } else if (e.key === 'Backspace' && !input.value && sel_.length) { sel_.pop(); draw(); el.dispatchEvent(new Event('change', { bubbles: true })); } });
+    el.appendChild(box); if (!o.disabled) el.appendChild(input); el.appendChild(list);
+    el.addEventListener('click', function () { input.focus(); });
+    draw();
+    return { el: el, get: function () { return sel_.slice(); }, set: function (ids) { sel_ = (ids || []).map(String); draw(); }, input: input };
   }
   function workerItems(list) { return (list || []).map(function (w) { return { value: w.id, label: w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : '') }; }); }
   function nameOf(list, ids) { var m = {}; (list || []).forEach(function (w) { m[w.id] = w.data.name; }); return (ids || []).map(function (i) { return m[i] || '（已移除）'; }).join('、'); }
   function hl(tr, id) { if (Q.id && Q.id === id) { tr.style.background = 'var(--warn-soft)'; setTimeout(function () { tr.scrollIntoView({ block: 'center' }); }, 50); } return tr; }
+
+  /* ---------------- 一覽表（像試算表一樣直接改，改完一次儲存） ----------------
+   * cols = [{k, label, type:'text'|'number'|'date'|'time'|'check'|'people'|'select'|'calc', w(寬), list(自動完成), opts(select), fn(calc), ph}]
+   * o = { rows:[{id, ver, vals}], saveOp, delOp, toData(vals, row), blank(groupKey) → vals, groupOf(vals), groupLabel(key, rows), groupOrder(keys),
+   *       rowHook(row, grid)（畫完每列後；例如標出重疊）, onChange(grid), addText, empty, tools(grid) → 工具列額外的按鈕, select（左邊勾選欄） }
+   * Enter 往下一列、Ctrl+S 儲存；從 Excel 複製多格貼上會自動填進去，不夠的列會自動新增。
+   */
+  var GRID_SEQ = 0;
+  function grid(box, cols, o) {
+    var G = { rows: [], cols: cols, o: o }, ro = !R.canEdit, seq = 0;
+    var save = h('button', { class: 'btn', onclick: function (e) { busy(e.target, G.save).catch(function () {}); } }, '儲存變更');
+    var status = h('span', { class: 'small muted' });
+    var table = h('table', { class: 't grid' + (o.select ? ' sel' : '') }), body = h('tbody');
+    var lists = h('div', { class: 'hidden' });
+    var colList = {};
+    cols.forEach(function (c) { if (c.list) { var id = 'gl' + (++GRID_SEQ); colList[c.k] = id; lists.appendChild(h('datalist', { id: id }, c.list.map(function (v) { return h('option', { value: v }); }))); } });
+    table.appendChild(h('thead', null, h('tr', null, o.select ? h('th', { class: 'g-sel', style: { width: '56px' } }, h('input', { type: 'checkbox', title: '全選', onchange: function (e) { G.rows.forEach(function (r) { if (!r.tr.classList.contains('hidden')) { r.ck.checked = e.target.checked; } }); G.selChanged(); } })) : null,
+      cols.map(function (c) { return h('th', { class: c.type === 'hidden' ? 'hidden' : null, style: { width: c.w || '160px' } }, c.label); }), ro && !o.rowActions ? null : h('th', { class: 'g-x', style: { width: o.rowActions ? '76px' : '44px' } }))));
+    // 固定欄寬（像試算表），欄位多時整個表格可以左右捲動
+    var tw = (o.select ? 56 : 0) + (ro && !o.rowActions ? 0 : o.rowActions ? 76 : 44);
+    cols.forEach(function (c) { if (c.type !== 'hidden') tw += parseInt(c.w || '160', 10); });
+    table.style.width = tw + 'px';
+    table.appendChild(body);
+
+    var editor = function (c, v, row) {
+      var t = c.type || 'text', e = {};
+      if (t === 'people') { var pp = peoplePicker(o.workers || [], v || [], { compact: true, disabled: ro, placeholder: '＋' }); e = { el: pp.el, get: pp.get, set: function (x) { pp.set(x); }, input: pp.input }; }
+      else if (t === 'check') { var cb = h('input', { type: 'checkbox', checked: !!v, disabled: ro }); e = { el: cb, get: function () { return cb.checked; }, set: function (x) { cb.checked = !!x && x !== '0' && x !== 'false'; }, input: cb }; }
+      else if (t === 'select') { var s = sel(c.opts, v, { disabled: ro, class: 'g-in' }); e = { el: s, get: function () { return s.value; }, set: function (x) { s.value = x; }, input: s }; }
+      else if (t === 'calc') { var sp = h('span', { class: 'g-calc' }); e = { el: sp, get: function () { return undefined; }, set: function () {}, calc: true }; }
+      else if (t === 'hidden') { var hv = v; e = { el: h('span'), get: function () { return hv; }, set: function (x) { hv = x; } }; }
+      else {
+        var i = h('input', { class: 'g-in', type: t === 'number' ? 'number' : t === 'date' ? 'date' : t === 'time' ? 'time' : 'text', value: v === undefined || v === null ? '' : v, placeholder: c.ph || '', list: colList[c.k] || null, disabled: ro, min: t === 'number' ? 0 : null });
+        e = { el: i, get: function () { return t === 'number' ? (i.value === '' ? '' : Number(i.value)) : i.value; }, set: function (x) { i.value = x === undefined || x === null ? '' : x; }, input: i };
+      }
+      return e;
+    };
+    G.add = function (r, before) {
+      r.key = r.key || ('r' + (++seq));
+      r.ed = {};
+      var tr = h('tr', { 'data-key': r.key });
+      if (o.select) { r.ck = h('input', { type: 'checkbox', onchange: function () { G.selChanged(); } }); tr.appendChild(h('td', { class: 'g-sel' }, r.ck, o.drag && !ro ? h('span', { class: 'g-drag', draggable: 'true', title: '拖到別的日期', ondragstart: function (ev) { ev.dataTransfer.setData('text/plain', r.key); G.dragKey = r.key; } }, '⠿') : null)); }
+      cols.forEach(function (c, ci) {
+        var e = r.ed[c.k] = editor(c, r.vals[c.k], r);
+        var td = h('td', { class: 'g-' + (c.type || 'text') + (c.type === 'hidden' ? ' hidden' : ''), 'data-ci': ci }, e.el);
+        tr.appendChild(td);
+      });
+      if (!ro || o.rowActions) tr.appendChild(h('td', { class: 'g-x' }, o.rowActions ? o.rowActions(r, G) : null, ro ? null : h('button', { class: 'btn sm ghost', type: 'button', title: r.id ? '刪除（儲存後才會真的刪）' : '拿掉這一列', onclick: function () {
+        if (!r.id) { tr.remove(); G.rows = G.rows.filter(function (x) { return x !== r; }); G.changed(); return; }
+        r.del = !r.del; tr.classList.toggle('g-del', r.del); tr.dispatchEvent(new Event('change', { bubbles: true }));
+      } }, '✕')));
+      r.tr = tr;
+      r.read = function () { var v = {}; cols.forEach(function (c) { var x = r.ed[c.k].get(); if (x !== undefined) v[c.k] = x; }); return v; };
+      r.t = track(tr, function () { return { v: r.read(), d: !!r.del }; }, save);
+      if (r.fill) { Object.keys(r.fill).forEach(function (k) { if (r.ed[k]) r.ed[k].set(r.fill[k]); }); delete r.fill; setTimeout(r.t.check, 0); }
+      tr.addEventListener('input', function () { G.changed(r); });
+      tr.addEventListener('change', function () { G.changed(r); });
+      if (before) body.insertBefore(tr, before); else body.appendChild(tr);
+      G.rows.push(r);
+      return r;
+    };
+    G.changed = function (r) {
+      if (r) cols.forEach(function (c) { if (c.type === 'calc') { var out = c.fn(r.read(), r, G); clear(r.ed[c.k].el); if (out !== null && out !== undefined) r.ed[c.k].el.appendChild(out.nodeType ? out : document.createTextNode(String(out))); } });
+      else G.rows.forEach(function (x) { G.changed(x); });
+      if (r && (o.rowHook || o.onChange)) G.hooks();
+      if (r && G.labels) G.labels();
+      setTimeout(function () { var n = G.rows.filter(function (x) { return x.t.isDirty(); }).length; status.textContent = n ? n + ' 列還沒儲存' : ''; save.textContent = n ? '儲存變更（' + n + '）' : '儲存變更'; }, 0);
+    };
+    G.hooks = function () { if (o.rowHook) G.rows.forEach(function (x) { o.rowHook(x, G); }); if (o.onChange) o.onChange(G); };
+    G.selected = function () { return G.rows.filter(function (r) { return r.ck && r.ck.checked && !r.tr.classList.contains('hidden'); }); };
+    G.selChanged = function () { if (o.onSelect) o.onSelect(G.selected(), G); };
+    G.newRow = function (groupKey, before, fill) { return G.add({ id: '', ver: undefined, vals: o.blank ? o.blank(groupKey) : {}, fill: fill }, before); };
+    G.save = function () {
+      var list = [];
+      G.rows.forEach(function (r) {
+        if (!r.t.isDirty()) return;
+        if (r.del) { if (r.id) list.push({ op: o.delOp, key: r.key, data: { id: r.id } }); return; }
+        var v = r.read();
+        if (o.isEmpty && o.isEmpty(v)) return;
+        list.push({ op: o.saveOp, key: r.key, ver: r.id ? r.ver : undefined, data: o.toData(v, r) });
+      });
+      if (!list.length) { toast('沒有要儲存的改動'); return Promise.resolve(); }
+      var bad = o.validate ? list.map(function (x) { return x.op === o.saveOp ? o.validate(x.data) : ''; }).filter(String) : [];
+      if (bad.length) { toast(bad[0], true); return Promise.resolve(); }
+      return runBatch(list, { flash: o.flash });
+    };
+    // 群組（例如依日期、依活動）
+    var span = cols.length + (o.select ? 1 : 0) + (ro && !o.rowActions ? 0 : 1);
+    var heads = {};
+    var makeHead = function (k) {
+      var lab = h('b', { class: 'grow' });
+      var head = h('tr', { class: 'g-grp' }, h('td', { colspan: span }, h('div', { class: 'row' }, lab,
+        ro ? null : h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { var r = G.newRow(k, G.groupEnd(k)); var f = r.tr.querySelector('input:not([type=checkbox])'); if (f) f.focus(); } }, o.addText || '＋ 加一列'))));
+      head.dataset.g = k;
+      head.lab = lab;
+      if (o.drag && !ro) {
+        head.addEventListener('dragover', function (ev) { ev.preventDefault(); head.classList.add('g-over'); });
+        head.addEventListener('dragleave', function () { head.classList.remove('g-over'); });
+        head.addEventListener('drop', function (ev) { ev.preventDefault(); head.classList.remove('g-over'); var r = G.rows.filter(function (x) { return x.key === G.dragKey; })[0]; if (r && o.onDrop) o.onDrop(r, k, G); });
+      }
+      heads[k] = head;
+      return head;
+    };
+    /** 這一組最後一列的下一個節點（新列插在這裡） */
+    G.groupEnd = function (k) { var hd = heads[k]; if (!hd) return null; var nx = hd.nextSibling; while (nx && !nx.classList.contains('g-grp')) nx = nx.nextSibling; return nx; };
+    G.ensureGroup = function (k) {
+      if (heads[k]) return heads[k];
+      var keys = Object.keys(heads).concat([k]);
+      if (o.groupOrder) keys = o.groupOrder(keys);
+      var after = keys[keys.indexOf(k) + 1], hd = makeHead(k);
+      body.insertBefore(hd, after !== undefined && heads[after] ? heads[after] : null);
+      return hd;
+    };
+    /** 把一列搬到另一組（例如改日期） */
+    G.moveTo = function (r, k) { G.ensureGroup(k); body.insertBefore(r.tr, G.groupEnd(k)); G.labels(); };
+    /** 每組內依 o.sortKey 排好 */
+    G.sort = function () {
+      if (!o.sortKey) return;
+      Object.keys(heads).forEach(function (k) {
+        var rs = G.rows.filter(function (r) { return o.groupOf(r.read()) === k; }).sort(function (a, b) { return String(o.sortKey(a.read())).localeCompare(String(o.sortKey(b.read()))); });
+        var end = G.groupEnd(k);
+        rs.forEach(function (r) { body.insertBefore(r.tr, end); });
+      });
+    };
+    G.labels = function () {
+      if (!o.groupOf) return;
+      Object.keys(heads).forEach(function (k) { var rs = G.rows.filter(function (r) { return !r.del && o.groupOf(r.read()) === k; }); clear(heads[k].lab).appendChild(document.createTextNode(o.groupLabel ? o.groupLabel(k, rs) : k)); });
+    };
+    G.draw = function () {
+      clear(body);
+      heads = {};
+      var groups = {}, keys = [];
+      (o.rows || []).forEach(function (r) { var k = o.groupOf ? o.groupOf(r.vals) : ''; if (!groups[k]) { groups[k] = []; keys.push(k); } groups[k].push(r); });
+      (o.extraGroups || []).forEach(function (k) { if (!groups[k]) { groups[k] = []; keys.push(k); } });
+      if (o.groupOrder) keys = o.groupOrder(keys);
+      keys.forEach(function (k) {
+        if (o.groupOf) body.appendChild(makeHead(k));
+        groups[k].forEach(function (r) { G.add(Object.assign({}, r)); });
+      });
+      if (!keys.length && o.empty) body.appendChild(h('tr', null, h('td', { colspan: span, class: 'empty' }, o.empty)));
+      G.changed();
+      G.hooks();
+      G.labels();
+    };
+    G.moveBefore = function (r, node) { body.insertBefore(r.tr, node); };
+    // Enter 往下、Ctrl+S 儲存
+    table.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); busy(save, G.save).catch(function () {}); return; }
+      if (e.key !== 'Enter' || e.target.classList.contains('pp-in') || e.isComposing) return;
+      var td = e.target.closest('td'), tr = td && td.parentNode;
+      if (!td || !td.dataset.ci) return;
+      e.preventDefault();
+      var nx = tr.nextSibling;
+      while (nx && nx.classList.contains('hidden')) nx = nx.nextSibling;
+      if ((!nx || nx.classList.contains('g-grp')) && !ro) { var cur = G.rows.filter(function (x) { return x.tr === tr; })[0], gk2 = o.groupOf && cur ? o.groupOf(cur.read()) : ''; nx = G.newRow(gk2, o.groupOf ? G.groupEnd(gk2) : null).tr; }
+      var t2 = nx && nx.querySelector('td[data-ci="' + td.dataset.ci + '"] input, td[data-ci="' + td.dataset.ci + '"] select');
+      if (t2) t2.focus();
+    });
+    // 從 Excel／Google 試算表複製多格貼上
+    table.addEventListener('paste', function (e) {
+      var text = (e.clipboardData || window.clipboardData).getData('text');
+      if (ro || !/[\t\n]/.test(String(text).replace(/\n$/, ''))) return;
+      var td = e.target.closest('td'), tr = td && td.parentNode;
+      if (!td || !td.dataset.ci) return;
+      e.preventDefault();
+      var lines = String(text).replace(/\r/g, '').replace(/\n+$/, '').split('\n').map(function (l) { return l.split('\t'); });
+      var start = G.rows.filter(function (x) { return x.tr === tr; })[0], gk = o.groupOf && start ? o.groupOf(start.read()) : '';
+      var vis = G.rows.filter(function (x) { return !x.tr.classList.contains('hidden'); });
+      var ri = vis.indexOf(start), ci = Number(td.dataset.ci), made = 0;
+      var anchor = tr.nextSibling; while (anchor && !anchor.classList.contains('g-grp')) anchor = anchor.nextSibling;
+      lines.forEach(function (cells, k) {
+        var r = vis[ri + k];
+        if (!r || (o.groupOf && o.groupOf(r.read()) !== gk)) { r = G.newRow(gk, anchor); made++; }
+        // 只對應到可以填的欄（跳過「結束」這類算出來的欄），和 Excel 的欄位順序一樣
+        var ed = cols.map(function (c, i) { return i; }).filter(function (i) { return i >= ci && cols[i].type !== 'calc' && cols[i].type !== 'hidden'; });
+        cells.forEach(function (v, j) {
+          var c = cols[ed[j]];
+          if (!c) return;
+          r.ed[c.k].set(o.parse ? o.parse(c, v.trim()) : v.trim());
+        });
+        r.t.check(); G.changed(r);
+      });
+      toast('已貼上 ' + lines.length + ' 列' + (made ? '（新增 ' + made + ' 列）' : '') + '，記得按「儲存變更」');
+    });
+    G.bar = h('div', { class: 'row wrap g-bar' }, ro ? null : save, status, o.tools ? o.tools(G) : null);
+    box.appendChild(G.bar);
+    box.appendChild(h('div', { class: 'tbl-wrap g-wrap' }, table));
+    box.appendChild(lists);
+    if (!ro && !o.groupOf) box.appendChild(h('div', { style: { marginTop: '8px' } }, h('button', { class: 'btn sm', onclick: function () { var r = G.newRow(''); var f = r.tr.querySelector('input:not([type=checkbox])'); if (f) f.focus(); } }, o.addText || '＋ 加一列')));
+    G.draw();
+    return G;
+  }
+  /** 貼上時的格式整理：日期 1/27 → 2027-01-27、時間 9:00 → 09:00、人員用、或 / 分隔的名字 → ID */
+  function parseCell(c, v) {
+    if (c.type === 'number') { var n = parseFloat(String(v).replace(/[^\d.]/g, '')); return isFinite(n) ? n : ''; }
+    if (c.type === 'time') { var m = String(v).match(/(\d{1,2})[:：](\d{2})/); return m ? pad2(Number(m[1])) + ':' + m[2] : ''; }
+    if (c.type === 'date') {
+      var d = String(v).match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+      if (d) return d[1] + '-' + pad2(Number(d[2])) + '-' + pad2(Number(d[3]));
+      d = String(v).match(/(\d{1,2})[/.月](\d{1,2})/);
+      if (d) { var y = (A.info.start || taipei().ymd).slice(0, 4); if (A.info.start && Number(d[1]) < Number(A.info.start.slice(5, 7)) - 6) y = String(Number(y) + 1); return y + '-' + pad2(Number(d[1])) + '-' + pad2(Number(d[2])); }
+      return '';
+    }
+    if (c.type === 'check') return /^(1|v|y|yes|true|是|✓|✔|停用)$/i.test(v);
+    if (c.type === 'people') {
+      var ws = (R.data.workers || []), out = [];
+      String(v).split(/[、,，/／\s]+/).forEach(function (nm) { nm = nm.trim(); if (!nm) return; var w = ws.filter(function (x) { return x.data.name === nm; })[0]; if (w && out.indexOf(w.id) < 0) out.push(w.id); });
+      return out;
+    }
+    return v;
+  }
 
   /* ---------------- 設定（各 Package 共用） ---------------- */
   function config(box) {
     var vals = {}, card = h('div', { class: 'card col' });
     if (!R.configFields.length) { box.appendChild(h('div', { class: 'card empty' }, '這個 Package 沒有可以調整的設定')); return; }
     R.configFields.forEach(function (f) {
+      if (f.hidden) return;
       var v = R.config[f.key], el;
       if (f.type === 'bool') { el = h('input', { type: 'checkbox', checked: !!v, disabled: !R.canEdit }); vals[f.key] = function () { return el.checked; }; card.appendChild(h('label', { class: 'check' }, el, h('span', null, f.label))); return; }
       if (f.type === 'select') el = sel(f.options, v, { disabled: !R.canEdit });
@@ -110,11 +455,15 @@ var PkgAdmin = (function () {
       vals[f.key] = function () { return el.value; };
       card.appendChild(field(f.label, el));
     });
-    if (R.canEdit) card.appendChild(h('div', null, h('button', { class: 'btn primary', onclick: function (e) {
-      var cfg = {};
-      Object.keys(vals).forEach(function (k) { cfg[k] = vals[k](); });
-      busy(e.target, function () { return A.op('pkg.config', { target: { inst: R.inst }, data: { config: cfg } }); }).then(function () { toast('設定已儲存'); reload(); A.poll(); }, function () {});
-    } }, '儲存設定')));
+    var getCfg = function () { var cfg = {}; Object.keys(vals).forEach(function (k) { cfg[k] = vals[k](); }); return cfg; };
+    if (R.canEdit) {
+      var btn = h('button', { class: 'btn', onclick: function (e) {
+        busy(e.target, function () { return A.op('pkg.config', { target: { inst: R.inst, tab: pageTab() }, data: { config: getCfg() } }); }).then(function () { LK.mine = true; toast('設定已儲存'); FLASH = 'config'; reload(); A.poll(); }, function (e2) { if (e2.code === 'LOCK') { LK.other = true; reload(); } });
+      } }, '儲存設定');
+      var tr = track(card, getCfg, btn);
+      card.appendChild(h('div', { class: 'row' }, btn, tr.status));
+    }
+    flashOn(card, 'config');
     box.appendChild(card);
   }
   function contactsEditor(list) {
@@ -137,25 +486,54 @@ var PkgAdmin = (function () {
   var VIEWS = {};
 
   VIEWS.people = {
+    /** 工作人員一覽：直接在表格裡改，改完按「儲存變更」；可以從 Excel 複製整塊貼上 */
     workers: function (box, D) {
-      var edit = function (w) {
-        w = w || { id: '', data: {} };
-        var d = w.data, name = inp(d.name), dept = inp(d.dept), squad = inp(d.squad, { type: 'number', min: 1 }), phone = inp(d.phone, { type: 'tel' }), note = inp(d.note), off = h('input', { type: 'checkbox', checked: !!d.inactive });
-        form(w.id ? '編輯工作人員' : '新增工作人員', [h('div', { class: 'grid2' }, field('姓名', name), field('股別', dept)), h('div', { class: 'grid2' }, field('帶的小隊（隊輔才填）', squad), field('電話', phone)), field('備註', note), h('label', { class: 'check' }, off, h('span', null, '停用（不能登入、不出現在名單）'))],
-          function () { return run('worker.save', { id: w.id, name: name.value, dept: dept.value, squad: squad.value, phone: phone.value, note: note.value, inactive: off.checked }, { ver: w.id ? w.version : undefined }); });
-      };
-      var imp = function () {
-        var t = area('', { rows: 8, placeholder: '王小明,輔導,1,0912345678\n李大華,活動' });
-        form('貼上多位工作人員', [field('每行一位：姓名,股別,小隊,電話（小隊和電話可省略）', t, '同名同股別已存在的會略過')], function () { return run('worker.import', { text: t.value }, { action: 'create', msg: false }).then(function (x) { if (x) toast('新增 ' + x.added + ' 位'); }); });
-      };
-      box.appendChild(bar(addBtn('新增工作人員', function () { edit(); }), R.canEdit ? h('button', { class: 'btn', onclick: imp }, '一次貼上多位') : null,
-        h('span', { class: 'hint' }, '工作人員用「姓名＋股別＋營隊通行碼」登入工作人員端；同名同股別會無法登入。報名後台的專輔、隨輔會自動加進來（股別「輔導」）。')));
-      var list = D.workers.slice().sort(function (a, b) { return (a.data.dept + a.data.name).localeCompare(b.data.dept + b.data.name); });
-      var sqText = function (w) { var a = []; if (w.data.squad !== '' && w.data.squad !== undefined && w.data.squad !== null) a.push(String(w.data.squad)); (w.data.regSquads || []).forEach(function (n) { if (a.indexOf(String(n)) < 0) a.push(String(n)); }); return a.join('、'); };
-      box.appendChild(table(['姓名', '股別', '小隊', '電話', '備註', ''], list.map(function (w) {
-        return hl(h('tr', { style: w.data.inactive ? { opacity: 0.5 } : null }, h('td', null, w.data.name, w.data.inactive ? h('span', { class: 'tag', style: { marginLeft: '4px' } }, '停用') : null, w.data.title ? h('span', { class: 'tag info', style: { marginLeft: '4px' }, title: '從報名後台同步' }, w.data.title) : null), h('td', null, w.data.dept), h('td', null, sqText(w)), h('td', null, w.data.phone || ''), h('td', { class: 'small' }, w.data.note || ''),
-          actions(function () { edit(w); }, function () { del('worker.delete', { id: w.id }, w.data.name); })), w.id);
-      }), '還沒有工作人員'));
+      var depts = (R.config.depts || []).slice();
+      D.workers.forEach(function (w) { if (w.data.dept && depts.indexOf(w.data.dept) < 0) depts.push(w.data.dept); });
+      var q = inp('', { placeholder: '搜尋姓名、電話、備註', style: { maxWidth: '220px' } }), dsel = sel([{ value: '', label: '全部股別' }].concat(depts.map(function (d) { return { value: d, label: d }; })), '', { style: { maxWidth: '160px' } });
+      var count = h('span', { class: 'small muted' });
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '直接在表格裡改，改過的列會有橘色框，最後按「儲存變更」一次存。可以從 Excel 複製「姓名、股別、小隊、電話、備註」整塊貼到姓名欄。工作人員用「姓名＋股別＋營隊通行碼」登入，同名同股別會無法登入；報名後台的專輔、隨輔會自動加進來（股別「輔導」）。股別清單在「股別與活動」設定。'));
+      var rows = D.workers.slice().sort(function (a, b) { return (depts.indexOf(a.data.dept) - depts.indexOf(b.data.dept)) || String(a.data.name).localeCompare(String(b.data.name), 'zh-Hant'); })
+        .map(function (w) { return { id: w.id, ver: w.version, vals: { name: w.data.name, dept: w.data.dept || '', squad: w.data.squad === undefined ? '' : w.data.squad, phone: w.data.phone || '', note: w.data.note || '', inactive: !!w.data.inactive }, w: w }; });
+      var byId = {};
+      D.workers.forEach(function (w) { byId[w.id] = w; });
+      var G = grid(box, [
+        { k: 'name', label: '姓名', w: '130px' },
+        { k: 'dept', label: '股別', w: '110px', list: depts },
+        { k: 'squad', label: '小隊', type: 'number', w: '70px' },
+        { k: 'reg', label: '報名後台', type: 'calc', w: '120px', fn: function (v, r) { var w = r.id && byId[r.id]; if (!w || !w.data.reg) return null; return h('span', { class: 'small muted', title: '從報名後台同步' }, (w.data.title || '專輔／隨輔') + ((w.data.regSquads || []).length ? ' · ' + w.data.regSquads.join('、') + ' 隊' : '')); } },
+        { k: 'phone', label: '電話', w: '130px' },
+        { k: 'note', label: '備註' },
+        { k: 'inactive', label: '停用', type: 'check', w: '50px' }
+      ], {
+        rows: rows, saveOp: 'worker.save', delOp: 'worker.delete', parse: parseCell, flash: 'workers', addText: '＋ 新增工作人員',
+        blank: function () { return { name: '', dept: dsel.value || '', squad: '', phone: '', note: '', inactive: false }; },
+        isEmpty: function (v) { return !String(v.name || '').trim(); },
+        toData: function (v, r) { return { id: r.id, name: v.name, dept: v.dept, squad: v.squad, phone: v.phone, note: v.note, inactive: v.inactive }; },
+        rowHook: function (r, G) {
+          var v = r.read(), k = String(v.name).trim() + '|' + String(v.dept).trim();
+          var dup = String(v.name).trim() && G.rows.some(function (x) { return x !== r && !x.del && String(x.read().name).trim() + '|' + String(x.read().dept).trim() === k; });
+          r.tr.classList.toggle('g-bad', !!dup);
+          r.tr.title = dup ? '同名同股別：這兩位會無法登入，請改股別或在姓名加註' : '';
+          r.tr.classList.toggle('g-off', !!v.inactive);
+          var s = q.value.trim(), d = dsel.value;
+          r.tr.classList.toggle('hidden', !!((s && [v.name, v.phone, v.note].join(' ').indexOf(s) < 0) || (d && v.dept !== d && r.id)));
+        },
+        onChange: function (G) {
+          var by = {};
+          G.rows.forEach(function (r) { if (r.del) return; var v = r.read(); if (!String(v.name).trim() || v.inactive) return; by[v.dept || '（沒填股別）'] = (by[v.dept || '（沒填股別）'] || 0) + 1; });
+          clear(count).appendChild(document.createTextNode(Object.keys(by).map(function (k) { return k + ' ' + by[k]; }).join('　·　') || ''));
+        },
+        tools: function () {
+          return [q, dsel, R.canEdit ? h('button', { class: 'btn', onclick: function () {
+            var t = area('', { rows: 8, placeholder: '王小明,輔導,1,0912345678\n李大華,活動' });
+            form('貼上多位工作人員', [field('每行一位：姓名,股別,小隊,電話（小隊和電話可省略）', t, '同名同股別已存在的會略過')], function () { return run('worker.import', { text: t.value }, { action: 'create', msg: false }).then(function (x) { if (x) toast('新增 ' + x.added + ' 位'); }); });
+          } }, '一次貼上多位') : null];
+        }
+      });
+      box.insertBefore(h('div', { style: { margin: '-4px 0 8px' } }, count), G.bar.nextSibling);
+      q.addEventListener('input', G.hooks); dsel.addEventListener('change', G.hooks);
+      if (Q.id) { var hit = G.rows.filter(function (r) { return r.id === Q.id; })[0]; if (hit) { hit.tr.style.background = 'var(--warn-soft)'; setTimeout(function () { hit.tr.scrollIntoView({ block: 'center' }); }, 50); } }
     },
     squads: function (box, D) {
       var edit = function (s) {
@@ -195,19 +573,97 @@ var PkgAdmin = (function () {
         return h('tr', null, h('td', null, h('b', null, r.no)), h('td', null, r.label || ''), h('td', null, r.sex || '不限'), h('td', { class: 'small' }, r.note || ''), h('td', { class: 'small' }, ppl.length + ' 人：' + (ppl.join('、') || '—')));
       }), '還沒有分房資料。在報名後台分房後，按上面的「從報名後台同步」。'));
     },
+    /** 工作分配：依活動分組，每列一個工作（角色／詳細工作／日期／需要人數／人員），人數不夠會標出來 */
     assign: function (box, D) {
-      var edit = function (a) {
-        a = a || { id: '', data: {} };
-        var d = a.data, act = inp(d.activity), role = inp(d.role, { placeholder: '例如：關主、守夜、機動' }), detail = inp(d.detail), date = inp(d.date, { type: 'date' });
-        var ppl = chips(workerItems(D.workers), d.people);
-        form(a.id ? '編輯工作分配' : '新增工作分配', [h('div', { class: 'grid2' }, field('活動', act), field('角色', role)), h('div', { class: 'grid2' }, field('詳細工作', detail), field('日期（守夜要填）', date)), field('人員', ppl.el)],
-          function () { return run('assign.save', { id: a.id, activity: act.value, role: role.value, detail: detail.value, date: date.value, people: ppl.get() }, { ver: a.id ? a.version : undefined }); }, true);
+      var acts = (R.config.actList || []).slice();
+      D.assign.forEach(function (a) { if (a.data.activity && acts.indexOf(a.data.activity) < 0) acts.push(a.data.activity); });
+      var wById = {};
+      D.workers.forEach(function (w) { if (!w.data.inactive) wById[w.id] = w; });
+      var roles = [];
+      D.assign.forEach(function (a) { if (a.data.role && roles.indexOf(a.data.role) < 0) roles.push(a.data.role); });
+      ['關主', '機動', '守夜', '場控', '器材', '攝影'].forEach(function (x) { if (roles.indexOf(x) < 0) roles.push(x); });
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '先在「股別與活動」列好活動，這裡每個活動底下列出要做的工作和需要幾個人，再把人放進去；人數不夠會標紅、剛好是綠色。角色含「守夜」的會自動成為那一晚的守夜人員（日期要填）。'));
+      var sum = h('div', { class: 'row wrap', style: { marginBottom: '8px' } });
+      var load = h('details', { class: 'card', style: { marginTop: '12px' } }, h('summary', { style: { cursor: 'pointer', fontWeight: 700 } }, '每個人分到的工作'), h('div', { class: 'small' }));
+      var G = grid(box, [
+        { k: 'activity', label: '活動', w: '130px', list: acts },
+        { k: 'role', label: '工作（角色）', w: '120px', list: roles },
+        { k: 'detail', label: '詳細工作', w: '160px' },
+        { k: 'date', label: '日期', type: 'date', w: '140px' },
+        { k: 'need', label: '需要人數', type: 'number', w: '80px' },
+        { k: 'people', label: '人員', type: 'people' },
+        { k: 'st', label: '核對', type: 'calc', w: '86px', fn: function (v) {
+          var n = (v.people || []).filter(function (p) { return wById[p]; }).length, need = Number(v.need) || 0;
+          if (!need) return h('span', { class: 'tag' }, n + ' 人');
+          return h('span', { class: 'tag ' + (n < need ? 'bad' : n > need ? 'warn' : 'ok') }, n + '／' + need + (n < need ? ' 缺 ' + (need - n) : n > need ? ' 多 ' + (n - need) : ' ✓'));
+        } }
+      ], {
+        rows: D.assign.map(function (a) { return { id: a.id, ver: a.version, vals: { activity: a.data.activity, role: a.data.role, detail: a.data.detail || '', date: a.data.date || '', need: a.data.need === undefined ? '' : a.data.need, people: a.data.people || [] } }; }),
+        workers: D.workers.filter(function (w) { return !w.data.inactive; }), saveOp: 'assign.save', delOp: 'assign.delete', parse: parseCell, flash: 'assign', addText: '＋ 這個活動加一個工作',
+        groupOf: function (v) { return v.activity || ''; }, extraGroups: acts,
+        groupOrder: function (keys) { return keys.sort(function (a, b) { var x = acts.indexOf(a), y = acts.indexOf(b); return (x < 0 ? 999 : x) - (y < 0 ? 999 : y); }); },
+        groupLabel: function (k, rows) { return (k || '（沒填活動）') + '　' + rows.length + ' 個工作'; },
+        blank: function (k) { return { activity: k || '', role: '', detail: '', date: '', need: '', people: [] }; },
+        isEmpty: function (v) { return !String(v.role || '').trim() && !(v.people || []).length; },
+        validate: function (d) { return !String(d.activity).trim() || !String(d.role).trim() ? '每一列都要有活動和工作（角色）' : ''; },
+        toData: function (v, r) { return { id: r.id, activity: v.activity, role: v.role, detail: v.detail, date: v.date, need: v.need, people: v.people }; },
+        onChange: function (G) {
+          var need = 0, have = 0, short = 0, per = {};
+          G.rows.forEach(function (r) {
+            if (r.del) return;
+            var v = r.read(), n = (v.people || []).filter(function (p) { return wById[p]; }).length, nd = Number(v.need) || 0;
+            need += nd; have += Math.min(n, nd || n); if (nd && n < nd) short++;
+            (v.people || []).forEach(function (p) { (per[p] = per[p] || []).push((v.activity || '') + '／' + (v.role || '') + (v.date ? '（' + v.date.slice(5) + '）' : '')); });
+          });
+          clear(sum).appendChild(h('span', { class: 'tag ' + (short ? 'bad' : 'ok') }, short ? short + ' 個工作還缺人' : '人數都夠了'));
+          if (need) sum.appendChild(h('span', { class: 'small muted' }, '需要 ' + need + ' 人次，已安排 ' + have));
+          var lb = load.lastChild, free = D.workers.filter(function (w) { return !w.data.inactive && !per[w.id]; });
+          clear(lb).appendChild(h('div', { class: 'col', style: { gap: '4px', marginTop: '8px' } }, D.workers.filter(function (w) { return per[w.id]; }).sort(function (a, b) { return per[b.id].length - per[a.id].length; }).map(function (w) {
+            return h('div', null, h('b', null, w.data.name), h('span', { class: 'muted' }, '（' + (w.data.dept || '') + '）' + per[w.id].length + ' 個：'), per[w.id].join('、'));
+          }), free.length ? h('div', { class: 'muted', style: { marginTop: '6px' } }, '還沒分到工作：' + free.map(function (w) { return w.data.name; }).join('、')) : null));
+        }
+      });
+      box.insertBefore(sum, G.bar);
+      box.appendChild(load);
+      if (!acts.length) box.insertBefore(h('div', { class: 'fb-notice', style: { marginBottom: '8px' } }, '還沒有活動：到「股別與活動」先列好活動，或在表格最下面直接新增。'), G.bar);
+      if (R.canEdit) box.appendChild(h('div', { style: { marginTop: '8px' } }, h('button', { class: 'btn sm', onclick: function () { askText('新增活動', '活動名稱', '').then(function (n) { n = String(n || '').trim(); if (!n) return; var r = G.newRow(n, null); r.tr.querySelector('td[data-ci="1"] input').focus(); }); } }, '＋ 新的活動')));
+    },
+    /** 先設定好有哪些股別、哪些活動 */
+    setup: function (box, D) {
+      var listEd = function (title, hint, items, counts, extra) {
+        var rows = items.slice(), el = h('div', { class: 'col', style: { gap: '6px' } });
+        var draw = function () {
+          clear(el);
+          rows.forEach(function (x, i) {
+            var t = inp(x, { disabled: !R.canEdit });
+            t.oninput = function () { rows[i] = t.value; };
+            el.appendChild(h('div', { class: 'row' }, h('div', { class: 'grow' }, t), counts ? h('span', { class: 'small muted', style: { minWidth: '60px' } }, (counts[x] || 0) + ' 人') : null,
+              R.canEdit ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { if (i) { rows.splice(i - 1, 0, rows.splice(i, 1)[0]); draw(); } } }, '↑') : null,
+              R.canEdit ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { rows.splice(i, 1); draw(); } }, '✕') : null));
+          });
+          if (R.canEdit) el.appendChild(h('div', { class: 'row wrap' }, h('button', { class: 'btn sm', type: 'button', onclick: function () { rows.push(''); draw(); var l = el.querySelectorAll('input'); l[l.length - 1].focus(); } }, '＋ 新增'), extra ? extra(rows, draw) : null));
+        };
+        draw();
+        return { el: h('div', { class: 'card col' }, h('h2', null, title), h('div', { class: 'hint' }, hint), el), get: function () { return rows.map(function (x) { return String(x).trim(); }).filter(String); } };
       };
-      box.appendChild(bar(addBtn('新增工作分配', function () { edit(); }), h('span', { class: 'hint' }, '活動 → 角色 → 詳細工作 → 人員。角色含「守夜」的會自動成為當晚的守夜人員。')));
-      box.appendChild(table(['活動', '角色', '詳細工作', '日期', '人員', ''], D.assign.map(function (a) {
-        return hl(h('tr', null, h('td', null, a.data.activity), h('td', null, a.data.role), h('td', null, a.data.detail || ''), h('td', null, a.data.date || ''), h('td', { class: 'small' }, nameOf(D.workers, a.data.people) || h('span', { class: 'tag warn' }, '未指派')),
-          actions(function () { edit(a); }, function () { del('assign.delete', { id: a.id }, a.data.activity + '／' + a.data.role); })), a.id);
-      }), '還沒有工作分配'));
+      var cnt = {};
+      D.workers.forEach(function (w) { if (!w.data.inactive) cnt[w.data.dept] = (cnt[w.data.dept] || 0) + 1; });
+      var dE = listEd('股別', '工作人員名單選股別時會跳出這些；也是登入時要填的股別，名稱請和大家講好。', R.config.depts || [], cnt, function (rows, draw) {
+        return h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { Object.keys(cnt).forEach(function (d) { if (d && rows.indexOf(d) < 0) rows.push(d); }); draw(); } }, '從工作人員名單帶入');
+      });
+      var used = {};
+      D.assign.forEach(function (a) { used[a.data.activity] = (used[a.data.activity] || 0) + 1; });
+      var aE = listEd('活動', '工作分配依這些活動分組（例如：開幕、闖關、晚會、守夜）。', R.config.actList || [], null, function (rows, draw) {
+        return h('button', { class: 'btn sm ghost', type: 'button', onclick: function () {
+          api('getPkgAdmin', A.camp, 'schedule').then(function (r) { (r.data.activities || []).forEach(function (a) { if (rows.indexOf(a.data.name) < 0) rows.push(a.data.name); }); Object.keys(used).forEach(function (n) { if (n && rows.indexOf(n) < 0) rows.push(n); }); draw(); }, function () { Object.keys(used).forEach(function (n) { if (n && rows.indexOf(n) < 0) rows.push(n); }); draw(); });
+        } }, '從營期流程的活動帶入');
+      });
+      var btn = h('button', { class: 'btn', onclick: function (e) { busy(e.target, function () { return run('setup.save', { depts: dE.get(), actList: aE.get() }, { msg: '股別與活動已儲存', flash: 'setup' }); }).catch(function () {}); } }, '儲存');
+      var wrap = h('div', { class: 'col' }, h('div', { class: 'grid2', style: { alignItems: 'start' } }, dE.el, aE.el), R.canEdit ? h('div', { class: 'row' }, btn) : null);
+      var tr = track(wrap, function () { return [dE.get(), aE.get()]; }, btn);
+      if (R.canEdit) btn.parentNode.appendChild(tr.status);
+      flashOn(wrap, 'setup');
+      box.appendChild(wrap);
     }
   };
 
@@ -245,22 +701,112 @@ var PkgAdmin = (function () {
         var a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/csv' })), download: A.info.name + '-營期流程.csv' });
         document.body.appendChild(a); a.click(); a.remove();
       };
-      box.appendChild(bar(addBtn('新增流程項目', function () { edit(); }), h('button', { class: 'btn', onclick: csv }, '匯出 Excel（CSV）'),
-        A.isAdmin() && R.canEdit ? h('button', { class: 'btn', onclick: function () {
-          confirmBox('鎖定既定行程', '把目前所有項目的日期、時間、時長、場地記為「既定行程」。之後的修改會在工作人員端顯示「與既定行程不同」（原訂、調整者、時間）。', '鎖定').then(function (ok) { if (ok) run('baseline', {}, { action: 'run', msg: '已鎖定既定行程' }).catch(fail); });
-        } }, '鎖定既定行程') : null));
-      box.appendChild(h('div', { class: 'chips', style: { marginBottom: '10px' } }, flows.map(function (f) { return h('a', { class: 'chip' + (f.id === cur ? ' on' : ''), href: '#data/schedule/items?flow=' + f.id, style: { textDecoration: 'none' } }, f.data.name); })));
       var items = D.items.filter(function (it) { return (it.data.flow || 'main') === cur; });
-      var actName = {};
-      D.activities.forEach(function (a) { actName[a.id] = a.data; });
-      box.appendChild(table(['日期', '時間', '活動名稱', '場地', '人員', ''], items.map(function (it) {
-        var d = it.data, moved = d.planned && ['date', 'time', 'dur', 'place'].some(function (k) { return String(d.planned[k] || '') !== String(d[k] || ''); });
-        var a = d.activity ? actName[d.activity] : null;
-        return hl(h('tr', null, h('td', { style: { whiteSpace: 'nowrap' } }, d.date ? dayLabel(d.date) : h('span', { class: 'tag bad' }, '沒日期')), h('td', null, d.time || h('span', { class: 'tag bad' }, '沒時間'), d.dur ? h('div', { class: 'small muted' }, d.dur + ' 分') : null),
-          h('td', null, h('b', null, d.name), a ? h('div', { class: 'small' }, h('span', { class: 'tag info' }, '活動：' + a.name + '（' + PUB[a.publicMode] + '）')) : null, moved ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + (d.planned.date || '').slice(5) + ' ' + d.planned.time + (d.changedBy ? '（' + d.changedBy + '）' : '')) : null),
-          h('td', null, d.place || h('span', { class: 'tag warn' }, '沒場地')), h('td', { class: 'small' }, [d.owner && d.owner.length ? '負責：' + nameOf(D.workers, d.owner) : '', d.staff && d.staff.length ? '人員：' + nameOf(D.workers, d.staff) : '', d.backup && d.backup.length ? '機動：' + nameOf(D.workers, d.backup) : ''].filter(String).join('\n')),
-          actions(function () { edit(it); }, function () { del('item.delete', { id: it.id }, d.name); })), it.id);
-      }), '這份流程還沒有項目'));
+      // 一覽編輯（像 Excel）：依日期分組，直接改；同時段並行的項目用同色的左邊線標出來，同一人同時被排兩個會標紅
+      var dflt = Number(R.config.defaultDuration) || 60;
+      var toMin = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+      var toHm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
+      var days = [];
+      if (A.info.start && A.info.end) for (var dd = new Date(A.info.start + 'T12:00:00+08:00'); taipei(dd).ymd <= A.info.end; dd = new Date(dd.getTime() + 86400000)) days.push(taipei(dd).ymd);
+      var dayNo = function (k) { var i = days.indexOf(k); return i >= 0 ? '第' + '一二三四五六七八九十'.charAt(i) + '天｜' : ''; };
+      var wn = {};
+      D.workers.forEach(function (w) { wn[w.id] = w.data.name; });
+      var OVC = ['#c8803a', '#3563a8', '#8a4fb0', '#2e7d4f', '#c0392b'];
+      var selBar = h('span', { class: 'row wrap hidden' });
+      var shift = inp('', { type: 'number', placeholder: '±分鐘', style: { width: '90px' } }), toDate = inp('', { type: 'date', style: { width: '150px' } });
+      var G = grid(box, [
+        { k: 'date', type: 'hidden' }, { k: 'flow', type: 'hidden' },
+        { k: 'time', label: '時間', type: 'time', w: '124px' },
+        { k: 'dur', label: '時長(分)', type: 'number', w: '76px' },
+        { k: 'end', label: '結束', type: 'calc', w: '96px', fn: function () { return null; } },
+        { k: 'name', label: '活動名稱', w: '170px' },
+        { k: 'place', label: '場地', w: '110px', list: D.places.map(function (p) { return p.data.name; }) },
+        { k: 'owner', label: '負責人員', type: 'people', w: '150px' },
+        { k: 'staff', label: '關主或參與人員', type: 'people', w: '190px' },
+        { k: 'backup', label: '機動人員', type: 'people', w: '130px' },
+        { k: 'note', label: '備註', w: '150px' },
+        { k: 'link', label: '連結', w: '110px', ph: 'https://' }
+      ].concat(cf.map(function (k) { return { k: 'cf:' + k, label: k, w: '110px' }; })), {
+        rows: items.map(function (it) { var d = it.data, v = { date: d.date, flow: d.flow || cur, time: d.time, dur: d.dur || '', name: d.name, place: d.place, owner: d.owner || [], staff: d.staff || [], backup: d.backup || [], note: d.note || '', link: d.link || '' }; cf.forEach(function (k) { v['cf:' + k] = (d.custom || {})[k] || ''; }); return { id: it.id, ver: it.version, vals: v, it: it }; }),
+        workers: D.workers, saveOp: 'item.save', delOp: 'item.delete', parse: parseCell, flash: 'items', select: true, drag: true, addText: '＋ 這一天加一項',
+        groupOf: function (v) { return v.date || ''; }, extraGroups: days,
+        groupOrder: function (keys) { return keys.sort(function (x, y) { return (x || '9999').localeCompare(y || '9999'); }); },
+        groupLabel: function (k, rs) { return k ? dayNo(k) + dayLabel(k) + '　' + rs.length + ' 項' : '（沒填日期）'; },
+        sortKey: function (v) { return (v.time || '99:99') + v.name; },
+        blank: function (k) { var v = { date: k, flow: cur, time: '', dur: '', name: '', place: '', owner: [], staff: [], backup: [], note: '', link: '' }; cf.forEach(function (c) { v['cf:' + c] = ''; }); return v; },
+        isEmpty: function (v) { return !String(v.name || '').trim() && !v.time; },
+        validate: function (d) { return !String(d.name).trim() ? '有一列沒有活動名稱' : ''; },
+        toData: function (v, r) {
+          var old = r.it ? r.it.data : {}, c = Object.assign({}, old.custom || {});
+          cf.forEach(function (k) { c[k] = v['cf:' + k]; });
+          return { id: r.id, flow: v.flow || cur, date: v.date, time: v.time, dur: v.dur, name: v.name, place: v.place, activity: old.activity || '', owner: v.owner, staff: v.staff, backup: v.backup, squads: old.squads || [], note: v.note, link: v.link, custom: c };
+        },
+        rowActions: function (r) {
+          return h('button', { class: 'btn sm ghost', type: 'button', title: '詳細設定（連到活動、參與小隊、自訂欄位）', onclick: function () {
+            if (!r.it) { toast('新的列先按「儲存變更」，再開詳細設定', true); return; }
+            if (dirtyAny()) { toast('表格還有沒儲存的改動，先按「儲存變更」再開詳細設定', true); return; }
+            edit(r.it);
+          } }, '⋯');
+        },
+        onDrop: function (r, k, G) { r.ed.date.set(k); G.moveTo(r, k); r.t.check(); G.changed(r); toast('已改到 ' + (k ? dayLabel(k) : '沒有日期') + '，記得按「儲存變更」'); },
+        onSelect: function (list) { selBar.classList.toggle('hidden', !list.length); selBar.firstChild.textContent = '已選 ' + list.length + ' 項：'; },
+        rowHook: null,
+        onChange: function (G) {
+          // 並行與撞人：同一天的項目依時間找重疊
+          var byDay = {};
+          G.rows.forEach(function (r) {
+            var v = r.read(), s0 = toMin(v.time);
+            r.tr.classList.remove('g-ov'); r.tr.style.removeProperty('--ov');
+            var cell = clear(r.ed.end.el);
+            if (s0 === null || r.del) { if (!v.time && String(v.name || '').trim()) cell.appendChild(h('span', { class: 'tag bad' }, '沒時間')); return; }
+            var e0 = s0 + (Number(v.dur) || dflt);
+            cell.appendChild(h('span', { title: v.dur ? '' : '沒填時長，先用 ' + dflt + ' 分鐘算' }, toHm(e0) + (v.dur ? '' : '?')));
+            var pl = r.it && r.it.data.planned;
+            if (pl && (pl.date !== v.date || pl.time !== v.time || String(pl.dur || '') !== String(v.dur || '') || (pl.place || '') !== (v.place || ''))) cell.appendChild(h('span', { class: 'diff', style: { display: 'block' }, title: '與既定行程不同' + (r.it.data.changedBy ? '（' + r.it.data.changedBy + ' 調整）' : '') }, '原訂 ' + String(pl.date || '').slice(5) + ' ' + (pl.time || '') + (pl.place && pl.place !== v.place ? ' ' + pl.place : '')));
+            (byDay[v.date] = byDay[v.date] || []).push({ r: r, s: s0, e: e0, v: v, ppl: [].concat(v.owner || [], v.staff || [], v.backup || []) });
+          });
+          Object.keys(byDay).forEach(function (k) {
+            var list = byDay[k].sort(function (a, b) { return a.s - b.s; }), cl = [], end = -1, ci = -1;
+            list.forEach(function (x) { if (x.s < end) cl[ci].push(x); else { ci++; cl[ci] = [x]; } end = Math.max(end, x.e); });
+            var color = 0;
+            cl.forEach(function (c) {
+              if (c.length < 2) return;
+              var col = OVC[color++ % OVC.length];
+              c.forEach(function (x) {
+                x.r.tr.classList.add('g-ov'); x.r.tr.style.setProperty('--ov', col);
+                x.r.ed.end.el.appendChild(h('span', { class: 'tag', style: { marginLeft: '4px', background: 'transparent', color: col, border: '1px solid ' + col } }, '並行'));
+                var clash = [];
+                c.forEach(function (y) { if (y === x || !(x.s < y.e && y.s < x.e)) return; x.ppl.forEach(function (p) { if (y.ppl.indexOf(p) >= 0 && clash.indexOf(p) < 0) clash.push(p); }); });
+                if (clash.length) x.r.ed.end.el.appendChild(h('span', { class: 'g-warn' }, '⚠ ' + clash.map(function (p) { return wn[p] || '?'; }).join('、') + ' 同時有別的'));
+              });
+            });
+          });
+        },
+        tools: function (G) {
+          var apply = function (fn, msg) { var l = G.selected(); if (!l.length) return; l.forEach(function (r) { fn(r); r.t.check(); G.changed(r); }); toast(msg + '（' + l.length + ' 項），記得按「儲存變更」'); };
+          selBar.appendChild(h('b', { class: 'small' }, ''));
+          selBar.appendChild(h('span', { class: 'row' }, shift, h('button', { class: 'btn sm', type: 'button', onclick: function () {
+            var n = Number(shift.value); if (!n) { toast('填要往後（正數）或往前（負數）幾分鐘', true); return; }
+            apply(function (r) { var t = toMin(r.read().time); if (t !== null) r.ed.time.set(toHm(t + n)); }, '已平移 ' + (n > 0 ? '+' : '') + n + ' 分鐘');
+          } }, '平移時間')));
+          selBar.appendChild(h('span', { class: 'row' }, toDate, h('button', { class: 'btn sm', type: 'button', onclick: function () {
+            if (!toDate.value) { toast('先選日期', true); return; }
+            apply(function (r) { r.ed.date.set(toDate.value); G.moveTo(r, toDate.value); }, '已改到 ' + dayLabel(toDate.value));
+          } }, '改到這天')));
+          selBar.appendChild(h('button', { class: 'btn sm', type: 'button', onclick: function () {
+            var l = G.selected(); l.forEach(function (r) { var v = r.read(); G.newRow(v.date, G.groupEnd(v.date), v); r.ck.checked = false; }); G.selChanged(); toast('已複製 ' + l.length + ' 項（新的列在那一天最下面），記得按「儲存變更」');
+          } }, '複製一份'));
+          selBar.appendChild(h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { G.selected().forEach(function (r) { if (r.id) { r.del = true; r.tr.classList.add('g-del'); r.t.check(); } else { r.tr.remove(); G.rows = G.rows.filter(function (x) { return x !== r; }); } r.ck.checked = false; }); G.selChanged(); G.changed(); } }, '刪除'));
+          return [h('button', { class: 'btn', type: 'button', title: '每一天依時間重新排好', onclick: function () { G.sort(); } }, '依時間排序'),
+            h('button', { class: 'btn', onclick: csv }, '匯出 Excel（CSV）'),
+            A.isAdmin() && R.canEdit ? h('button', { class: 'btn', onclick: function () {
+              confirmBox('鎖定既定行程', '把目前所有項目的日期、時間、時長、場地記為「既定行程」。之後的修改會在工作人員端顯示「與既定行程不同」（原訂、調整者、時間）。', '鎖定').then(function (ok) { if (ok) run('baseline', {}, { action: 'run', msg: '已鎖定既定行程' }).catch(fail); });
+            } }, '鎖定既定行程') : null, selBar];
+        }
+      });
+      box.insertBefore(h('div', { class: 'chips', style: { marginBottom: '10px' } }, flows.map(function (f) { return h('a', { class: 'chip' + (f.id === cur ? ' on' : ''), href: '#data/schedule/items?flow=' + f.id, style: { textDecoration: 'none' } }, f.data.name); })), G.bar);
+      box.insertBefore(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '像 Excel 一樣直接改：Enter 到下一列、Ctrl+S 儲存；可以從 Excel／Google 試算表複製整塊（時間、時長、活動名稱、場地、負責、關主、機動、備註、連結）貼上。勾選左邊可以一次平移時間、改日期、複製；拖 ⠿ 到別的日期標題就搬過去。同時段並行的項目左邊有同色線，同一人被排在兩個重疊的項目會標紅。「⋯」是詳細設定（連到活動、參與小隊）。'), G.bar);
+      if (Q.id) { var hit = G.rows.filter(function (r) { return r.id === Q.id; })[0]; if (hit) { hit.tr.style.background = 'var(--warn-soft)'; setTimeout(function () { hit.tr.scrollIntoView({ block: 'center' }); }, 50); } }
     },
     activities: function (box, D) {
       var canReveal = A.can('publish_student');
@@ -384,26 +930,89 @@ var PkgAdmin = (function () {
 
   VIEWS.emergency = {
     watch: function (box, D) {
-      var dates = [];
-      if (A.info.start && A.info.end) for (var d = new Date(A.info.start + 'T12:00:00+08:00'); taipei(d).ymd < A.info.end; d = new Date(d.getTime() + 86400000)) dates.push(taipei(d).ymd);
-      D.watch.forEach(function (w) { if (dates.indexOf(w.id) < 0) dates.push(w.id); });
-      dates.sort();
-      box.appendChild(h('div', { class: 'card col', style: { marginBottom: '12px' } }, h('h2', null, '今晚（' + D.tonightDate + '）守夜'), D.tonight.length ? D.tonight.map(function (w) { return h('div', null, w.name + '（' + w.dept + '）' + (w.phone ? '　' + w.phone : '')); }) : h('div', { class: 'muted' }, '還沒有守夜人員')));
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '預設從「工作分配」裡角色含「守夜」的人抓；臨時換班或代班可以在這裡另外指定當晚的守夜人員（指定後以這裡為準）。'));
+      var nights = (D.nights || []).slice(), fromA = D.fromAssign || {};
+      box.appendChild(h('div', { class: 'card col', style: { marginBottom: '12px' } }, h('h2', null, '今晚（' + dayLabel(D.tonightDate) + '）守夜'), D.tonight.length ? D.tonight.map(function (w) { return h('div', null, w.name + '（' + w.dept + '）' + (w.phone ? '　' + w.phone : '')); }) : h('div', { class: 'muted' }, '還沒有守夜人員')));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '每一晚先列好日期。「工作分配」裡角色含「守夜」的人會自動帶進來；沒有設定的晚上就是空的，在這裡指定。臨時換班、代班也在這裡改（指定後以這裡為準）。改過還沒存的晚上會有橘色框。'));
+      var rows = [], list = h('div', { class: 'col' });
+      var save = h('button', { class: 'btn', onclick: function (e) {
+        var ch = rows.filter(function (r) { return r.t.isDirty(); });
+        if (!ch.length) { toast('沒有要儲存的改動'); return; }
+        busy(e.target, function () {
+          return runBatch(ch.map(function (r) {
+            var ids = r.pp.get(), same = ids.slice().sort().join() === (fromA[r.dt] || []).slice().sort().join();
+            return { op: 'watch.save', key: r.dt, data: { date: r.dt, wids: same ? [] : ids } };
+          }), { msg: '已儲存 ' + ch.length + ' 晚的守夜人員', flash: 'watch' });
+        }).catch(function () {});
+      } }, '儲存守夜人員');
       var other = inp('', { type: 'date' });
-      box.appendChild(bar(R.canEdit ? h('span', { class: 'row' }, other, h('button', { class: 'btn', onclick: function () { if (other.value && dates.indexOf(other.value) < 0) { dates.push(other.value); dates.sort(); clear(list); draw(); } } }, '加一個日期')) : null));
-      var list = h('div', { class: 'col' });
-      var draw = function () {
-        dates.forEach(function (dt) {
-          var ov = D.watch.filter(function (w) { return w.id === dt; })[0];
-          var ch = chips(workerItems(D.workers), ov ? ov.data.wids : []);
-          list.appendChild(h('div', { class: 'card col' }, h('div', { class: 'row' }, h('b', { class: 'grow' }, dayLabel(dt) + ' 晚上'), ov && (ov.data.wids || []).length ? h('span', { class: 'tag info' }, '已另外指定') : h('span', { class: 'tag' }, '依工作分配')), ch.el,
-            R.canEdit ? h('div', null, h('button', { class: 'btn sm', onclick: function (e) { busy(e.target, function () { return run('watch.save', { date: dt, wids: ch.get() }); }).catch(function () {}); } }, '儲存這一晚')) : null));
-        });
-        if (!dates.length) list.appendChild(h('div', { class: 'card empty' }, '在「營隊設定」填營期日期後，這裡會列出每一晚'));
+      var addNight = function (dt) {
+        var ov = D.watch.filter(function (w) { return w.id === dt; })[0], own = ov && (ov.data.wids || []).length;
+        var pp = peoplePicker(D.workers, own ? ov.data.wids : (fromA[dt] || []), { disabled: !R.canEdit, placeholder: '＋ 加守夜人員（打名字）' });
+        var tag = own ? h('span', { class: 'tag info' }, '另外指定') : (fromA[dt] || []).length ? h('span', { class: 'tag ok' }, '依工作分配') : h('span', { class: 'tag warn' }, '還沒有人');
+        var c = h('div', { class: 'card col' }, h('div', { class: 'row' }, h('b', { class: 'grow' }, dayLabel(dt) + ' 晚上'), tag), pp.el);
+        var t = track(c, function () { return pp.get(); }, save);
+        c.querySelector('.row').insertBefore(t.status, tag);
+        if (own && R.canEdit && (fromA[dt] || []).length) c.appendChild(h('div', null, h('button', { class: 'btn sm ghost', onclick: function () { pp.set(fromA[dt]); c.dispatchEvent(new Event('change')); } }, '改回依工作分配')));
+        flashOn(c, 'watch');
+        rows.push({ dt: dt, pp: pp, t: t });
+        list.appendChild(c);
       };
-      draw();
+      if (R.canEdit) box.appendChild(bar(save, h('span', { class: 'row' }, other, h('button', { class: 'btn', onclick: function () {
+        if (!other.value) return;
+        if (nights.indexOf(other.value) >= 0) { toast('已經有這一晚'); return; }
+        nights.push(other.value); addNight(other.value);
+      } }, '加一個日期'))));
+      nights.forEach(addNight);
+      if (!nights.length) list.appendChild(h('div', { class: 'card empty' }, '在「營隊設定」填營期日期後，這裡會列出每一晚'));
       box.appendChild(list);
+    },
+    /** 處理流程圖：左邊編輯、右邊即時預覽（和工作人員端看到的一樣） */
+    flow: function (box) {
+      var flow = JSON.parse(JSON.stringify(R.config.sopFlow || { title: '', steps: [] }));
+      var ro = !R.canEdit, ed = h('div', { class: 'col' }, ''), pv = h('div', { class: 'card' });
+      var preview = function () { clear(pv).appendChild(h('h2', { style: { marginBottom: '10px' } }, flow.title || '事件處理流程')); pv.appendChild(flow.steps.length ? Front.flowChart(flow) : h('div', { class: 'muted' }, '還沒有步驟')); };
+      var redraw = function () { draw(); preview(); };
+      var mini = function (text, fn, title) { return ro ? null : h('button', { class: 'btn sm ghost', type: 'button', title: title || text, onclick: fn }, text); };
+      var seqEd = function (steps, depth) {
+        var el = h('div', { class: 'fe-seq' });
+        steps.forEach(function (st, i) {
+          var t = inp(st.text, { placeholder: '步驟（例如：撥打 119）', disabled: ro }), n = inp(st.note, { placeholder: '補充說明（橘色小字，可空白）', disabled: ro }), ph = inp(st.phone, { placeholder: '電話', style: { width: '90px' }, disabled: ro });
+          t.oninput = function () { st.text = t.value; preview(); }; n.oninput = function () { st.note = n.value; preview(); }; ph.oninput = function () { st.phone = ph.value; preview(); };
+          var card = h('div', { class: 'fe-step' }, h('div', { class: 'row' }, h('span', { class: 'fe-n' }, (i + 1) + '.'), h('div', { class: 'grow' }, t), ph,
+            mini('↑', function () { if (i) { steps.splice(i - 1, 0, steps.splice(i, 1)[0]); redraw(); } }, '往上'), mini('↓', function () { if (i < steps.length - 1) { steps.splice(i + 1, 0, steps.splice(i, 1)[0]); redraw(); } }, '往下'),
+            mini('✕', function () { if (!(st.branches || []).length || confirm('這一步底下的分岔也會一起刪掉，確定嗎？')) { steps.splice(i, 1); redraw(); } }, '刪除')), n);
+          if ((st.branches || []).length) {
+            var brs = h('div', { class: 'fe-brs' });
+            st.branches.forEach(function (b, j) {
+              var lb = inp(b.label, { placeholder: '分支條件（例如：有生命危險）', disabled: ro }), tone = sel([{ value: '', label: '一般' }, { value: 'bad', label: '紅字（危急）' }], b.tone || '', { disabled: ro, style: { width: '120px' } });
+              lb.oninput = function () { b.label = lb.value; preview(); }; tone.onchange = function () { b.tone = tone.value; preview(); };
+              brs.appendChild(h('div', { class: 'fe-br' }, h('div', { class: 'row' }, h('b', { class: 'small' }, '分支 ' + (j + 1)), h('div', { class: 'grow' }, lb), tone,
+                mini('✕', function () { if (confirm('刪掉這個分支和底下的步驟？')) { st.branches.splice(j, 1); if (!st.branches.length) delete st.branches; redraw(); } }, '刪除分支')), seqEd(b.steps = b.steps || [], depth + 1)));
+            });
+            if (!ro && st.branches.length < 4) brs.appendChild(h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: function () { st.branches.push({ label: '', steps: [{ text: '' }] }); redraw(); } }, '＋ 再一個分支')));
+            card.appendChild(brs);
+          } else if (!ro && depth < 4) card.appendChild(h('div', null, h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { st.branches = [{ label: '是', steps: [{ text: '' }] }, { label: '否', steps: [{ text: '' }] }]; redraw(); } }, '⑂ 從這一步分岔')));
+          el.appendChild(card);
+        });
+        if (!ro) el.appendChild(h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: function () { steps.push({ text: '' }); redraw(); } }, depth ? '＋ 這個分支加一步' : '＋ 加一步')));
+        return el;
+      };
+      var title = inp(flow.title, { placeholder: '緊急事件處理程序', disabled: ro });
+      title.oninput = function () { flow.title = title.value; preview(); };
+      var body = h('div');
+      var draw = function () { clear(body).appendChild(seqEd(flow.steps, 0)); };
+      var btn = h('button', { class: 'btn', onclick: function (e) { busy(e.target, function () { return run('flow.save', { flow: flow }, { msg: '流程圖已儲存', flash: 'flow' }); }).catch(function () {}); } }, '儲存流程圖');
+      ed.appendChild(h('div', { class: 'hint' }, '由上往下排步驟；遇到要判斷的地方按「從這一步分岔」，每個分支各自往下排。分岔那一步的下一步，就是各分支做完之後的共同步驟（匯合）。填了電話的步驟，工作人員可以直接點來撥打。'));
+      ed.appendChild(field('標題', title));
+      ed.appendChild(body);
+      var wrap = h('div', { class: 'fe' }, h('div', { class: 'card col' }, ed, R.canEdit ? h('div', { class: 'row wrap' }, btn, h('button', { class: 'btn ghost', onclick: function (e) {
+        confirmBox('恢復預設流程', '把流程圖換回系統預設的「緊急事件處理程序」？目前的內容會被取代。', '恢復預設').then(function (ok) { if (ok) busy(e.target, function () { return run('flow.save', { reset: true }, { msg: '已恢復預設流程' }); }).catch(function () {}); });
+      } }, '恢復預設')) : null), h('div', { class: 'col' }, h('div', { class: 'small muted' }, '預覽（工作人員端「緊急應變與聯絡資訊」看到的樣子）'), pv));
+      var tr = track(wrap.firstChild, function () { return flow; }, btn);
+      if (R.canEdit) btn.parentNode.appendChild(tr.status);
+      flashOn(wrap.firstChild, 'flow');
+      redraw();
+      box.appendChild(wrap);
     },
     submissions: function (box, D) {
       box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '學員在學員端送出的自我評估切結書（固定格式）。送出時有編輯工作人員端權限的人會收到通知。'));
@@ -415,6 +1024,85 @@ var PkgAdmin = (function () {
     form: function (box, D) {
       box.appendChild(h('div', { class: 'card col' }, h('div', { class: 'hint' }, '自我評估切結書是固定格式的系統表單（第 ' + D.form.version + ' 版），欄位寫在程式裡，營隊不能修改，確保每個營隊的紀錄格式一致。'),
         h('ol', { style: { margin: 0, paddingLeft: '20px' } }, D.form.fields.map(function (f) { return h('li', null, f.label + (f.options ? '（' + f.options.join('／') + '）' : '') + (f.required ? '　必填' : '')); }))));
+    }
+  };
+
+  /** 上傳檔案到雲端硬碟（最多 20MB），回傳 {url, img, name, kind} */
+  function upload(file, note) {
+    if (file.size > 20 * 1024 * 1024) return Promise.reject(new Error('「' + file.name + '」太大（最多 20MB）。大的檔案請先放到雲端硬碟，再貼分享連結'));
+    if (note) note.textContent = '上傳中：' + file.name + '…';
+    return new Promise(function (ok, no) {
+      var fr = new FileReader();
+      fr.onload = function () { ok(String(fr.result).split(',')[1] || ''); };
+      fr.onerror = function () { no(new Error('讀不到檔案')); };
+      fr.readAsDataURL(file);
+    }).then(function (b64) { return api('pkgUpload', A.camp, R.pkg, file.name, file.type, b64); }).then(function (r) {
+      if (note) note.textContent = r.shared ? '' : '已上傳，但雲端硬碟不允許設成「知道連結的人可以檢視」，學員可能打不開：請到雲端硬碟手動調整分享設定';
+      return r;
+    }, function (e) { if (note) note.textContent = ''; throw e; });
+  }
+  var minOf = function (t) { var m = String(t || '').match(/^(\d{2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  function durText(a, b) { var s = minOf(a), e = minOf(b); if (s === null || e === null) return ''; if (e <= s) return '結束比開始早'; var d = e - s; return '共 ' + (d >= 60 ? Math.floor(d / 60) + ' 小時' + (d % 60 ? ' ' + (d % 60) + ' 分' : '') : d + ' 分鐘'); }
+
+  VIEWS.courses = {
+    list: function (box, D) {
+      var edit = function (c) {
+        c = c || { id: '', data: { type: D.types[0], files: [] } };
+        var d = c.data, files = (d.files || []).map(function (f) { return Object.assign({}, f); }), photo = d.photo || '';
+        var type = sel(D.types, d.type), title = inp(d.title, { placeholder: '例如：奈米材料實驗室參訪' }), date = inp(d.date, { type: 'date' }), st = inp(d.start, { type: 'time' }), en = inp(d.end, { type: 'time' });
+        var dur = h('span', { class: 'small muted' }), place = inp(d.place), speaker = inp(d.speaker, { placeholder: '例如：王大明 教授' }), desc = area(d.desc, { rows: 6, placeholder: '課程內容、注意事項、要帶的東西…（可用 **粗體**、- 清單、[文字](網址)）' });
+        var hide = h('input', { type: 'checkbox', checked: !!d.hidden }), note = h('div', { class: 'small', style: { color: 'var(--warn)' } });
+        var upd = function () { dur.textContent = durText(st.value, en.value); };
+        st.addEventListener('input', upd); en.addEventListener('input', upd); upd();
+        var fl = h('div', { class: 'col', style: { gap: '6px' } });
+        var drawFiles = function () {
+          clear(fl);
+          files.forEach(function (f, i) {
+            var n = inp(f.name, { placeholder: '顯示名稱' }), u = inp(f.url, { placeholder: 'https://' });
+            n.oninput = function () { f.name = n.value; }; u.oninput = function () { f.url = u.value; };
+            fl.appendChild(h('div', { class: 'row' }, h('span', null, f.kind === 'pdf' ? '📄' : f.kind === 'slides' ? '📊' : '📎'), h('div', { style: { flex: '1 1 40%' } }, n), h('div', { style: { flex: '1 1 60%' } }, u), h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { files.splice(i, 1); drawFiles(); } }, '✕')));
+          });
+          var pick = h('input', { type: 'file', multiple: true, class: 'hidden', accept: '.pdf,.ppt,.pptx,.key,.doc,.docx,.xls,.xlsx,.zip,image/*' });
+          pick.addEventListener('change', function () {
+            var list = Array.prototype.slice.call(pick.files);
+            list.reduce(function (p, file) { return p.then(function () { return upload(file, note).then(function (r) { files.push({ name: r.name.replace(/\.[^.]+$/, ''), url: r.url, kind: r.kind }); drawFiles(); }); }); }, Promise.resolve()).catch(fail);
+          });
+          fl.appendChild(h('div', { class: 'row wrap' }, pick, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, '上傳檔案（PDF、簡報…）'), h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { files.push({ name: '', url: '' }); drawFiles(); } }, '＋ 貼連結（雲端硬碟、網站）')));
+        };
+        drawFiles();
+        var ph = h('div', { class: 'row wrap' });
+        var drawPhoto = function () {
+          clear(ph);
+          var pick = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
+          pick.addEventListener('change', function () { if (pick.files[0]) upload(pick.files[0], note).then(function (r) { photo = r.img || r.url; drawPhoto(); }, fail); });
+          var url = inp(photo, { placeholder: '或貼圖片網址 https://', style: { width: '260px' } });
+          url.oninput = function () { photo = url.value.trim(); };
+          ph.appendChild(photo ? h('img', { src: photo, alt: '照片', class: 'cs-photo' }) : h('div', { class: 'cs-photo none' }, '沒有照片'));
+          ph.appendChild(h('div', { class: 'col', style: { gap: '6px' } }, pick, h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, '上傳照片'), photo ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { photo = ''; drawPhoto(); } }, '不放照片') : null), url,
+            h('div', { class: 'hint' }, '教授照片、場館或實驗室照片；不放就不顯示')));
+        };
+        drawPhoto();
+        form(c.id ? '編輯課程' : '新增課程', [h('div', { class: 'grid2' }, field('類別', type), field('課程名稱', title)),
+          h('div', { class: 'grid2' }, field('日期', date), h('div', null, h('div', { class: 'grid2' }, field('開始', st), field('結束', en)), dur)),
+          h('div', { class: 'grid2' }, field('地點', place), field('講者／帶隊', speaker)), field('課程描述', desc), field('課程檔案', fl), field('頭貼照片', ph), note,
+          h('label', { class: 'check' }, hide, h('span', null, '學員端不顯示（只給工作人員看）'))],
+          function () { return run('course.save', { id: c.id, type: type.value, title: title.value, date: date.value, start: st.value, end: en.value, place: place.value, speaker: speaker.value, desc: desc.value, files: files, photo: photo, hidden: hide.checked }, { ver: c.id ? c.version : undefined }); }, true);
+      };
+      box.appendChild(bar(addBtn('新增課程', function () { edit(); }), h('span', { class: 'hint' }, '課程導覽、參訪導覽、實驗室介紹、其他課程介紹。在編輯器放「課程簡介」畫面，學員端、工作人員端就看得到。')));
+      if (!D.courses.length) { box.appendChild(h('div', { class: 'card empty' }, '還沒有課程')); return; }
+      D.types.forEach(function (t) {
+        var list = D.courses.filter(function (c) { return c.data.type === t; });
+        if (!list.length) return;
+        box.appendChild(h('h2', { style: { margin: '14px 0 8px' } }, t + '（' + list.length + '）'));
+        box.appendChild(table(['日期', '時間', '課程', '講者／地點', '檔案', '照片', ''], list.map(function (c) {
+          var d = c.data;
+          return hl(h('tr', { style: d.hidden ? { opacity: 0.65 } : null }, h('td', { style: { whiteSpace: 'nowrap' } }, d.date ? dayLabel(d.date) : h('span', { class: 'tag warn' }, '沒日期')),
+            h('td', { style: { whiteSpace: 'nowrap' } }, (d.start || '') + (d.end ? '–' + d.end : ''), h('div', { class: 'small muted' }, durText(d.start, d.end))),
+            h('td', null, h('b', null, d.title), d.hidden ? h('span', { class: 'tag', style: { marginLeft: '4px' } }, '學員看不到') : null, d.desc ? h('div', { class: 'small muted' }, String(d.desc).slice(0, 60) + (String(d.desc).length > 60 ? '…' : '')) : null),
+            h('td', { class: 'small' }, [d.speaker, d.place].filter(String).join('\n')), h('td', null, (d.files || []).length || ''), h('td', null, d.photo ? h('img', { src: d.photo, alt: '', class: 'cs-thumb' }) : ''),
+            actions(function () { edit(c); }, function () { del('course.delete', { id: c.id }, d.title); })), c.id);
+        })));
+      });
     }
   };
 
