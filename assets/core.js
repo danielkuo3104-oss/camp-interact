@@ -42,6 +42,35 @@ function api(name) {
   });
 }
 
+/**
+ * 看過的畫面不用再等：先用上次的資料馬上畫出來，背景再抓最新的，有變才重畫。
+ * 資料放在記憶體與這個分頁的 sessionStorage（關掉分頁就清掉）。show(資料, 是否最新) 可能被呼叫兩次。
+ */
+var API_CACHE_ = {};
+function apiCacheKey_(name, args) { return 'ia_c|' + ((IA.user && IA.user.email) || '') + '|' + name + '|' + JSON.stringify(args); }
+function apiCacheGet(name, args) {
+  var k = apiCacheKey_(name, args), j = API_CACHE_[k];
+  if (j === undefined) { try { j = sessionStorage.getItem(k) || undefined; } catch (e) {} }
+  return j === undefined ? null : JSON.parse(j);
+}
+function apiCachePut(name, args, d) {
+  var k = apiCacheKey_(name, args), j = JSON.stringify(d);
+  API_CACHE_[k] = j;
+  try { sessionStorage.setItem(k, j); } catch (e) { try { sessionStorage.removeItem(k); } catch (e2) {} }
+  return j;
+}
+function apiCached(name, args, show) {
+  var hit = apiCacheGet(name, args), old = hit ? JSON.stringify(hit) : null;
+  if (hit) show(hit, false);
+  return api.apply(null, [name].concat(args)).then(function (d) {
+    if (apiCachePut(name, args, d) !== old) show(d, true);
+    return d;
+  }, function (e) {
+    if (hit) { toast('無法更新，畫面是上次的資料：' + e.message, true); return hit; }   // 已經有畫面，就不要整頁變成錯誤
+    throw e;
+  });
+}
+
 /** 操作協定：kind → [階段代碼, 預設動作] */
 var OPK = {
   'user.password': ['member', 'update'], 'camp.create': ['camp', 'create'], 'camp.settings': ['camp', 'update'], 'camp.status': ['camp', 'update'], 'camp.upgrade': ['system', 'run'], 'system.reglink': ['system', 'update'],
