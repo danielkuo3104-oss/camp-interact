@@ -307,3 +307,5 @@ details.cs > summary::-webkit-details-marker { display: none; }
 .sched .it.tone-act { background: #eef4fb; border-radius: 10px; }
 .sched .it.tone-key { background: #ffe3a3; border-radius: 10px; }
 .sched .it.inner { margin-left: 22px; border-left: 3px solid var(--info); padding-left: 10px; }
+.card.g-up { background-image: repeating-linear-gradient(-45deg, rgba(53, 99, 168, .08) 0 8px, transparent 8px 16px); pointer-events: none; opacity: .85; }
+.card.g-bad { border: 2px solid var(--bad); }
