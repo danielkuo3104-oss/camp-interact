@@ -10,10 +10,14 @@ var PkgAdmin = (function () {
   function open(m, pkg, tab, q) {
     M = m; TAB = tab; Q = q || {};
     m.appendChild(h('div', { class: 'empty' }, '載入中…'));
-    load(pkg);
+    load(pkg, true);
   }
-  function load(pkg) {
-    return api('getPkgAdmin', A.camp, pkg || R.pkg).then(function (r) { R = r; render(); }, function (e) { clear(M).appendChild(h('div', { class: 'card' }, h('h2', null, '無法開啟'), h('p', null, e.message))); });
+  /** cached：剛打開這頁時先用上次的資料（改完資料後的重新載入一定抓最新的） */
+  function load(pkg, cached) {
+    pkg = pkg || R.pkg;
+    var m0 = M, show = function (r) { if (M !== m0) return; R = r; render(); };
+    var p = cached ? apiCached('getPkgAdmin', [A.camp, pkg], show) : api('getPkgAdmin', A.camp, pkg).then(function (r) { apiCachePut('getPkgAdmin', [A.camp, pkg], r); show(r); });
+    return p.then(null, function (e) { clear(M).appendChild(h('div', { class: 'card' }, h('h2', null, '無法開啟'), h('p', null, e.message))); });
   }
   function reload() { return load(R.pkg); }
 
