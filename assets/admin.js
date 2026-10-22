@@ -42,7 +42,7 @@ A.bell = function () {
 };
 
 A.poll = function () {
-  if (document.hidden) return;
+  if (document.hidden || navigator.onLine === false || API_Q_.busy >= 3) return;
   Promise.all([api('listEvents', A.camp, false), api('listNotifications', A.camp)]).then(function (r) {
     A.counts = { warnings: r[0].warnings, reminders: r[0].reminders, unread: r[1].unread };
     var bd = $('#bellBadge');
