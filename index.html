@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2f5d62">
+<title>營隊互動系統｜登入</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="card login-card col">
+    <div class="brand"><span class="brand-mark">營</span>營隊互動系統</div>
+    <div class="chips" role="tablist">
+      <span class="chip on" data-tab="login" role="tab" tabindex="0">登入</span>
+      <span class="chip" data-tab="join" role="tab" tabindex="0">用邀請碼加入</span>
+    </div>
+    <div id="msg" class="err"></div>
+    <form id="login" class="col" autocomplete="on">
+      <label class="field"><span>信箱</span><input class="input" id="email" type="email" autocomplete="username" required></label>
+      <label class="field"><span>密碼</span><input class="input" id="pw" type="password" autocomplete="current-password" required></label>
+      <label class="check"><input type="checkbox" id="remember"><span>保持登入（30 天）</span></label>
+      <button class="btn primary" type="submit">登入</button>
+      <p class="hint" style="margin:0">這裡是編輯者（籌辦團隊）的入口。學員請從報名系統的學員專區進入；工作人員請用籌辦團隊給的工作人員連結。</p>
+    </form>
+    <form id="join" class="col hidden" autocomplete="on">
+      <label class="field"><span>邀請碼</span><input class="input" id="code" placeholder="XXXX-XXXX" required></label>
+      <p class="hint" style="margin:0">已經有帳號？先登入，再到「我的營隊」輸入邀請碼。</p>
+      <label class="field"><span>信箱</span><input class="input" id="jemail" type="email" autocomplete="username" required></label>
+      <label class="field"><span>名稱</span><input class="input" id="jname" autocomplete="name" required></label>
+      <label class="field"><span>設定密碼（至少 8 個字）</span><input class="input" id="jpw" type="password" autocomplete="new-password" required></label>
+      <button class="btn primary" type="submit">建立帳號並加入</button>
+    </form>
+  </div>
+</div>
+<script src="assets/config.js"></script>
+<script src="assets/core.js"></script>
+<script>
+(function () {
+  var next = param('next') || 'camps.html';
+  if (!/^[\w.-]+\.html(\?[\w=&%.-]*)?$/.test(next)) next = 'camps.html';
+  if (param('msg')) $('#msg').textContent = param('msg');
+  IA.token = store('ia_token');
+  IA.onAuth = function () { store('ia_token', null); IA.token = null; };
+  if (IA.token) api('whoami').then(function (u) { if (u && u.email) location.replace(next); }, function () {});
+  $all('[data-tab]').forEach(function (t) {
+    var go = function () {
+      $all('[data-tab]').forEach(function (x) { x.classList.toggle('on', x === t); });
+      $('#login').classList.toggle('hidden', t.dataset.tab !== 'login');
+      $('#join').classList.toggle('hidden', t.dataset.tab !== 'join');
+      $('#msg').textContent = '';
+    };
+    t.addEventListener('click', go);
+    t.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+  $('#login').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = this.querySelector('button');
+    $('#msg').textContent = '';
+    busy(btn, function () { return api('login', $('#email').value, $('#pw').value, $('#remember').checked); }).then(function (r) {
+      store('ia_token', r.token, $('#remember').checked);
+      location.replace(next);
+    }, function (err) { $('#msg').textContent = err.message; });
+  });
+  $('#join').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = this.querySelector('button'), code = $('#code').value.trim().toUpperCase();
+    $('#msg').textContent = '';
+    busy(btn, function () {
+      return api('registerWithInvite', code, $('#jemail').value, $('#jname').value, $('#jpw').value).then(function (r) {
+        store('ia_token', r.token);
+        IA.token = r.token;
+        return op('invite.redeem', { data: { code: code } });
+      });
+    }).then(function (r) { location.replace('admin.html?c=' + encodeURIComponent(r.campId)); }, function (err) { $('#msg').textContent = err.message; });
+  });
+})();
+</script>
+</body>
+</html>
