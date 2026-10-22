@@ -148,7 +148,7 @@ A.views.home = function (m) {
   links.appendChild(h('div', { class: 'card col' },
     h('div', null, h('b', null, '學員端：'), '學員從報名系統的學員專區按「進入營隊互動」自動登入（需要在「營隊設定」完成串接）。'),
     h('div', null, h('b', null, '工作人員端：'), h('a', { href: wl, target: '_blank', rel: 'noopener' }, wl), '　', h('button', { class: 'btn sm', onclick: function () { navigator.clipboard.writeText(wl).then(function () { toast('已複製'); }); } }, '複製'),
-      I.workerPassSet ? null : h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '還沒設定工作人員通行碼')),
+      I.workerPassSet || I.passOff ? null : h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '還沒設定工作人員通行碼')),
     h('div', { class: 'row wrap' }, ['student', 'worker'].filter(A.canSide).map(function (side) {
       return [h('a', { class: 'btn sm', target: '_blank', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=pub' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（發布版）'),
         h('a', { class: 'btn sm', target: '_blank', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=draft' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（草稿）')];
@@ -374,13 +374,23 @@ A.views.settings = function (m) {
     h('span', { class: 'tag' }, I.workerPassKind === 'auto' ? '系統產生' : '自訂'),
     h('button', { class: 'btn sm', onclick: function () { copy(I.workerPassText, '通行碼'); } }, '複製通行碼'), h('button', { class: 'btn sm', onclick: function () { copy(loginText(I.workerPassText), '登入說明'); } }, '複製登入說明（連結＋通行碼）'))
     : I.workerPassSet ? h('div', { class: 'hint' }, '已經設定過通行碼（舊版設定的看不到內容）。忘記的話重新設定一個就好。') : h('span', { class: 'tag warn' }, '還沒設定工作人員通行碼');
-  m.appendChild(h('div', { class: 'card col section' }, h('h2', null, '工作人員登入'), h('div', { class: 'hint' }, '工作人員用「姓名＋股別＋營隊通行碼」登入。通行碼可以自己訂（至少 4 個字），也可以按「系統產生」產生一組 6 碼的；換掉之後，舊通行碼不能再登入新的裝置。'),
+  // 不用通行碼：只要姓名＋股別在工作人員名單上就能登入（方便，但知道名字的人都能冒用）
+  var offSw = h('input', { type: 'checkbox', class: 'sw', checked: !!I.passOff });
+  offSw.addEventListener('change', function () {
+    var on = offSw.checked;
+    A.op('camp.settings', { data: { passOff: on } }).then(function () { toast(on ? '已改成不用通行碼：姓名＋股別就能登入' : '已改回要通行碼'); A.reload().then(A.route); }, function (e) { offSw.checked = !on; fail(e); });
+  });
+  var passBox = h('div', { class: 'col' + (I.passOff ? ' hidden' : '') });
+  m.appendChild(h('div', { class: 'card col section' }, h('h2', null, '工作人員登入'), h('div', { class: 'hint' }, I.passOff ? '目前不用通行碼：工作人員只要填「姓名＋股別」，在工作人員名單上就能登入。' : '工作人員用「姓名＋股別＋營隊通行碼」登入。通行碼可以自己訂（至少 4 個字），也可以按「系統產生」產生一組 6 碼的；換掉之後，舊通行碼不能再登入新的裝置。'),
+    h('label', { class: 'row', style: { gap: '10px', cursor: 'pointer' } }, h('span', { class: 'sw-wrap' }, offSw, h('span', { class: 'sw-k' })), h('span', null, '不用通行碼（只要姓名＋股別在名單上就能登入；知道名字的人也能登入，適合小型或內部營隊）')),
+    passBox));
+  passBox.append(
     curPass, field(I.workerPassSet ? '更換通行碼' : '營隊通行碼', h('div', { class: 'row' }, h('div', { class: 'grow' }, wp), h('button', { class: 'btn', type: 'button', onclick: gen }, '系統產生'))),
     h('div', null, h('button', { class: 'btn primary', onclick: function (e) {
       var v = wp.value.trim();
       if (v.length < 4) { toast('通行碼至少 4 個字，或按「系統產生」', true); return; }
       busy(e.target, function () { return A.op('camp.settings', { data: { workerPass: v, passKind: kind } }); }).then(function () { toast('通行碼已更新'); wp.value = ''; A.reload().then(A.route); }, function () {});
-    } }, '儲存通行碼'))));
+    } }, '儲存通行碼')));
 
   var regUrl = inp(I.regUrl, { placeholder: 'https://script.google.com/macros/s/…/exec' }), regPrefix = inp(I.regPrefix, { placeholder: '例如 S26' });
   var secretBox = h('div');
