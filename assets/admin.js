@@ -60,8 +60,8 @@ A.navBuild = function () {
   var item = function (hash, text, id) { return h('a', { href: '#' + hash, 'data-r': hash, id: id || null }, text); };
   nav.appendChild(item('home', '總覽'));
   if (A.canSide('student') || A.canSide('worker')) nav.appendChild(h('div', { class: 'grp' }, '前台編輯'));
-  if (A.canSide('student')) nav.appendChild(item('edit/student', '學員端'));
-  if (A.canSide('worker')) nav.appendChild(item('edit/worker', '工作人員端'));
+  if (A.canSide('student')) nav.appendChild(h('a', { href: '#edit/student', 'data-r': 'edit/student' }, h('span', { class: 'side-dot' }), '學員端'));
+  if (A.canSide('worker')) nav.appendChild(h('a', { href: '#edit/worker', 'data-r': 'edit/worker' }, h('span', { class: 'side-dot worker' }), '工作人員端'));
   var info = A.pool.filter(function (p) { return p.category !== 'activity'; }), act = A.pool.filter(function (p) { return p.category === 'activity'; });
   if (info.length) { nav.appendChild(h('div', { class: 'grp' }, '資料')); info.forEach(function (p) { nav.appendChild(item('data/' + p.pkg, p.name + (p.maintenance ? ' 🔧' : ''))); }); }
   if (act.length) { nav.appendChild(h('div', { class: 'grp' }, '活動 Package')); act.forEach(function (p) { nav.appendChild(item('data/' + p.pkg, p.name + (p.maintenance ? ' 🔧' : ''))); }); }
@@ -87,6 +87,7 @@ A.route = function () {
     var p = hash.split('/');
     A.navMark();
     var m = clear(A.main());
+    m.classList.remove('side-student', 'side-worker');
     window.scrollTo(0, 0);
     if (p[0] === 'edit' && (p[1] === 'student' || p[1] === 'worker')) Editor.open(m, p[1], q);
     else if (p[0] === 'data' && p[1]) PkgAdmin.open(m, p[1], p[2] || '', q);
@@ -363,7 +364,7 @@ A.views.settings = function (m) {
   var regUrl = inp(I.regUrl, { placeholder: 'https://script.google.com/macros/s/…/exec' }), regPrefix = inp(I.regPrefix, { placeholder: '例如 S26' });
   var secretBox = h('div');
   m.appendChild(h('div', { class: 'card col section' }, h('h2', null, '與報名系統串接'),
-    h('div', { class: 'hint' }, '報名系統是學員資料的正式來源；互動系統只拿學員代碼、姓名、小隊、是否有效與各隊隊輔姓名，不會寫回報名系統。'),
+    h('div', { class: 'hint' }, '報名系統是學員資料的正式來源；互動系統只拿學員代碼、姓名、小隊、房間、是否有效，各隊專輔隨輔（姓名、職稱、聯絡方式）與分房，不會寫回報名系統。'),
     h('ol', { class: 'small', style: { margin: 0, paddingLeft: '20px' } },
       h('li', null, '在下面填報名系統的網址（Apps Script /exec）與專案代碼，按儲存。'),
       h('li', null, '按「產生串接金鑰」，複製金鑰。'),
@@ -385,8 +386,8 @@ A.views.settings = function (m) {
         });
       } }, I.secretSet ? '重新產生串接金鑰' : '產生串接金鑰'),
       h('button', { class: 'btn', onclick: function (e) {
-        busy(e.target, function () { return A.op('pkg.data', { action: 'run', target: { pkg: 'people', op: 'sync' } }); }).then(function (x) { toast('已同步：' + x.total + ' 位學員，更新 ' + x.changed + ' 筆'); A.reload().then(function () { A.route(); }); }, function () {});
-      } }, '立即同步名單'))));
+        busy(e.target, function () { return A.op('pkg.data', { action: 'run', target: { pkg: 'people', op: 'sync' } }); }).then(function (x) { toast('已同步：學員 ' + x.total + ' 位（更新 ' + x.changed + '）、專輔隨輔 ' + (x.staff || 0) + ' 位、房間 ' + (x.rooms || 0) + ' 間'); A.reload().then(function () { A.route(); }); }, function () {});
+      } }, '立即同步（學員、小隊、專輔隨輔、分房）'))));
 
   // 備份
   var bk = h('div', { class: 'card col section' }, h('h2', null, '備份與復原'), h('div', { class: 'empty' }, '載入中…'));
