@@ -35,7 +35,7 @@ var PkgAdmin = (function () {
   }
 
   var TABS = {
-    people: [['workers', '工作人員'], ['squads', '小隊'], ['students', '學員'], ['assign', '工作分配'], ['config', '設定']],
+    people: [['workers', '工作人員'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['assign', '工作分配'], ['config', '設定']],
     schedule: [['items', '營期流程'], ['activities', '活動'], ['rotations', '跑關'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
     studentflow: [['items', '學員行程'], ['pending', '待處理變更'], ['config', '設定']],
     emergency: [['config', '聯絡與夜間設定'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
@@ -51,10 +51,24 @@ var PkgAdmin = (function () {
     m.appendChild(h('div', { class: 'chips', style: { marginBottom: '14px' } }, tabs.map(function (t) {
       return h('a', { class: 'chip' + (t[0] === tab ? ' on' : ''), href: '#data/' + R.pkg + '/' + t[0], style: { textDecoration: 'none' } }, t[1]);
     })));
+    if (R.pkg === 'people') m.appendChild(syncBar());
     var box = h('div');
     m.appendChild(box);
     var fn = (VIEWS[R.pkg] || {})[tab] || (tab === 'config' ? config : null);
     if (fn) fn(box, R.data); else box.appendChild(h('div', { class: 'empty' }, '沒有這個分頁'));
+  }
+
+  /** 人員與分隊每個分頁上方：從報名後台同步（學員、小隊、專輔隨輔、分房），每小時也會自動同步 */
+  function syncBar() {
+    var I = A.info, linked = I.regUrl && I.regPrefix && I.secretSet;
+    var btn = R.canEdit && linked ? h('button', { class: 'btn primary', onclick: function (e) {
+      busy(e.target, function () { return run('sync', {}, { action: 'run', msg: false }); }).then(function (x) {
+        if (x) { toast('已同步：學員 ' + x.total + ' 位（更新 ' + x.changed + '）、專輔隨輔 ' + (x.staff || 0) + ' 位（新增 ' + (x.staffAdded || 0) + '）、房間 ' + (x.rooms || 0) + ' 間'); A.reload().then(function () { A.route(); }); }
+      }, function () {});
+    } }, '從報名後台同步') : null;
+    return h('div', { class: 'card row wrap', style: { padding: '10px 14px', marginBottom: '12px' } }, btn,
+      h('span', { class: 'hint grow' }, linked ? '同步學員（小隊、房間）、各隊專輔隨輔（自動成為工作人員）、分房。每小時會自動同步，報名後台改了想馬上看到就按這裡。' + (I.lastSync ? '　上次同步 ' + fmt(I.lastSync) : '　尚未同步')
+        : '還沒和報名後台串接，到「營隊設定與備份」設定後就能同步。'));
   }
 
   /* ---------------- 共用小工具 ---------------- */
@@ -131,10 +145,11 @@ var PkgAdmin = (function () {
         form('貼上多位工作人員', [field('每行一位：姓名,股別,小隊,電話（小隊和電話可省略）', t, '同名同股別已存在的會略過')], function () { return run('worker.import', { text: t.value }, { action: 'create', msg: false }).then(function (x) { if (x) toast('新增 ' + x.added + ' 位'); }); });
       };
       box.appendChild(bar(addBtn('新增工作人員', function () { edit(); }), R.canEdit ? h('button', { class: 'btn', onclick: imp }, '一次貼上多位') : null,
-        h('span', { class: 'hint' }, '工作人員用「姓名＋股別＋營隊通行碼」登入工作人員端；同名同股別會無法登入。')));
+        h('span', { class: 'hint' }, '工作人員用「姓名＋股別＋營隊通行碼」登入工作人員端；同名同股別會無法登入。報名後台的專輔、隨輔會自動加進來（股別「輔導」）。')));
       var list = D.workers.slice().sort(function (a, b) { return (a.data.dept + a.data.name).localeCompare(b.data.dept + b.data.name); });
+      var sqText = function (w) { var a = []; if (w.data.squad !== '' && w.data.squad !== undefined && w.data.squad !== null) a.push(String(w.data.squad)); (w.data.regSquads || []).forEach(function (n) { if (a.indexOf(String(n)) < 0) a.push(String(n)); }); return a.join('、'); };
       box.appendChild(table(['姓名', '股別', '小隊', '電話', '備註', ''], list.map(function (w) {
-        return hl(h('tr', { style: w.data.inactive ? { opacity: 0.5 } : null }, h('td', null, w.data.name, w.data.inactive ? h('span', { class: 'tag', style: { marginLeft: '4px' } }, '停用') : null), h('td', null, w.data.dept), h('td', null, w.data.squad || ''), h('td', null, w.data.phone || ''), h('td', { class: 'small' }, w.data.note || ''),
+        return hl(h('tr', { style: w.data.inactive ? { opacity: 0.5 } : null }, h('td', null, w.data.name, w.data.inactive ? h('span', { class: 'tag', style: { marginLeft: '4px' } }, '停用') : null, w.data.title ? h('span', { class: 'tag info', style: { marginLeft: '4px' }, title: '從報名後台同步' }, w.data.title) : null), h('td', null, w.data.dept), h('td', null, sqText(w)), h('td', null, w.data.phone || ''), h('td', { class: 'small' }, w.data.note || ''),
           actions(function () { edit(w); }, function () { del('worker.delete', { id: w.id }, w.data.name); })), w.id);
       }), '還沒有工作人員'));
     },
@@ -145,22 +160,36 @@ var PkgAdmin = (function () {
         form(s.id ? '編輯小隊' : '新增小隊', [h('div', { class: 'grid2' }, field('小隊號碼', no), field('隊名', name)), field('小隊群組連結（學員端會顯示）', line)], function () { return run('squad.save', { no: no.value, name: name.value, line: line.value }); });
       };
       box.appendChild(bar(addBtn('新增小隊', function () { edit(); }), h('span', { class: 'hint' }, '和報名系統串接時，同步名單會自動補上報名系統的小隊。')));
-      box.appendChild(table(['號碼', '隊名', '群組', ''], D.squads.map(function (s) {
-        return h('tr', null, h('td', null, s.data.no), h('td', null, s.data.name), h('td', { class: 'small' }, s.data.line ? '有' : ''), actions(function () { edit(s); }, function () { del('squad.delete', { no: s.data.no }, s.data.name); }));
+      var staffOf = function (no) {
+        var out = [];
+        D.workers.forEach(function (w) { if (w.data.inactive) return; var sq = (w.data.regSquads || []).map(Number); if (String(w.data.squad) === String(no) || sq.indexOf(Number(no)) >= 0) out.push(w.data.name + ((w.data.titles || {})[String(no)] ? '（' + w.data.titles[String(no)] + '）' : '')); });
+        return out.join('、');
+      };
+      var cnt = function (no) { return D.students.filter(function (x) { return x.data.active !== false && String(x.data.squad) === String(no); }).length; };
+      box.appendChild(table(['號碼', '隊名', '專輔、隨輔', '學員', '群組', ''], D.squads.map(function (s) {
+        return h('tr', null, h('td', null, s.data.no), h('td', null, s.data.name), h('td', { class: 'small' }, staffOf(s.data.no) || h('span', { class: 'tag warn' }, '未安排')), h('td', null, cnt(s.data.no)), h('td', { class: 'small' }, s.data.line ? '有' : ''), actions(function () { edit(s); }, function () { del('squad.delete', { no: s.data.no }, s.data.name); }));
       }), '還沒有小隊'));
     },
     students: function (box, D) {
       var active = D.students.filter(function (s) { return s.data.active !== false; });
-      var syncBtn = R.canEdit ? h('button', { class: 'btn primary', onclick: function (e) { busy(e.target, function () { return run('sync', {}, { action: 'run', msg: false }); }).then(function (x) { if (x) toast('已同步：' + x.total + ' 位，更新 ' + x.changed + ' 筆'); }, function () {}); } }, '從報名系統同步') : null;
       var add = addBtn('手動新增（測試用）', function () {
         var name = inp(''), squad = inp('', { type: 'number', min: 1 });
         form('手動新增學員', [field('姓名', name), field('小隊', squad), h('div', { class: 'hint' }, '正式學員請從報名系統同步；手動新增的學員不能從學員專區進入，只用於測試畫面。')], function () { return run('student.save', { name: name.value, squad: squad.value }, { action: 'create' }); });
       });
-      box.appendChild(bar(syncBtn, add, h('span', { class: 'hint' }, '有效 ' + active.length + ' 位' + (A.info.lastSync ? '　·　上次同步 ' + fmt(A.info.lastSync) : '　·　尚未同步'))));
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '報名系統是正式資料來源：互動系統只保存學員代碼、姓名、小隊與是否有效，分隊要在報名系統改。'));
-      box.appendChild(table(['學員代碼', '姓名', '小隊', '狀態'], D.students.slice().sort(function (a, b) { return (Number(a.data.squad) || 99) - (Number(b.data.squad) || 99); }).map(function (s) {
-        return h('tr', null, h('td', { class: 'small' }, s.id), h('td', null, s.data.name), h('td', null, s.data.squad || '—'), h('td', null, s.data.active === false ? h('span', { class: 'tag' }, '無效（取消／候補）') : h('span', { class: 'tag ok' }, '有效'), s.data.manual ? h('span', { class: 'tag info', style: { marginLeft: '4px' } }, '手動') : null));
-      }), '還沒有學員。到「營隊設定」完成串接後按「從報名系統同步」。'));
+      box.appendChild(bar(add, h('span', { class: 'hint' }, '有效 ' + active.length + ' 位')));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '報名系統是正式資料來源：互動系統只保存學員代碼、姓名、小隊、房間與是否有效，分隊、分房要在報名系統改。'));
+      box.appendChild(table(['學員代碼', '姓名', '小隊', '房間', '狀態'], D.students.slice().sort(function (a, b) { return (Number(a.data.squad) || 99) - (Number(b.data.squad) || 99); }).map(function (s) {
+        return h('tr', null, h('td', { class: 'small' }, s.id), h('td', null, s.data.name), h('td', null, s.data.squad || '—'), h('td', null, s.data.room || '—'), h('td', null, s.data.active === false ? h('span', { class: 'tag' }, '無效（取消／候補）') : h('span', { class: 'tag ok' }, '有效'), s.data.manual ? h('span', { class: 'tag info', style: { marginLeft: '4px' } }, '手動') : null));
+      }), '還沒有學員。到「營隊設定」完成串接後按「從報名後台同步」。'));
+    },
+    rooms: function (box, D) {
+      var act = D.students.filter(function (s) { return s.data.active !== false; });
+      var none = act.filter(function (s) { return !s.data.room; }).length;
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '分房在報名後台設定，這裡只顯示同步來的結果。工作人員端可以放「分房表（工作人員）」畫面；學員端「我的資料」會顯示自己的房間（報名後台有公布分房時）。' + (none ? '　還有 ' + none + ' 位學員沒有分房。' : '')));
+      box.appendChild(table(['房號', '名稱', '性別', '備註', '學員'], (D.rooms || []).map(function (r) {
+        var ppl = act.filter(function (s) { return s.data.room === r.no; }).map(function (s) { return s.data.name; });
+        return h('tr', null, h('td', null, h('b', null, r.no)), h('td', null, r.label || ''), h('td', null, r.sex || '不限'), h('td', { class: 'small' }, r.note || ''), h('td', { class: 'small' }, ppl.length + ' 人：' + (ppl.join('、') || '—')));
+      }), '還沒有分房資料。在報名後台分房後，按上面的「從報名後台同步」。'));
     },
     assign: function (box, D) {
       var edit = function (a) {
