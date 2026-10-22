@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2f5d62">
+<title>營隊互動系統｜我的營隊</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div id="top"></div>
+<main class="page">
+  <div class="row wrap" style="margin-bottom:16px">
+    <div class="grow"><h1>我的營隊</h1><div class="muted">選一個營隊進入管理端</div></div>
+    <button class="btn" id="redeem">輸入邀請碼</button>
+    <button class="btn hidden" id="syslog">系統操作紀錄</button>
+    <button class="btn hidden" id="upgrade">升級營隊資料庫</button>
+    <button class="btn primary hidden" id="create">建立營隊</button>
+  </div>
+  <div id="list" class="stat"><div class="empty">載入中…</div></div>
+</main>
+<script src="assets/config.js"></script>
+<script src="assets/core.js"></script>
+<script src="assets/staff.js"></script>
+<script src="assets/camps.js"></script>
+</body>
+</html>
