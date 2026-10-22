@@ -185,6 +185,8 @@ var Front = (function () {
         return card('我的資料', h('div', { class: 'col' },
           h('div', { class: 'kv' }, h('span', null, '姓名'), h('b', null, d.name || ''), h('span', null, '小隊'), h('b', null, d.squadName || '尚未分隊')),
           d.leaders && d.leaders.length ? h('div', null, h('div', { class: 'small muted' }, '我的隊輔'), d.leaders.map(function (l) { return contactRow(l.name, l.dept, l.phone); })) : null,
+          d.room ? h('div', null, h('div', { class: 'small muted' }, '我的房間'), h('div', null, h('b', null, d.room.no), d.room.label ? '　' + d.room.label : ''), d.room.note ? h('div', { class: 'small muted' }, d.room.note) : null,
+            d.room.mates && d.room.mates.length ? h('div', { class: 'small' }, '室友：' + d.room.mates.join('、')) : null) : null,
           okUrl(d.line) ? h('a', { class: 'btn', href: d.line, target: '_blank', rel: 'noopener' }, '小隊群組') : null));
       },
       mywork: function (d) {
@@ -202,11 +204,19 @@ var Front = (function () {
         })) : h('div', { class: 'muted small' }, d.preview ? '預覽時不會帶入個人工作' : '目前沒有分配到工作')));
         return box;
       },
+      rooms: function (d) {
+        var list = d.rooms || [];
+        return card('分房表', list.length ? h('div', { class: 'col' }, list.map(function (r) {
+          return h('details', { class: 'fb', style: { boxShadow: 'none', padding: '10px 12px' } }, h('summary', { style: { cursor: 'pointer', fontWeight: 700 } }, r.no + (r.label ? '　' + r.label : '') + '（' + r.people.length + ' 人）' + (r.sex ? '　' + r.sex : '')),
+            r.note ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, r.note) : null,
+            h('div', { class: 'small', style: { marginTop: '6px' } }, r.people.length ? r.people.map(function (p) { return p.name + (p.squad ? '（' + p.squad + '）' : ''); }).join('、') : '還沒有人'));
+        }), d.unassigned ? h('div', { class: 'small muted' }, '還有 ' + d.unassigned + ' 位學員沒有分房') : null) : h('div', { class: 'muted small' }, '還沒有分房資料（在報名後台分房後，按「從報名後台同步」）'));
+      },
       squads: function (d) {
         var list = d.squads || [];
         return card('小隊資料', list.length ? h('div', { class: 'col' }, list.map(function (s) {
           return h('details', { class: 'fb', style: { boxShadow: 'none', padding: '10px 12px' } }, h('summary', { style: { cursor: 'pointer', fontWeight: 700 } }, s.name + '（' + s.students.length + ' 人）'),
-            h('div', { class: 'small muted', style: { marginTop: '6px' } }, '隊輔'), s.leaders.length ? s.leaders.map(function (l) { return contactRow(l.name, l.dept, l.phone); }) : h('div', { class: 'small' }, '尚未安排'),
+            h('div', { class: 'small muted', style: { marginTop: '6px' } }, '專輔、隨輔'), s.leaders.length ? s.leaders.map(function (l) { return contactRow(l.name, l.dept, l.phone); }) : h('div', { class: 'small' }, '尚未安排'),
             h('div', { class: 'small muted', style: { marginTop: '6px' } }, '學員'), h('div', { class: 'small' }, s.students.join('、') || '—'),
             okUrl(s.line) ? h('a', { class: 'small', href: s.line, target: '_blank', rel: 'noopener' }, '小隊群組') : null);
         })) : h('div', { class: 'muted small' }, '還沒有小隊資料'));
