@@ -22,8 +22,11 @@ var Editor = (function () {
   function open(m, side, q) {
     stop();
     E = { side: side, m: m, q: q || {}, tab: tabId(), pages: {}, blocks: {}, dirty: {}, seq: 0, sel: '', mine: false, timers: [], lastInput: 0, shownHandoffs: {}, live: {}, pkgPub: {}, acts: [] };
-    m.appendChild(h('div', { class: 'empty' }, '載入編輯器…'));
+    // 看過的話先用上次的資料畫出來（唯讀），最新的到了再換掉
+    var hit = apiCacheGet('getEditor', [A.camp, side]);
+    if (hit) { apply(hit); E.cached = true; render(); } else m.appendChild(h('div', { class: 'empty' }, '載入編輯器…'));
     load().then(function () {
+      if (!E || E.m !== m) return;
       if (E.q.page && E.pages[E.q.page]) E.sel = E.q.page;
       render();
       if (E.q.block) setTimeout(function () { var el = $('[data-edit-bid="' + E.q.block + '"]'); if (el) { el.classList.add('hit'); el.scrollIntoView({ block: 'center' }); } }, 80);
@@ -49,19 +52,24 @@ var Editor = (function () {
     var side = E.side;
     return api('getEditor', A.camp, side).then(function (d) {
       if (!E || E.side !== side) return;
-      E.d = d;
-      E.pages = {};
-      E.blocks = {};
-      d.pages.forEach(function (p) { E.pages[p.id] = { id: p.id, parent: p.parent || '', ord: p.ord, title: p.title, icon: p.icon, fixed: p.fixed, activity: p.activity || '', deleted: false }; });
-      d.blocks.forEach(function (b) { E.blocks[b.id] = { id: b.id, page: b.page, ord: b.ord, type: b.type, data: b.data || {}, deleted: false, updated: b.updated, by: b.by }; });
-      E.dirty = {};
-      if (!E.sel || !E.pages[E.sel]) E.sel = (roots()[0] || {}).id || '';
+      apiCachePut('getEditor', [A.camp, side], d);
+      E.cached = false;
+      apply(d);
       E.mine = false;
       var me = IA.user.email;
       if (d.lock.held && d.lock.holder === me) {
         return op('lock.ping', { camp: A.camp, data: { side: side, tab: E.tab, active: false } }).then(function (r) { if (E) E.mine = r.mine; }, function () {});
       }
     }).then(refreshPub);
+  }
+  function apply(d) {
+    E.d = d;
+    E.pages = {};
+    E.blocks = {};
+    d.pages.forEach(function (p) { E.pages[p.id] = { id: p.id, parent: p.parent || '', ord: p.ord, title: p.title, icon: p.icon, fixed: p.fixed, activity: p.activity || '', deleted: false }; });
+    d.blocks.forEach(function (b) { E.blocks[b.id] = { id: b.id, page: b.page, ord: b.ord, type: b.type, data: b.data || {}, deleted: false, updated: b.updated, by: b.by }; });
+    E.dirty = {};
+    if (!E.sel || !E.pages[E.sel]) E.sel = (roots()[0] || {}).id || '';
   }
 
   /** 預覽用：草稿快照裡的 Package 發布資料（例如學員行程） */
@@ -236,6 +244,7 @@ var Editor = (function () {
     var el = clear(nodes.lock), L = E.d.lock, me = IA.user.email;
     el.className = 'lockbar' + (E.mine ? ' mine' : (L.held && L.holder !== me ? ' other' : ''));
     if (A.info.status === 'ended') { el.appendChild(h('span', null, '營隊已結束（回憶模式），內容不能再修改。')); return; }
+    if (E.cached) { el.appendChild(h('span', { class: 'muted' }, '顯示上次看到的內容，正在更新…')); return; }
     if (E.mine) {
       el.appendChild(h('b', null, '✏️ 你正在編輯'));
       el.appendChild(h('span', { class: 'small muted grow', id: 'edStatus' }));
