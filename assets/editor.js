@@ -204,7 +204,8 @@ var Editor = (function () {
   function render() {
     if (!E) return;
     var m = clear(E.m), d = E.d;
-    A.title(m, d.sideName, d.published ? '目前發布第 ' + d.published.ver + ' 版（' + fmt(d.published.at) + '，' + d.published.by + '）' + (d.published.forced ? '・強制發布' : '') : '還沒有發布過',
+    m.classList.add(E.side === 'worker' ? 'side-worker' : 'side-student');
+    A.title(m, h('span', null, d.sideName, h('span', { class: 'side-tag' }, E.side === 'worker' ? '工作人員看到的' : '學員看到的')), d.published ? '目前發布第 ' + d.published.ver + ' 版（' + fmt(d.published.at) + '，' + d.published.by + '）' + (d.published.forced ? '・強制發布' : '') : '還沒有發布過',
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn sm', onclick: versions }, '發布紀錄'),
         h('button', { class: 'btn sm', onclick: deletedList }, '已刪除的內容'),
@@ -214,7 +215,7 @@ var Editor = (function () {
     m.appendChild(nodes.lock);
     lockbar();
     nodes.tree = h('div', { class: 'card tree', style: { padding: '10px' } });
-    nodes.blocks = h('div');
+    nodes.blocks = h('div', { class: 'ed-blocks' });
     nodes.phone = h('div', { class: 'phone-wrap' });
     m.appendChild(h('div', { class: 'editor' }, nodes.tree, nodes.blocks, nodes.phone));
     tree();
