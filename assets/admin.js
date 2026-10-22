@@ -128,17 +128,21 @@ A.views.home = function (m) {
   m.appendChild(stats);
   var ev = h('div', { class: 'section' });
   m.appendChild(ev);
-  api('listEvents', A.camp, true).then(function (r) {
+  apiCached('listEvents', [A.camp, true], function (r) {
+    clear(stats); clear(ev);
     stats.appendChild(h('a', { class: 'card', href: '#events', style: { textDecoration: 'none', color: 'inherit' } }, h('b', { style: { color: r.warnings ? 'var(--bad)' : 'var(--ok)' } }, r.warnings), '⚠️ 警示（會阻擋發布）'));
     stats.appendChild(h('a', { class: 'card', href: '#events', style: { textDecoration: 'none', color: 'inherit' } }, h('b', null, r.reminders), '💡 提醒'));
     ['student', 'worker'].filter(A.canSide).forEach(function (side) {
-      api('listSnapshots', A.camp, side).then(function (s) {
-        stats.appendChild(h('a', { class: 'card', href: '#edit/' + side, style: { textDecoration: 'none', color: 'inherit' } }, h('b', null, s.length ? '第 ' + s[0].ver + ' 版' : '未發布'), (side === 'student' ? '學員端' : '工作人員端') + (s.length ? '　' + fmt(s[0].at) : '')));
-      }, function () {});
+      var slot = h('a', { class: 'card', href: '#edit/' + side, style: { textDecoration: 'none', color: 'inherit' } });
+      stats.appendChild(slot);
+      apiCached('listSnapshots', [A.camp, side], function (s) {
+        clear(slot).appendChild(h('b', null, s.length ? '第 ' + s[0].ver + ' 版' : '未發布'));
+        slot.appendChild(document.createTextNode((side === 'student' ? '學員端' : '工作人員端') + (s.length ? '　' + fmt(s[0].at) : '')));
+      }).then(null, function () {});
     });
     var top = r.events.filter(function (e) { return e.type === 'warning' || e.state === 'pin'; }).slice(0, 6);
     if (top.length) { ev.appendChild(h('h2', null, '需要處理')); top.forEach(function (e) { ev.appendChild(A.eventRow(e, function () { A.route(); })); }); }
-  }, fail);
+  }).then(null, fail);
   var links = h('div', { class: 'section' }, h('h2', null, '前台連結'));
   var wl = A.frontBase() + 'app.html?c=' + encodeURIComponent(A.camp) + '&s=worker';
   links.appendChild(h('div', { class: 'card col' },
@@ -180,13 +184,13 @@ A.views.events = function (m) {
   m.appendChild(ntBox);
   var showIgnored = false;
   var loadEv = function () {
-    api('listEvents', A.camp, true).then(function (r) {
+    apiCached('listEvents', [A.camp, true], function (r) {
       clear(evBox).appendChild(h('h2', null, '目前的警示與提醒', h('button', { class: 'btn sm ghost', onclick: function () { showIgnored = !showIgnored; loadEv(); } }, showIgnored ? '隱藏已忽略' : '顯示已忽略')));
       var list = r.events.filter(function (e) { return showIgnored || e.state !== 'ignore'; });
       if (!list.length) evBox.appendChild(h('div', { class: 'card empty' }, '目前沒有需要處理的事 👍'));
       list.forEach(function (e) { evBox.appendChild(A.eventRow(e, loadEv)); });
       A.poll();
-    }, fail);
+    }).then(null, fail);
   };
   var loadNt = function () {
     api('listNotifications', A.camp).then(function (r) {
@@ -210,7 +214,7 @@ A.views.members = function (m) {
   var box = h('div');
   m.appendChild(box);
   var load = function () {
-    api('listMembers', A.camp).then(function (r) { render(r); }, fail);
+    apiCached('listMembers', [A.camp], render).then(null, fail);
   };
   var permName = function (r, p, pkg) { var arr = pkg ? r.pkgPerms : r.infoPerms; var x = arr.filter(function (y) { return y.key === p; })[0]; return x ? x.name : p; };
   function render(r) {
