@@ -222,6 +222,24 @@ var Front = (function () {
         })) : h('div', { class: 'muted small' }, '還沒有小隊資料'));
       }
     },
+    courses: {
+      list: function (d) {
+        var list = d.list || [], by = d.groupBy === 'date' ? 'date' : 'type';
+        if (!list.length) return card(d.title || '課程簡介', h('div', { class: 'muted small' }, '還沒有課程'));
+        var keys = by === 'date' ? list.map(function (c) { return c.date; }).filter(function (x, i, a) { return a.indexOf(x) === i; }) : (d.types || []).filter(function (t) { return list.some(function (c) { return c.type === t; }); });
+        var mins = function (n) { return n >= 60 ? Math.floor(n / 60) + ' 小時' + (n % 60 ? ' ' + (n % 60) + ' 分' : '') : n + ' 分鐘'; };
+        var one = function (c) {
+          var when = [c.date ? dayLabel(c.date) : '', c.start ? c.start + (c.end ? '–' + c.end : '') : '', c.dur ? '（' + mins(c.dur) + '）' : ''].filter(String).join(' ');
+          return h('details', { class: 'cs' }, h('summary', null, c.photo ? h('img', { class: 'cs-av', src: c.photo, alt: '', loading: 'lazy' }) : null,
+            h('div', { class: 'grow' }, h('b', null, c.title), by === 'date' ? h('span', { class: 'tag', style: { marginLeft: '6px' } }, c.type) : null, h('div', { class: 'small muted' }, when), (c.speaker || c.place) ? h('div', { class: 'small muted' }, [c.speaker, c.place ? '📍 ' + c.place : ''].filter(String).join('　')) : null)),
+            h('div', { class: 'cs-body' }, c.photo ? h('img', { class: 'cs-big', src: c.photo, alt: c.title, loading: 'lazy' }) : null, c.desc ? h('div', { class: 'rich', html: md(c.desc) }) : null,
+              (c.files || []).length ? h('div', { class: 'col', style: { gap: '4px', marginTop: '6px' } }, c.files.map(function (f) { return okUrl(f.url) ? h('a', { class: 'btn sm', href: f.url, target: '_blank', rel: 'noopener', style: { justifyContent: 'flex-start' } }, (f.kind === 'pdf' ? '📄 ' : f.kind === 'slides' ? '📊 ' : '📎 ') + (f.name || '檔案')) : null; })) : null));
+        };
+        return card(d.title || '課程簡介', h('div', { class: 'col' }, keys.map(function (k) {
+          return h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'cs-grp' }, by === 'date' ? (k ? dayLabel(k) : '未定日期') : k), list.filter(function (c) { return (by === 'date' ? c.date : c.type) === k; }).map(one));
+        })));
+      }
+    },
     emergency: {
       student: function (d, b, env) { return emergencyView(d, env, false); },
       worker: function (d, b, env) { return emergencyView(d, env, true); },
@@ -240,6 +258,22 @@ var Front = (function () {
     return card(title, schedList(map(items, true), go));
   }
 
+  /** 流程圖：steps 由上往下，有 branches 的步驟分岔成並排的幾欄，分岔後的下一步是匯合點 */
+  function flowChart(flow) {
+    var seq = function (steps, top) {
+      return h('div', { class: 'fc-seq' + (top ? ' top' : '') }, (steps || []).map(function (st, i, arr) {
+        var br = st.branches || [];
+        var box = h('div', { class: 'fc-box' + (br.length ? ' q' : '') }, h('span', null, st.text),
+          st.phone ? h('a', { class: 'fc-call', href: 'tel:' + String(st.phone).replace(/[^\d+]/g, '') }, icon('phone', 13), ' ' + st.phone) : null);
+        return h('div', { class: 'fc-step' + (br.length && i < arr.length - 1 ? ' merge' : '') }, box, st.note ? h('div', { class: 'fc-note' }, st.note) : null,
+          br.length ? h('div', { class: 'fc-branches' }, br.map(function (b) {
+            return h('div', { class: 'fc-br' }, b.label ? h('div', { class: 'fc-label' + (b.tone === 'bad' ? ' bad' : '') }, b.label) : null, seq(b.steps), h('div', { class: 'fc-tail' }, h('span', { class: 'fc-bar' })));
+          })) : null);
+      }));
+    };
+    return h('div', { class: 'fc' }, seq(flow && flow.steps, true));
+  }
+
   function emergencyView(d, env, worker) {
     var box = h('div', { class: 'col' });
     if (d.night) box.appendChild(h('div', { class: 'night-banner' }, icon('moon'), h('div', null, h('b', null, '夜間模式'), h('div', { class: 'small' }, '有狀況請先找隊輔或守夜人員'))));
@@ -251,7 +285,8 @@ var Front = (function () {
     if (worker) (d.contacts || []).forEach(function (c) { calls.appendChild(contactRow(c.name, c.role, c.phone)); });
     box.appendChild(card(worker ? '緊急聯絡' : '緊急聯絡', calls));
     var guide = worker ? d.sop : d.guide;
-    if (guide) box.appendChild(card(worker ? '事件處理流程' : '緊急處理', h('div', { class: 'rich', html: md(guide) })));
+    if (d.flow && (d.flow.steps || []).length) box.appendChild(card(d.flow.title || '事件處理流程', flowChart(d.flow)));
+    if (guide && !(worker && d.flow)) box.appendChild(card(worker ? '事件處理流程' : '緊急處理', h('div', { class: 'rich', html: md(guide) })));
     if (worker && (d.submissions || []).length) {
       box.appendChild(card('最近的自我評估切結書', h('div', { class: 'col', style: { gap: '4px' } }, d.submissions.map(function (s) {
         return h('details', null, h('summary', { style: { cursor: 'pointer' } }, fmt(s.at) + '　' + s.name + '（第 ' + s.squad + ' 小隊）· ' + (s.answers.needs || '')),
@@ -311,5 +346,5 @@ var Front = (function () {
       .map(function (b) { return { id: b.id, pkg: b.data.pkg, view: b.data.view, config: b.data.config || {} }; });
   }
 
-  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById };
+  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart };
 })();
