@@ -55,8 +55,15 @@ function api(name) {
     return apiOnce_(url, body).catch(function (e) {
       if (!e.retry || tries >= 3) throw e;
       tries++;
-      var el = document.getElementById('netBusy'); if (el) { el.classList.add('on', 'retry'); el.querySelector('.tx').textContent = '連線不穩，重試第 ' + tries + ' 次…'; }
-      return new Promise(function (ok) { setTimeout(ok, 700 * Math.pow(2, tries - 1)); }).then(go);
+      var off = navigator.onLine === false;
+      var el = document.getElementById('netBusy'); if (el) { el.classList.add('on', 'retry'); el.querySelector('.tx').textContent = off ? '網路斷線，等網路恢復…' : '連線不穩，重試第 ' + tries + ' 次…'; }
+      // 斷網時不要一直重送：等網路回來（最多 30 秒）再試
+      return new Promise(function (ok) {
+        if (!off) { setTimeout(ok, 700 * Math.pow(2, tries - 1)); return; }
+        var t = setTimeout(done, 30000);
+        function done() { clearTimeout(t); window.removeEventListener('online', done); ok(); }
+        window.addEventListener('online', done);
+      }).then(go);
     });
   }
   return apiSlot_().then(go).then(function (j) {
