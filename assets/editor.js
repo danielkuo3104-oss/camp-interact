@@ -54,7 +54,12 @@ var Editor = (function () {
       E.mine = false;
       var me = IA.user.email;
       if (d.lock.held && d.lock.holder === me) {
-        return op('lock.ping', { camp: A.camp, data: { side: side, tab: E.tab, active: false } }).then(function (r) { if (E) E.mine = r.mine; }, function () {});
+        return op('lock.ping', { camp: A.camp, data: { side: side, tab: E.tab, active: false } }).then(function (r) {
+          if (!E) return;
+          E.mine = r.mine;
+          // 自己的鎖、但另一個分頁超過 2 分半沒心跳（多半已經關掉或重新開過）：直接改到這個分頁
+          if (!r.mine && r.lock && r.lock.held && r.lock.holder === me && !r.lock.claimPending && r.lock.seenAgo > 150) return takeHere();
+        }, function () {});
       }
     }).then(refreshPub);
   }
@@ -149,6 +154,16 @@ var Editor = (function () {
     }, function () {});
   }
 
+  function takeHere(btn) {
+    var go = function () { return op('lock.acquire', { camp: A.camp, data: { side: E.side, tab: E.tab, take: true } }); };
+    return (btn ? busy(btn, go) : go()).then(function (r) {
+      if (!E) return;
+      E.d.lock = r.lock;
+      E.mine = true;
+      if (btn) render();
+    }, function () {});
+  }
+
   function release(btn) {
     var x = changes();
     clearTimeout(E.autoT);
@@ -164,7 +179,12 @@ var Editor = (function () {
     var cur = E;
     if (!cur.mine) { stop(); return; }
     var x = changes();
-    return op('lock.release', { camp: A.camp, data: { side: cur.side, tab: cur.tab, changes: x.c } }).then(function () { stop(); }, function (e) { stop(); throw new Error('離開前儲存失敗：' + e.message + '（編輯鎖仍保留在你身上）'); });
+    return op('lock.release', { camp: A.camp, data: { side: cur.side, tab: cur.tab, changes: x.c } }).then(function () { stop(); }, function (e) {
+      stop();
+      // 鎖已經改到別的分頁（或逾期）：這裡不再是編輯者，直接離開
+      if (e.code === 'LOCK') { if (x.c.pages.length || x.c.blocks.length) toast('編輯已經改到別的分頁，這裡還沒存的變更沒有帶過去'); return; }
+      throw new Error('離開前儲存失敗：' + e.message + '（編輯鎖仍保留在你身上）');
+    });
   }
   function beacon() {
     if (!E || !E.mine || !window.INTERACT_CONFIG) return;
@@ -178,7 +198,7 @@ var Editor = (function () {
     var active = Date.now() - E.lastInput < 60000;
     op('lock.ping', { camp: A.camp, data: { side: E.side, tab: E.tab, active: active } }).then(function (r) {
       if (!E) return;
-      if (!r.mine) { lockLost({ message: '編輯鎖已釋放（離線超過 10 分鐘或閒置超過 30 分鐘），要繼續請再按「開始編輯」' }); return; }
+      if (!r.mine) { lockLost({ message: r.lock && r.lock.held && r.lock.holder === IA.user.email ? '編輯已改到你的另一個分頁，這個分頁變成唯讀' : '編輯鎖已釋放（離線超過 10 分鐘或閒置超過 30 分鐘），要繼續請再按「開始編輯」' }); return; }
       (r.handoffs || []).forEach(function (ho) { if (!E.shownHandoffs[ho.id]) { E.shownHandoffs[ho.id] = 1; handoffPopup(ho); } });
     }, function () {});
   }
@@ -253,8 +273,9 @@ var Editor = (function () {
         busy(e.target, function () { return op('handoff.request', { camp: A.camp, data: { side: E.side } }); }).then(function () { toast('已送出交接請求，等對方接受'); E.myReq = { status: 'pending' }; lockbar(); }, function () {});
       } }, req ? '已請求交接，等待回覆' : '請求交接'));
     } else if (L.held && L.holder === me) {
-      el.appendChild(h('span', { class: 'grow' }, L.claimPending ? '對方已把編輯交給你。' : '你在另一個分頁（或另一台裝置）編輯中，這個分頁是唯讀。請到那個分頁按「結束編輯」；關掉的分頁最多 10 分鐘後自動釋放。'));
+      el.appendChild(h('span', { class: 'grow' }, L.claimPending ? '對方已把編輯交給你。' : '你在另一個分頁（或另一台裝置）編輯中，這個分頁是唯讀。如果那個分頁已經關掉，或你想改在這裡編輯，按「改在這個分頁編輯」。'));
       if (L.claimPending) el.appendChild(h('button', { class: 'btn sm primary', onclick: function (e) { acquire(e.target); } }, '開始編輯'));
+      else el.appendChild(h('button', { class: 'btn sm primary', title: '另一個分頁還沒存的內容不會帶過來', onclick: function (e) { takeHere(e.target); } }, '改在這個分頁編輯'));
     } else {
       el.appendChild(h('span', { class: 'grow' }, '目前沒有人在編輯。' + (L.expired ? '（上一位的編輯鎖已逾期）' : '')));
       el.appendChild(h('button', { class: 'btn sm primary', onclick: function (e) { acquire(e.target); } }, '開始編輯'));
