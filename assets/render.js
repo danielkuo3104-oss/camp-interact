@@ -134,10 +134,17 @@ var Front = (function () {
           clear(body);
           var day = '';
           var list = h('div', { class: 'sched' });
-          f.items.forEach(function (it) {
+          // 包在另一項時段裡的（例如午餐裡的工人用餐）縮排顯示在那一項下面
+          var mins = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+          var hm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
+          var its = f.items.map(function (it) { var s0 = mins(it.time), d0 = Number(it.dur) || 0; return { it: it, s: s0, e: s0 === null ? null : s0 + d0, d: d0 }; });
+          its.sort(function (a, b) { return (a.it.date || '').localeCompare(b.it.date || '') || ((a.s === null ? 9999 : a.s) - (b.s === null ? 9999 : b.s)) || b.d - a.d; });
+          its.forEach(function (x) { x.inner = x.s !== null && x.d > 0 && its.some(function (y) { return y !== x && y.it.date === x.it.date && y.s !== null && y.d > x.d && y.s <= x.s && x.e <= y.e; }); });
+          its.forEach(function (x) {
+            var it = x.it;
             if (it.date !== day) { day = it.date; list.appendChild(h('div', { class: 'day' }, dayLabel(it.date))); }
             var people = [it.owner.length ? '負責：' + it.owner.join('、') : '', it.staff.length ? '人員：' + it.staff.join('、') : '', it.backup.length ? '機動：' + it.backup.join('、') : ''].filter(String).join('　');
-            list.appendChild(h('div', { class: 'it' }, h('span', { class: 'tm' }, it.time), h('div', { class: 'grow' },
+            list.appendChild(h('div', { class: 'it' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('span', { class: 'small muted', style: { display: 'block' } }, '–' + hm(x.e)) : null), h('div', { class: 'grow' },
               h('b', null, it.name), it.place ? h('span', { class: 'muted' }, '　📍' + it.place) : null,
               it.activity && it.public === false ? h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '學員未公開') : null,
               people ? h('div', { class: 'small muted' }, people) : null,
