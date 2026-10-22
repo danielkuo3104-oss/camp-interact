@@ -151,11 +151,26 @@ var Front = (function () {
               cf.map(function (k) { return it.custom && it.custom[k] ? h('div', { class: 'small' }, k + '：' + it.custom[k]) : null; }),
               it.note ? h('div', { class: 'small' }, it.note) : null,
               okUrl(it.link) ? h('a', { class: 'small', href: it.link, target: '_blank', rel: 'noopener' }, '相關連結') : null,
+              goLink(it.go),
               it.diff ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + it.diff.planned.date.slice(5) + ' ' + it.diff.planned.time + (it.diff.planned.place ? ' ' + it.diff.planned.place : '') + (it.diff.by ? '（' + it.diff.by + ' ' + fmt(it.diff.at) + ' 調整）' : '')) : null)));
           });
           if (!f.items.length) list.appendChild(h('div', { class: 'muted small' }, '這份流程還沒有項目'));
           body.appendChild(list);
         };
+        // 連到活動細流：點了切到那份流程；連到跑關：展開各隊順序
+        function goLink(go) {
+          var m = String(go || '').match(/^(flow|rot):(.+)$/);
+          if (!m) return null;
+          if (m[1] === 'flow') {
+            var f2 = flows.filter(function (x) { return x.id === m[2]; })[0];
+            return f2 ? h('div', null, h('a', { class: 'small', href: 'javascript:void 0', onclick: function () { show(f2); window.scrollTo(0, wrap.getBoundingClientRect().top + window.scrollY - 60); } }, '→ 細流：' + f2.name)) : null;
+          }
+          var r = (d.rots || {})[m[2]];
+          if (!r) return null;
+          return h('details', { class: 'small', style: { marginTop: '4px' } }, h('summary', { style: { cursor: 'pointer', color: 'var(--info)' } }, '→ 跑關：' + r.name + (r.len ? '（每關 ' + r.len + ' 分' + (r.turn ? '、換關 ' + r.turn + ' 分' : '') + '）' : '')),
+            h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, h('th', null, '小隊'), r.slots.map(function (t) { return h('th', null, t); }))),
+              h('tbody', null, r.rows.map(function (row) { return h('tr', null, h('td', null, row.squad), row.cells.map(function (c) { var i = r.stations.indexOf(c); return h('td', null, c || '—', c && r.places[i] ? h('div', { class: 'muted' }, r.places[i]) : null); })); })))));
+        }
         flows.forEach(function (f) { var c = h('span', { class: 'chip', 'data-id': f.id }, f.name); c.addEventListener('click', function () { show(f); }); tabs.appendChild(c); });
         wrap.appendChild(tabs);
         wrap.appendChild(body);
@@ -202,7 +217,8 @@ var Front = (function () {
         if (d.route) {
           (d.route.rotations || []).forEach(function (r) {
             box.appendChild(card(r.activity + '：' + d.squadName + '的順序', r.mode === 'map' && okUrl(r.image) ? h('img', { src: r.image, alt: '跑關地圖' }) :
-              h('div', { class: 'sched' }, r.steps.map(function (s, i) { return h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time), h('span', null, '第 ' + (i + 1) + ' 站　', h('b', null, s.station || '休息'))); }))));
+              h('div', { class: 'sched' }, r.steps.map(function (s, i) { return h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('span', { class: 'small muted', style: { display: 'block' } }, '–' + s.end) : null), h('span', null, '第 ' + (i + 1) + ' 站　', h('b', null, s.station || '休息'), s.place ? h('span', { class: 'muted' }, '　📍' + s.place) : null)); }),
+                r.turn ? h('div', { class: 'small muted' }, '每站之間換關 ' + r.turn + ' 分鐘') : null)));
           });
           if ((d.route.items || []).length) box.appendChild(card('我的帶隊流程', schedList(d.route.items.map(function (x) { return { date: x.date, time: x.time, title: x.name, note: x.place, showDay: true }; }))));
         }
