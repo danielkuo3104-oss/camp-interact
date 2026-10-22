@@ -17,21 +17,51 @@ function jset(key, v) { try { if (v === null) localStorage.removeItem(key); else
 
 var NO_TOKEN_ = { login: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, campPublicInfo: 1 };
 
-/** 呼叫 Apps Script 後端（text/plain 避免 CORS 預檢）。錯誤帶 code：AUTH／LOCK／CONFLICT／NET */
+/**
+ * 呼叫 Apps Script 後端（text/plain 避免 CORS 預檢）。錯誤帶 code：AUTH／LOCK／CONFLICT／NET
+ * Apps Script 偶爾會回 404、回到健康檢查（沒有 result）或連不上：自動重試 3 次（操作有 op_id，重送不會重複執行）。
+ * 同時最多送 3 個請求，其他的排隊，避免一次打太多讓 Apps Script 忙不過來。
+ */
+var API_Q_ = { busy: 0, wait: [] };
+function apiSlot_() { return new Promise(function (ok) { if (API_Q_.busy < 3) { API_Q_.busy++; netState_(); ok(); } else API_Q_.wait.push(ok); }); }
+function apiFree_() { var n = API_Q_.wait.shift(); if (n) n(); else API_Q_.busy--; netState_(); }
+/** 右下角的小轉圈：有請求在跑就顯示，讓人知道系統還在動 */
+function netState_() {
+  var el = document.getElementById('netBusy');
+  if (!el && document.body) { el = document.createElement('div'); el.id = 'netBusy'; el.className = 'net-busy'; el.innerHTML = '<span class="spin"></span><span class="tx">連線中…</span>'; document.body.appendChild(el); }
+  if (!el) return;
+  clearTimeout(API_Q_.t);
+  if (API_Q_.busy > 0) API_Q_.t = setTimeout(function () { el.classList.add('on'); }, 250);   // 很快就回來的不閃
+  else el.classList.remove('on', 'retry');
+}
+function apiOnce_(url, body) {
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, redirect: 'follow' }).then(function (r) {
+    if (!r.ok) throw Object.assign(new Error('連線失敗（HTTP ' + r.status + '）'), { code: 'NET', retry: r.status === 404 || r.status === 429 || r.status >= 500 });
+    return r.json().catch(function () { throw Object.assign(new Error('伺服器回應看不懂，請稍後再試'), { code: 'NET', retry: true }); });
+  }, function () {
+    throw Object.assign(new Error('無法連線到伺服器，請檢查網路'), { code: 'NET', retry: true });
+  }).then(function (j) {
+    if (j && j.ok && !('result' in j)) throw Object.assign(new Error('伺服器暫時沒有正確回應，請稍後再試'), { code: 'NET', retry: true });
+    return j;
+  });
+}
 function api(name) {
   var args = Array.prototype.slice.call(arguments, 1);
   if (!NO_TOKEN_[name]) args = [IA.token].concat(args);
   var url = window.INTERACT_CONFIG && INTERACT_CONFIG.API_URL;
   if (!url || /請填入/.test(url)) return Promise.reject(Object.assign(new Error('尚未設定後端網址：請編輯 assets/config.js 的 API_URL'), { code: 'SETUP' }));
-  return fetch(url, {
-    method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ fn: name, args: args }), redirect: 'follow'
-  }).then(function (r) {
-    if (!r.ok) throw Object.assign(new Error('連線失敗（HTTP ' + r.status + '）'), { code: 'NET' });
-    return r.json();
-  }, function () {
-    throw Object.assign(new Error('無法連線到伺服器，請檢查網路'), { code: 'NET' });
-  }).then(function (j) {
+  var body = JSON.stringify({ fn: name, args: args }), tries = 0;
+  function go() {
+    return apiOnce_(url, body).catch(function (e) {
+      if (!e.retry || tries >= 3) throw e;
+      tries++;
+      var el = document.getElementById('netBusy'); if (el) { el.classList.add('on', 'retry'); el.querySelector('.tx').textContent = '連線不穩，重試第 ' + tries + ' 次…'; }
+      return new Promise(function (ok) { setTimeout(ok, 700 * Math.pow(2, tries - 1)); }).then(go);
+    });
+  }
+  return apiSlot_().then(go).then(function (j) {
+    apiFree_();
+    var el = document.getElementById('netBusy'); if (el) el.querySelector('.tx').textContent = '連線中…';
     if (j.ok) return j.result;
     var msg = String(j.error || '發生錯誤').replace(/^(Exception|Error):\s*/, '');
     var m = msg.match(/^(AUTH|LOCK|CONFLICT):/);
@@ -39,7 +69,7 @@ function api(name) {
     if (m) err.code = m[1];
     if (err.code === 'AUTH' && IA.onAuth) { IA.onAuth(err); return new Promise(function () {}); }
     throw err;
-  });
+  }, function (e) { apiFree_(); throw e; });
 }
 
 /**
@@ -80,6 +110,7 @@ var OPK = {
   'draft.autosave': ['draft', 'update'], 'draft.save': ['save', 'update'], 'draft.restore': ['save', 'restore'], 'side.publish': ['publish', 'replace'],
   'template.save': ['save', 'create'], 'template.apply': ['save', 'create'],
   'lock.acquire': ['lock', 'create'], 'lock.ping': ['lock', 'update'], 'lock.release': ['lock', 'delete'],
+  'pkglock.ping': ['lock', 'update'], 'pkglock.release': ['lock', 'delete'], 'pkglock.take': ['lock', 'update'],
   'handoff.request': ['lock', 'create'], 'handoff.accept': ['lock', 'update'], 'handoff.reject': ['lock', 'update'],
   'pkg.install': ['package', 'create'], 'pkg.config': ['package', 'update'], 'pkg.data': ['data', 'update'],
   'pkg.update.prepare': ['package', 'create'], 'pkg.update.test': ['package', 'run'], 'pkg.update.apply': ['package', 'replace'],
@@ -109,7 +140,7 @@ function op(kind, o) {
   var tries = 0;
   function go() {
     return api('op', req).then(function (r) { return r.result; }, function (e) {
-      if (e.code === 'NET' && tries < 3) { tries++; return new Promise(function (ok) { setTimeout(ok, 1000 * Math.pow(2, tries - 1)); }).then(go); }
+      if (e.code === 'NET' && tries < 1) { tries++; return new Promise(function (ok) { setTimeout(ok, 1000 * Math.pow(2, tries - 1)); }).then(go); }
       throw e;
     });
   }
@@ -256,6 +287,46 @@ function chips(items, selected) {
   });
   if (!items.length) el.appendChild(h('span', { class: 'hint' }, '（沒有可選的項目）'));
   return { el: el, get: function () { return items.map(function (i) { return i.value; }).filter(function (v) { return on[String(v)]; }); } };
+}
+
+/**
+ * 未儲存提示：el 裡的內容和上次儲存的不一樣時加上 .dirty（橘色框＋「● 尚未儲存」），儲存成功後呼叫 saved()（綠色「✓ 已儲存」）。
+ * get() 回傳目前的內容；status 是要放在儲存按鈕旁邊的小標籤。onDirty(第一次改動) 用來取得 Package 編輯鎖。
+ */
+var DIRTY_ = [];
+function dirtyTrack(el, get, o) {
+  o = o || {};
+  var base = JSON.stringify(get()), was = false;
+  var status = h('span', { class: 'dirty-status' }, h('span', { class: 'd-on' }, '● 尚未儲存'), h('span', { class: 'd-ok' }, '✓ 已儲存'));
+  var t = {
+    el: el, status: status, btn: o.btn || null,
+    isDirty: function () { return el.isConnected && JSON.stringify(get()) !== base; },
+    check: function () {
+      var d = t.isDirty();
+      el.classList.toggle('dirty', d);
+      if (d) el.classList.remove('saved');
+      if (o.btn) o.btn.classList.toggle('primary', DIRTY_.some(function (x) { return x.btn === o.btn && x.isDirty(); }));
+      if (d && !was && o.onDirty) o.onDirty();
+      was = was || d;
+      return d;
+    },
+    saved: function () { base = JSON.stringify(get()); el.classList.remove('dirty'); el.classList.add('saved'); if (o.btn) o.btn.classList.toggle('primary', DIRTY_.some(function (x) { return x.btn === o.btn && x.isDirty(); })); setTimeout(function () { el.classList.remove('saved'); }, 3000); }
+  };
+  ['input', 'change', 'click', 'keyup'].forEach(function (ev) { el.addEventListener(ev, function () { setTimeout(t.check, 0); }); });
+  t.fresh = true;   // 剛建立、還沒放進畫面的也要留著
+  setTimeout(function () { t.fresh = false; }, 0);
+  DIRTY_ = DIRTY_.filter(function (x) { return x.fresh || x.el.isConnected; });
+  DIRTY_.push(t);
+  return t;
+}
+function dirtyAny() { return DIRTY_.filter(function (t) { return t.isDirty(); }).length; }
+window.addEventListener('beforeunload', function (e) { if (dirtyAny()) { e.preventDefault(); e.returnValue = ''; } });
+
+/** 這個瀏覽器分頁的識別碼（編輯鎖用：同一人開兩個分頁，第二個唯讀） */
+function pageTab() {
+  var t = '';
+  try { t = sessionStorage.getItem('ia_tab') || ''; if (!t) { t = rid('', 16); sessionStorage.setItem('ia_tab', t); } } catch (e) { t = rid('', 16); }
+  return t;
 }
 
 /* ---------------- 時間 ---------------- */
