@@ -54,7 +54,8 @@
   function workerLogin() {
     var name = inp('', { autocomplete: 'name' }), dept = inp('', { placeholder: '例如：輔導、活動、總務' }), pass = inp('', { type: 'password' });
     var err = h('div', { class: 'err' }), title = h('h1', null, '工作人員登入');
-    api('campPublicInfo', camp).then(function (c) { title.textContent = c.name; }, function () {});
+    var passF = field('營隊通行碼', pass, '通行碼由籌辦團隊提供');
+    api('campPublicInfo', camp).then(function (c) { title.textContent = c.name; if (c.noPass) passF.classList.add('hidden'); }, function () {});
     var btn = h('button', { class: 'btn primary' }, '登入');
     var go = function () {
       err.textContent = '';
@@ -64,10 +65,10 @@
       }, function (e) { err.textContent = e.message; });
     };
     btn.addEventListener('click', go);
-    pass.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+    [name, dept, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '工作人員端'), title,
-      field('姓名', name), field('股別', dept), field('營隊通行碼', pass, '通行碼由籌辦團隊提供'), err, btn)));
+      field('姓名', name), field('股別', dept), passF, err, btn)));
   }
 
   function boot() {
@@ -197,7 +198,14 @@
         var n = Front.block(b, S.env);
         if (n) { n.dataset.bid = k; old.replaceWith(n); } else old.remove();
       });
-    }, function (e) { if (e.code !== 'NET') fail(e); });
+      S.liveFail = 0;
+    }, function (e) {
+      if (e.code !== 'NET') { fail(e); return; }
+      // 連線不穩：不要等一分鐘，5 秒、15 秒後再試；還在「載入中」的區塊改成提示
+      S.liveFail = (S.liveFail || 0) + 1;
+      if (body) list.forEach(function (b) { var el = body.querySelector('[data-bid="' + b.id + '"]'); if (el && S.live[b.id] === undefined) el.textContent = '連線不穩，正在重試…'; });
+      if (S.liveFail <= 3) { clearTimeout(S.liveT); S.liveT = setTimeout(loadLive, S.liveFail === 1 ? 5000 : 15000); }
+    });
   }
 
   start();
