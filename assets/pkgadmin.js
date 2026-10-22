@@ -199,6 +199,26 @@ var PkgAdmin = (function () {
     });
     return Promise.resolve();
   }
+  /** 一張卡（一份文件）背景儲存：畫面先算存好，排隊上傳；上傳中斜線底色，失敗變紅框、改動還在 */
+  function queueDoc(el, t, opName, data, o) {
+    o = o || {};
+    var pkg = R.pkg, prev = t.accept();
+    el.classList.add('g-up'); el.classList.remove('g-bad');
+    UPLOADING_++;
+    UPQ = UPQ.then(function () {
+      return A.op('pkg.data', { action: o.action || 'update', target: { pkg: pkg, op: opName, tab: pageTab(), fresh: true }, data: data, ver: o.ver }).then(function (x) {
+        UPLOADING_--; el.classList.remove('g-up'); el.classList.add('saved'); setTimeout(function () { el.classList.remove('saved'); }, 2500);
+        LK.mine = true;
+        applyAdmin(pkg, x && x._extra && x._extra.admin, false);
+        if (o.done) o.done(x);
+        setTimeout(A.poll, 3000);
+      }, function (e) {
+        UPLOADING_--; el.classList.remove('g-up'); el.classList.add('g-bad'); t.restore(prev);
+        if (e.code === 'LOCK') { LK.other = true; LK.mine = false; if (R && R.pkg === pkg) { R.canEdit = false; lockBar(); } }
+        toast('沒存成功，改動還在畫面上（紅框），請再按一次儲存：' + e.message, true);
+      });
+    });
+  }
   function del(name, data, label) {
     return confirmBox('刪除', '確定要刪除「' + label + '」嗎？', '刪除', true).then(function (ok) { if (ok) return run(name, data, { action: 'delete', msg: '已刪除' }).catch(fail); });
   }
@@ -206,7 +226,7 @@ var PkgAdmin = (function () {
 
   var TABS = {
     people: [['workers', '工作人員'], ['assign', '工作分配'], ['setup', '股別與活動'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['config', '設定']],
-    schedule: [['items', '營期流程'], ['activities', '活動'], ['rotations', '跑關'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
+    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['rotations', '跑關'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
     studentflow: [['items', '學員行程'], ['pending', '待處理變更'], ['config', '設定']],
     emergency: [['config', '聯絡與夜間設定'], ['flow', '處理流程圖'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
     courses: [['list', '課程'], ['config', '設定']],
@@ -234,15 +254,29 @@ var PkgAdmin = (function () {
 
   /** 人員與分隊每個分頁上方：從報名後台同步（學員、小隊、專輔隨輔、分房），每小時也會自動同步 */
   function syncBar() {
-    var I = A.info, linked = I.regUrl && I.regPrefix && I.secretSet;
+    var I = A.info, linked = I.regUrl && I.regPrefix && I.secretSet, demo = !!R.config.demoMode;
+    if (demo) return h('div', { class: 'card row wrap', style: { padding: '10px 14px', marginBottom: '12px', background: 'var(--info-soft)' } },
+      h('span', { class: 'grow' }, h('b', null, '🧪 正在用測試資料'), '　工作人員、學員、小隊、房間是虛擬的，不和報名後台同步（每小時同步也會跳過）。可以放心試排程、分工、跑關。'),
+      R.canEdit ? h('button', { class: 'btn', onclick: function (e) {
+        confirmBox('改回報名後台名單', '會刪掉測試資料（虛擬的工作人員、學員、小隊、房間；工作分配裡的虛擬人員也會拿掉），之後恢復和報名後台同步。你自己新增的資料不會動。', '刪掉測試資料').then(function (ok) {
+          if (!ok) return;
+          busy(e.target, function () { return run('demo.off', {}, { action: 'run', msg: false }); }).then(function (x) { if (x) toast('已清除測試資料 ' + x.removed + ' 筆' + (linked ? '，可以按「從報名後台同步」' : '')); }, function () {});
+        });
+      } }, '改回報名後台名單') : null);
     var btn = R.canEdit && linked ? h('button', { class: 'btn primary', onclick: function (e) {
       busy(e.target, function () { return run('sync', {}, { action: 'run', msg: false }); }).then(function (x) {
         if (x) { toast('已同步：學員 ' + x.total + ' 位（更新 ' + x.changed + '）、專輔隨輔 ' + (x.staff || 0) + ' 位（新增 ' + (x.staffAdded || 0) + '）、房間 ' + (x.rooms || 0) + ' 間'); A.reload().then(function () { A.route(); }); }
       }, function () {});
     } }, '從報名後台同步') : null;
+    var demoBtn = R.canEdit ? h('button', { class: 'btn', onclick: function (e) {
+      var nw = inp(20, { type: 'number', min: 1 }), ns = inp(40, { type: 'number', min: 1 }), nq = inp(4, { type: 'number', min: 1 });
+      modal({ title: '改用測試資料', body: h('div', { class: 'col' }, h('p', { style: { margin: 0 } }, '產生虛擬的工作人員、學員、小隊和房間，代替報名後台的資料；打開後不再和報名後台同步，之後可以一鍵刪掉、改回來。'),
+        h('div', { class: 'grid2' }, field('工作人員（每隊兩位隊輔，其他分到活動、總務、醫護、機動）', nw), field('學員', ns)), field('小隊數', nq)),
+        actions: [{ text: '取消' }, { text: '產生測試資料', cls: 'primary', onClick: function () { return run('demo.on', { workers: nw.value, students: ns.value, squads: nq.value }, { action: 'run', msg: false }).then(function (x) { if (x) toast('已產生：工作人員 ' + x.workers + ' 位、學員 ' + x.students + ' 位、' + x.squads + ' 隊、房間 ' + x.rooms + ' 間'); }); } }] });
+    } }, '改用測試資料') : null;
     return h('div', { class: 'card row wrap', style: { padding: '10px 14px', marginBottom: '12px' } }, btn,
       h('span', { class: 'hint grow' }, linked ? '同步學員（小隊、房間）、各隊專輔隨輔（自動成為工作人員）、分房。每小時會自動同步，報名後台改了想馬上看到就按這裡。' + (I.lastSync ? '　上次同步 ' + fmt(I.lastSync) : '　尚未同步')
-        : '還沒和報名後台串接，到「營隊設定與備份」設定後就能同步。'));
+        : '還沒和報名後台串接，到「營隊設定與備份」設定後就能同步；想先試用可以「改用測試資料」。'), demoBtn);
   }
 
   /* ---------------- 共用小工具 ---------------- */
@@ -828,7 +862,7 @@ var PkgAdmin = (function () {
           function () {
             var c = {};
             Object.keys(custom).forEach(function (k) { c[k] = custom[k].value; });
-            return run('item.save', { id: it.id, flow: flow.value, date: date.value, time: time.value, dur: dur.value, name: name.value, place: place.value, activity: act.value, owner: owner.get(), staff: staff.get(), backup: backup.get(), squads: sq.get(), note: note.value, link: link.value, custom: c }, { ver: it.id ? it.version : undefined });
+            return run('item.save', { id: it.id, flow: flow.value, date: date.value, time: time.value, dur: dur.value, name: name.value, place: place.value, activity: act.value, owner: owner.get(), staff: staff.get(), backup: backup.get(), squads: sq.get(), note: note.value, link: link.value, tone: d.tone || '', go: d.go || '', custom: c }, { ver: it.id ? it.version : undefined });
           }, true);
       };
       var csv = function () {
@@ -875,16 +909,17 @@ var PkgAdmin = (function () {
         { k: 'staff', label: '關主或參與人員', type: 'people', w: '190px' },
         { k: 'backup', label: '機動人員', type: 'people', w: '130px' },
         { k: 'note', label: '備註', w: '150px' },
-        { k: 'link', label: '連結', w: '110px', ph: 'https://' }
+        { k: 'go', label: '連到細流／跑關', type: 'select', w: '170px', nopaste: true, opts: [{ value: '', label: '—' }].concat(flows.filter(function (f) { return f.id !== cur; }).map(function (f) { return { value: 'flow:' + f.id, label: '細流：' + f.data.name }; }), D.rotations.map(function (r) { return { value: 'rot:' + r.id, label: '跑關：' + (r.data.name || (actById[r.data.activity] ? actById[r.data.activity].data.name : '跑關')) }; })) },
+        { k: 'link', label: '其他連結', w: '110px', ph: 'https://' }
       ].concat(cf.map(function (k) { return { k: 'cf:' + k, label: k, w: '110px' }; })), {
-        rows: items.map(function (it) { var d = it.data, v = { date: d.date, flow: d.flow || cur, time: d.time, dur: d.dur || '', end: '', tone: d.tone || '', name: d.name, place: d.place, owner: d.owner || [], staff: d.staff || [], backup: d.backup || [], note: d.note || '', link: d.link || '' }; var e = endOf(v); if (e !== null && d.dur) v.end = toHm(e); cf.forEach(function (k) { v['cf:' + k] = (d.custom || {})[k] || ''; }); return { id: it.id, ver: it.version, vals: v, it: it }; }),
+        rows: items.map(function (it) { var d = it.data, v = { date: d.date, flow: d.flow || cur, time: d.time, dur: d.dur || '', end: '', tone: d.tone || '', name: d.name, place: d.place, owner: d.owner || [], staff: d.staff || [], backup: d.backup || [], note: d.note || '', go: d.go || '', link: d.link || '' }; var e = endOf(v); if (e !== null && d.dur) v.end = toHm(e); cf.forEach(function (k) { v['cf:' + k] = (d.custom || {})[k] || ''; }); return { id: it.id, ver: it.version, vals: v, it: it }; }),
         workers: D.workers, saveOp: 'item.save', delOp: 'item.delete', parse: parseCell, flash: 'items', select: true, drag: true, addText: '＋ 這一天加一項',
         groupOf: function (v) { return v.date || ''; }, extraGroups: days,
         groupOrder: function (keys) { return keys.sort(function (x, y) { return (x || '9999').localeCompare(y || '9999'); }); },
         groupLabel: function (k, rs) { return k ? dayNo(k) + dayLabel(k) + '　' + rs.length + ' 項' : '（沒填日期）'; },
         sortKey: function (v) { return (v.time || '99:99') + String(10000 - (Number(v.dur) || 0)).padStart(5, '0') + v.name; },
         // 新的一列：開始時間接上一列的結束
-        blank: function (k, _, prev) { var e = prev ? endOf(prev) : null; var v = { date: k, flow: cur, time: e === null ? '' : toHm(e), dur: '', end: '', tone: '', name: '', place: '', owner: [], staff: [], backup: [], note: '', link: '' }; cf.forEach(function (c) { v['cf:' + c] = ''; }); return v; },
+        blank: function (k, _, prev) { var e = prev ? endOf(prev) : null; var v = { date: k, flow: cur, time: e === null ? '' : toHm(e), dur: '', end: '', tone: '', name: '', place: '', owner: [], staff: [], backup: [], note: '', go: '', link: '' }; cf.forEach(function (c) { v['cf:' + c] = ''; }); return v; },
         isEmpty: function (v) { return !String(v.name || '').trim(); },
         validate: function (d) { return !String(d.name).trim() ? '有一列沒有活動名稱' : d.time && !/^\d{2}:\d{2}$/.test(d.time) ? '時間「' + d.time + '」看不懂，請打像 09:30' : ''; },
         toData: function (v, r) {
@@ -892,7 +927,7 @@ var PkgAdmin = (function () {
           cf.forEach(function (k) { c[k] = v['cf:' + k]; });
           var la = old.activity && actById[old.activity];
           var activity = la && la.data.name === old.name && v.name !== old.name ? '' : old.activity || '';   // 改了名稱就不再連到原本同名的活動（同名的會自動連）
-          return { id: r.id, flow: v.flow || cur, date: v.date, time: v.time, dur: v.dur, tone: v.tone, name: v.name, place: v.place, activity: activity, owner: v.owner, staff: v.staff, backup: v.backup, squads: old.squads || [], note: v.note, link: v.link, custom: c };
+          return { id: r.id, flow: v.flow || cur, date: v.date, time: v.time, dur: v.dur, tone: v.tone, name: v.name, place: v.place, activity: activity, owner: v.owner, staff: v.staff, backup: v.backup, squads: old.squads || [], note: v.note, go: v.go, link: v.link, custom: c };
         },
         rowInit: function (r) {
           // 開始、時長、結束三格連動：改結束就幫你算時長
@@ -988,10 +1023,14 @@ var PkgAdmin = (function () {
       // 一覽表：學員端公開用開關，改好一次儲存；「手動公開」的活動開關就是公開／收回
       var tsLocal = function (iso) { if (!iso) return ''; var t = taipei(new Date(iso)); return t.ymd + 'T' + t.hm; };
       box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '開關打開＝學員現在看得到。想到某個時間自動公開：開關關著、填「自動公開時間」。全部改好按一次「儲存變更」。這份清單和「人員與分隊 → 股別與活動」同一份；活動卡片頁在編輯器裡把頁面連到活動，活動還沒公開時學員端看不到那一頁。'));
+      // 課程的詳細介紹（時間、教材、照片）在「課程簡介」；舊的營隊要先安裝
+      var hasCourses = A.pool.some(function (p) { return p.pkg === 'courses'; });
+      box.appendChild(h('div', { class: 'recall-banner row wrap', style: { marginBottom: '10px' } }, h('span', { class: 'grow' }, hasCourses ? '課程（課程導覽、參訪導覽、實驗室介紹）的時間、講者、教材檔案、照片在「課程簡介」編輯；這裡列的是要不要讓學員看到。' : '這個營隊還沒安裝「課程簡介」（10/22 之前建立的營隊不會自動有）。安裝後左邊會多一個「課程簡介」，可以放課程時間、講者、教材檔案、照片。'),
+        hasCourses ? h('a', { class: 'btn sm', href: '#data/courses/list' }, '到課程簡介') : A.isAdmin() ? h('button', { class: 'btn sm primary', onclick: function (e) { busy(e.target, function () { return A.op('pkg.install', { data: { pkg: 'courses' } }); }).then(function () { toast('已安裝課程簡介'); return A.reload(); }).then(function () { A.navBuild(); A.route(); }, function () {}); } }, '安裝課程簡介') : null));
       var have = D.activities.map(function (a) { return String(a.data.name || '').trim(); });
       var miss = (D.peopleActs || []).filter(function (n) { return n && have.indexOf(n) < 0; });
       var G = grid(box, [
-        { k: 'name', label: '活動', w: '180px' },
+        { k: 'name', label: '活動／課程', w: '180px' },
         { k: 'pub', label: '學員看得到', type: 'switch', w: '100px' },
         { k: 'autoAt', label: '自動公開時間', type: 'datetime', w: '200px' },
         { k: 'summary', label: '簡介（現在主題、活動列表顯示）', w: '320px' },
@@ -1034,43 +1073,96 @@ var PkgAdmin = (function () {
         h('button', { class: 'btn sm', onclick: function () { miss.forEach(function (n) { var r = G.newRow(''); r.ed.name.set(n); r.t.check(); G.changed(r); }); miss = []; toast('已加到表格下面（學員端先看不到），記得按「儲存變更」'); } }, '加到表格')), G.bar);
     },
     rotations: function (box, D) {
+      // 直接在畫面上改，每個跑關一張卡、按「儲存」背景上傳；關卡、時段用空白分隔
       var acts = [{ value: '', label: '（不連活動）' }].concat(D.activities.map(function (a) { return { value: a.id, label: a.data.name }; }));
-      var edit = function (r) {
-        r = r || { id: '', data: { stations: [], slots: [], grid: {}, mode: 'table' } };
-        var d = JSON.parse(JSON.stringify(r.data));
-        d.grid = d.grid || {};
-        var act = sel(acts, d.activity || ''), name = inp(d.name), stations = inp((d.stations || []).join('、'), { placeholder: '第一關、第二關、第三關' }), slots = inp((d.slots || []).join('、'), { placeholder: '09:00、09:30、10:00' });
-        var mode = sel([{ value: 'table', label: '表格' }, { value: 'map', label: '上傳地圖（圖片網址）' }], d.mode || 'table'), img = inp(d.image, { placeholder: 'https://' });
-        var grid = h('div');
-        var split = function (s) { return s.split(/[、,，]/).map(function (x) { return x.trim(); }).filter(String); };
-        var draw = function () {
-          clear(grid);
-          var st = split(stations.value), sl = split(slots.value);
-          if (!st.length || !sl.length || !D.squads.length) { grid.appendChild(h('div', { class: 'hint' }, D.squads.length ? '填好關卡和時段後，這裡會出現排序表' : '先到「人員與分隊」建立小隊')); return; }
-          grid.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 't grid-rot' }, h('thead', null, h('tr', null, h('th', null, '小隊＼時段'), sl.map(function (t) { return h('th', null, t); }))),
-            h('tbody', null, D.squads.map(function (s) {
-              var row = d.grid[String(s.no)] = (d.grid[String(s.no)] || []).slice(0, sl.length);
-              return h('tr', null, h('td', null, s.name), sl.map(function (t, i) {
-                var x = sel([{ value: '', label: '—' }].concat(st.map(function (n, j) { return { value: j, label: n }; })), row[i] === undefined || row[i] === null ? '' : row[i]);
-                x.addEventListener('change', function () { row[i] = x.value === '' ? '' : Number(x.value); });
-                return h('td', null, x);
+      var split = function (s) { return String(s || '').split(/[\s、,，]+/).map(function (x) { return x.trim(); }).filter(String); };
+      var toMin = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+      var toHm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
+      var placeList = 'rotPlaces';
+      box.appendChild(h('datalist', { id: placeList }, D.places.map(function (p) { return h('option', { value: p.data.name }); })));
+      var list = h('div', { class: 'col' });
+      var cardOf = function (r) {
+        r = r || { id: '', data: { stations: [], places: [], slots: [], grid: {}, mode: 'table', len: '', turn: '' } };
+        var d = JSON.parse(JSON.stringify(r.data)), ro = !R.canEdit;
+        d.grid = d.grid || {}; d.places = d.places || [];
+        var act = sel(acts, d.activity || '', { disabled: ro }), name = inp(d.name, { placeholder: '例如：大地遊戲第一輪', disabled: ro });
+        var stations = inp((d.stations || []).join(' '), { placeholder: '關卡名稱用空白分隔，例如：第一關 第二關 第三關', disabled: ro });
+        var start = inp((d.slots || [])[0] || '', { placeholder: '09:00', style: { width: '90px' }, disabled: ro });
+        var len = inp(d.len || '', { type: 'number', min: 0, placeholder: '分鐘', style: { width: '90px' }, disabled: ro });
+        var turn = inp(d.turn || '', { type: 'number', min: 0, placeholder: '分鐘', style: { width: '90px' }, disabled: ro });
+        var slots = inp((d.slots || []).join(' '), { placeholder: '時段用空白分隔，例如：09:00 09:30 10:00；或用上面的開始時間＋每關＋換關自動排', disabled: ro });
+        var mode = sel([{ value: 'table', label: '表格' }, { value: 'map', label: '上傳地圖（圖片網址）' }], d.mode || 'table', { disabled: ro }), img = inp(d.image, { placeholder: 'https://', disabled: ro });
+        var placeBox = h('div', { class: 'row wrap', style: { gap: '6px' } }), placeIn = [];
+        var gridBox = h('div');
+        var drawPlaces = function () {
+          var st = split(stations.value), keep = placeIn.map(function (x) { return x.value; });
+          clear(placeBox); placeIn = [];
+          st.forEach(function (n, i) { var x = inp(keep[i] !== undefined ? keep[i] : d.places[i] || '', { list: placeList, placeholder: '場地', style: { width: '130px' }, disabled: ro }); placeIn.push(x); placeBox.appendChild(h('label', { class: 'small', style: { display: 'flex', flexDirection: 'column', gap: '2px' } }, h('b', null, n), x)); });
+          if (!st.length) placeBox.appendChild(h('span', { class: 'hint' }, '先在上面打關卡名稱'));
+        };
+        var autoSlots = function () {
+          var s0 = toMin(normTime(start.value)), n = split(stations.value).length, L = Number(len.value) || 0, T = Number(turn.value) || 0;
+          if (s0 === null || !n || !L) { toast('先填開始時間、關卡、每關幾分鐘', true); return; }
+          var out = []; for (var i = 0; i < n; i++) out.push(toHm(s0 + i * (L + T)));
+          slots.value = out.join(' '); drawGrid(); t.check();
+        };
+        var autoFill = function () {
+          var n = split(stations.value).length, m = split(slots.value).length;
+          if (!n || !m) { toast('先填關卡和時段', true); return; }
+          D.squads.forEach(function (sq, i) { var row = d.grid[String(sq.no)] = []; for (var j = 0; j < m; j++) row.push((i + j) % n); });
+          drawGrid(); t.check();
+        };
+        var drawGrid = function () {
+          clear(gridBox);
+          var st = split(stations.value), sl = split(slots.value).map(function (x) { var n = normTime(x); return n === null ? x : n; }), L = Number(len.value) || 0;
+          if (!st.length || !sl.length || !D.squads.length) { gridBox.appendChild(h('div', { class: 'hint' }, D.squads.length ? '填好關卡和時段後，這裡會出現排序表' : '先到「人員與分隊」建立小隊（或用測試資料）')); return; }
+          gridBox.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 't grid-rot' }, h('thead', null, h('tr', null, h('th', null, '小隊＼時段'), sl.map(function (x) { var s0 = toMin(x); return h('th', null, x, L && s0 !== null ? h('div', { class: 'small muted' }, '–' + toHm(s0 + L)) : null); }))),
+            h('tbody', null, D.squads.map(function (sq) {
+              var row = d.grid[String(sq.no)] = (d.grid[String(sq.no)] || []).slice(0, sl.length);
+              return h('tr', null, h('td', null, sq.name), sl.map(function (x, i) {
+                var c = sel([{ value: '', label: '—' }].concat(st.map(function (n, j) { return { value: j, label: n }; })), row[i] === undefined || row[i] === null ? '' : row[i], { disabled: ro });
+                c.addEventListener('change', function () { row[i] = c.value === '' ? '' : Number(c.value); });
+                return h('td', null, c);
               }));
             })))));
-          grid.appendChild(h('div', { class: 'hint' }, '兩隊同時在同一關是否算錯，在「設定」的「兩隊同時在同一關」調整。'));
         };
-        stations.addEventListener('change', draw);
-        slots.addEventListener('change', draw);
-        draw();
-        form(r.id ? '編輯跑關' : '新增跑關', [h('div', { class: 'grid2' }, field('活動', act), field('名稱', name)), h('div', { class: 'grid2' }, field('關卡（用、分隔）', stations), field('時段（用、分隔）', slots)), h('div', { class: 'grid2' }, field('顯示方式', mode), field('地圖圖片', img)), grid],
-          function () { return run('rotation.save', { id: r.id, activity: act.value, name: name.value, stations: split(stations.value), slots: split(slots.value), grid: d.grid, mode: mode.value, image: img.value }, { ver: r.id ? r.version : undefined }); }, true);
+        start.addEventListener('change', function () { var n = normTime(start.value); if (n) start.value = n; });
+        stations.addEventListener('change', function () { drawPlaces(); drawGrid(); });
+        slots.addEventListener('change', drawGrid);
+        len.addEventListener('change', drawGrid);
+        drawPlaces(); drawGrid();
+        var get = function () { return { id: r.id, activity: act.value, name: name.value, stations: split(stations.value), places: placeIn.map(function (x) { return x.value; }), slots: split(slots.value).map(function (x) { var n = normTime(x); return n === null ? x : n; }), len: len.value, turn: turn.value, grid: d.grid, mode: mode.value, image: img.value }; };
+        var save = h('button', { class: 'btn', onclick: function () {
+          var v = get();
+          if (!v.stations.length) { toast('先填關卡', true); return; }
+          queueDoc(el, t, 'rotation.save', v, { ver: r.id ? r.version : undefined, done: function (x) {
+            if (x && x.id) r.id = x.id;
+            var ad = x && x._extra && x._extra.admin, cur = ad && (ad.data.rotations || []).filter(function (y) { return y.id === r.id; })[0];
+            if (cur) r.version = cur.version;
+          } });
+        } }, '儲存');
+        var el = h('div', { class: 'card col' },
+          h('div', { class: 'grid2' }, field('活動', act), field('名稱', name)),
+          field('關卡（用空白分隔）', stations),
+          h('div', null, h('div', { class: 'small', style: { fontWeight: 700, marginBottom: '4px' } }, '每一關的場地'), placeBox),
+          h('div', { class: 'row wrap', style: { alignItems: 'flex-end' } }, field('開始時間', start), field('每關幾分鐘', len), field('換關幾分鐘', turn), ro ? null : h('button', { class: 'btn sm', type: 'button', onclick: autoSlots }, '自動排時段')),
+          field('時段（用空白分隔）', slots),
+          h('div', { class: 'row wrap' }, h('b', { class: 'grow' }, '排序表（小隊 × 時段 → 關卡）'), ro ? null : h('button', { class: 'btn sm', type: 'button', onclick: autoFill }, '自動輪流排')),
+          gridBox,
+          h('div', { class: 'grid2' }, field('顯示方式', mode), field('地圖圖片', img)),
+          ro ? null : h('div', { class: 'row' }, save, h('button', { class: 'btn ghost', type: 'button', onclick: function () {
+            if (!r.id) { el.remove(); return; }
+            del('rotation.delete', { id: r.id }, d.name || '跑關');
+          } }, '刪除')));
+        var t = track(el, function () { var v = get(); delete v.id; return v; }, save);   // 存好後才拿到的 ID 不算改動
+        if (!ro) save.parentNode.appendChild(t.status);
+        return el;
       };
-      var an = {};
-      D.activities.forEach(function (a) { an[a.id] = a.data.name; });
-      box.appendChild(bar(addBtn('新增跑關', function () { edit(); }), h('span', { class: 'hint' }, '時段 × 小隊 → 關卡。隊輔在工作人員端「主頁」會看到自己小隊的順序。')));
-      box.appendChild(table(['跑關', '關卡', '時段', ''], D.rotations.map(function (r) {
-        return hl(h('tr', null, h('td', null, h('b', null, r.data.name || an[r.data.activity] || '跑關')), h('td', { class: 'small' }, (r.data.stations || []).join('、')), h('td', { class: 'small' }, (r.data.slots || []).join('、')),
-          actions(function () { edit(r); }, function () { del('rotation.delete', { id: r.id }, r.data.name || '跑關'); })), r.id);
-      }), '還沒有跑關'));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '直接在這裡改，每個跑關改好按自己的「儲存」（背景上傳，不用等）。關卡、時段用空白分隔；填開始時間、每關幾分鐘、換關幾分鐘可以「自動排時段」，「自動輪流排」會讓每隊依序換關。隊輔在工作人員端「主頁」會看到自己小隊的順序、時間和場地。兩隊同時在同一關是否算錯，在「設定」調整。'));
+      if (R.canEdit) box.appendChild(h('div', { style: { marginBottom: '10px' } }, h('button', { class: 'btn primary', onclick: function () { list.insertBefore(cardOf(), list.firstChild); } }, '＋ 新增跑關')));
+      box.appendChild(list);
+      D.rotations.forEach(function (r) { list.appendChild(hl(cardOf(r), r.id)); });
+      if (!D.rotations.length && !R.canEdit) list.appendChild(h('div', { class: 'card empty' }, '還沒有跑關'));
     },
     places: function (box, D) {
       box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '一次打好幾個（Enter 換下一列，也可以從 Excel 貼一整欄），改完按一次「儲存變更」。流程項目填新場地時也會自動加進來。'));
