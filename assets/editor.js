@@ -13,18 +13,14 @@ var Editor = (function () {
   };
   var E = null;
 
-  function tabId() {
-    var t = '';
-    try { t = sessionStorage.getItem('ia_tab') || ''; if (!t) { t = rid('', 16); sessionStorage.setItem('ia_tab', t); } } catch (e) { t = rid('', 16); }
-    return t;
-  }
+  function tabId() { return pageTab(); }
 
   function open(m, side, q) {
     stop();
     E = { side: side, m: m, q: q || {}, tab: tabId(), pages: {}, blocks: {}, dirty: {}, seq: 0, sel: '', mine: false, timers: [], lastInput: 0, shownHandoffs: {}, live: {}, pkgPub: {}, acts: [] };
     // 看過的話先用上次的資料畫出來（唯讀），最新的到了再換掉
     var hit = apiCacheGet('getEditor', [A.camp, side]);
-    if (hit) { apply(hit); E.cached = true; render(); } else m.appendChild(h('div', { class: 'empty' }, '載入編輯器…'));
+    if (hit) { apply(hit); E.cached = true; render(); } else m.appendChild(h('div', { class: 'empty loading' }, '載入編輯器…'));
     load().then(function () {
       if (!E || E.m !== m) return;
       if (E.q.page && E.pages[E.q.page]) E.sel = E.q.page;
