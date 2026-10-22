@@ -146,8 +146,12 @@ function op(kind, o) {
   if (o.ver !== undefined && o.ver !== null) req.expected_version = o.ver;
   var tries = 0;
   function go() {
-    return api('op', req).then(function (r) { return r.result; }, function (e) {
-      if (e.code === 'NET' && tries < 1) { tries++; return new Promise(function (ok) { setTimeout(ok, 1000 * Math.pow(2, tries - 1)); }).then(go); }
+    return api('op', req).then(function (r) {
+      var x = r.result;
+      if (r.extra && x && typeof x === 'object') Object.defineProperty(x, '_extra', { value: r.extra, enumerable: false });   // 附帶的最新畫面資料
+      return x;
+    }, function (e) {
+      if (e.code === 'NET' && tries < 1) { tries++; req.retry = true; return new Promise(function (ok) { setTimeout(ok, 1000 * Math.pow(2, tries - 1)); }).then(go); }
       throw e;
     });
   }
@@ -317,6 +321,9 @@ function dirtyTrack(el, get, o) {
       was = was || d;
       return d;
     },
+    /** 先當作已存（背景上傳中）；上傳失敗時用 restore 把原本的基準放回去，又會變成沒存 */
+    accept: function () { var old = base; base = JSON.stringify(get()); el.classList.remove('dirty'); if (o.btn) o.btn.classList.toggle('primary', DIRTY_.some(function (x) { return x.btn === o.btn && x.isDirty(); })); return old; },
+    restore: function (old) { base = old; t.check(); },
     saved: function () { base = JSON.stringify(get()); el.classList.remove('dirty'); el.classList.add('saved'); if (o.btn) o.btn.classList.toggle('primary', DIRTY_.some(function (x) { return x.btn === o.btn && x.isDirty(); })); setTimeout(function () { el.classList.remove('saved'); }, 3000); }
   };
   ['input', 'change', 'click', 'keyup'].forEach(function (ev) { el.addEventListener(ev, function () { setTimeout(t.check, 0); }); });
@@ -327,7 +334,9 @@ function dirtyTrack(el, get, o) {
   return t;
 }
 function dirtyAny() { return DIRTY_.filter(function (t) { return t.isDirty(); }).length; }
-window.addEventListener('beforeunload', function (e) { if (dirtyAny()) { e.preventDefault(); e.returnValue = ''; } });
+/** 背景上傳中的批次數（還沒傳完就關分頁會先問） */
+var UPLOADING_ = 0;
+window.addEventListener('beforeunload', function (e) { if (dirtyAny() || UPLOADING_) { e.preventDefault(); e.returnValue = ''; } });
 
 /** 這個瀏覽器分頁的識別碼（編輯鎖用：同一人開兩個分頁，第二個唯讀） */
 function pageTab() {
