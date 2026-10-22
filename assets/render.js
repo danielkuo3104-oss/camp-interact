@@ -89,6 +89,42 @@ var Front = (function () {
     }
   }
 
+  /** 照片：依 pos（x、y 百分比、z 放大）裁切，套 frame 外框（circle 圓形、ring 圓形外圈、rounded 圓角、square 方形、hex 六角形、wide 橫幅） */
+  var FRAMES = { circle: '圓形', ring: '圓形＋外圈', rounded: '圓角方形', square: '方形', hex: '六角形' };
+  function photo(url, pos, frame, size) {
+    pos = pos || {};
+    var x = pos.x == null ? 50 : pos.x, y = pos.y == null ? 50 : pos.y, z = pos.z || 1;
+    var img = h('img', { src: url, alt: '', loading: 'lazy', draggable: false, style: { objectPosition: x + '% ' + y + '%', transform: z !== 1 ? 'scale(' + z + ')' : '', transformOrigin: x + '% ' + y + '%' } });
+    var box = h('div', { class: 'ph ph-' + (frame === 'wide' || FRAMES[frame] ? frame : 'circle') }, img);
+    if (size) { box.style.width = size + 'px'; if (frame !== 'wide') box.style.height = size + 'px'; }
+    return box;
+  }
+  var COURSE_LAYOUTS = { list: '清單＋小照片', profile: '講者名片（大頭照）', cover: '封面大圖', plain: '時間軸（不顯示照片）' };
+  function courseMins(n) { return n >= 60 ? Math.floor(n / 60) + ' 小時' + (n % 60 ? ' ' + (n % 60) + ' 分' : '') : n + ' 分鐘'; }
+  function courseCard(c, lay, by) {
+    var pic = c.photo && lay !== 'plain' && okUrl(c.photo);
+    var tm = c.start ? c.start + (c.end ? '–' + c.end : '') : '';
+    var meta = h('div', { class: 'cs-meta' },
+      by === 'date' ? h('span', { class: 'tag' }, c.type) : null,
+      (c.date || tm) && lay !== 'plain' ? h('span', null, '🕘 ' + [by === 'date' ? '' : (c.date ? dayLabel(c.date) : ''), tm].filter(String).join(' ')) : null,
+      c.dur ? h('span', null, courseMins(c.dur)) : null,
+      c.place ? h('span', null, '📍 ' + c.place) : null);
+    var who = c.speaker ? h('div', { class: 'cs-who' }, c.speaker) : null;
+    var files = (c.files || []).filter(function (f) { return okUrl(f.url); });
+    var more = c.desc || files.length;
+    var body = more ? h('div', { class: 'cs-body' }, c.desc ? h('div', { class: 'rich', html: md(c.desc) }) : null,
+      files.length ? h('div', { class: 'cs-files' }, files.map(function (f) { return h('a', { class: 'btn sm', href: f.url, target: '_blank', rel: 'noopener' }, (f.kind === 'pdf' ? '📄 ' : f.kind === 'slides' ? '📊 ' : '📎 ') + (f.name || '檔案')); })) : null) : null;
+    var head;
+    if (lay === 'cover') {
+      head = h('div', { class: 'cs-head' }, pic ? photo(c.photo, c.photoPos, 'wide') : null, h('div', { class: 'cs-txt' }, h('div', { class: 'cs-title' }, c.title), who, meta));
+    } else if (lay === 'plain') {
+      head = h('div', { class: 'cs-head' }, h('div', { class: 'cs-time' }, h('b', null, c.start || '—'), c.end ? h('small', null, c.end) : null), h('div', { class: 'cs-txt' }, h('div', { class: 'cs-title' }, c.title), who, meta));
+    } else {
+      head = h('div', { class: 'cs-head' }, pic ? photo(c.photo, c.photoPos, c.frame, lay === 'profile' ? 76 : 48) : null, h('div', { class: 'cs-txt' }, h('div', { class: 'cs-title' }, c.title), who, meta));
+    }
+    if (!more) return h('div', { class: 'cs' }, head);
+    return h('details', { class: 'cs' }, h('summary', null, head, h('span', { class: 'cs-chev', 'aria-hidden': 'true' }, '›')), body);
+  }
   function card(title, body, extra) { return h('div', { class: 'fb' }, title ? h('h2', null, title) : null, body, extra || null); }
   function contactRow(name, sub, phone, sos) {
     return h('div', { class: 'contact' }, h('div', { class: 'who' }, h('b', null, name), sub ? h('small', null, sub) : null),
@@ -247,19 +283,11 @@ var Front = (function () {
     },
     courses: {
       list: function (d) {
-        var list = d.list || [], by = d.groupBy === 'date' ? 'date' : 'type';
+        var list = d.list || [], by = d.groupBy === 'date' ? 'date' : 'type', lay = COURSE_LAYOUTS[d.layout] ? d.layout : 'list';
         if (!list.length) return card(d.title || '課程簡介', h('div', { class: 'muted small' }, '還沒有課程'));
         var keys = by === 'date' ? list.map(function (c) { return c.date; }).filter(function (x, i, a) { return a.indexOf(x) === i; }) : (d.types || []).filter(function (t) { return list.some(function (c) { return c.type === t; }); });
-        var mins = function (n) { return n >= 60 ? Math.floor(n / 60) + ' 小時' + (n % 60 ? ' ' + (n % 60) + ' 分' : '') : n + ' 分鐘'; };
-        var one = function (c) {
-          var when = [c.date ? dayLabel(c.date) : '', c.start ? c.start + (c.end ? '–' + c.end : '') : '', c.dur ? '（' + mins(c.dur) + '）' : ''].filter(String).join(' ');
-          return h('details', { class: 'cs' }, h('summary', null, c.photo ? h('img', { class: 'cs-av', src: c.photo, alt: '', loading: 'lazy' }) : null,
-            h('div', { class: 'grow' }, h('b', null, c.title), by === 'date' ? h('span', { class: 'tag', style: { marginLeft: '6px' } }, c.type) : null, h('div', { class: 'small muted' }, when), (c.speaker || c.place) ? h('div', { class: 'small muted' }, [c.speaker, c.place ? '📍 ' + c.place : ''].filter(String).join('　')) : null)),
-            h('div', { class: 'cs-body' }, c.photo ? h('img', { class: 'cs-big', src: c.photo, alt: c.title, loading: 'lazy' }) : null, c.desc ? h('div', { class: 'rich', html: md(c.desc) }) : null,
-              (c.files || []).length ? h('div', { class: 'col', style: { gap: '4px', marginTop: '6px' } }, c.files.map(function (f) { return okUrl(f.url) ? h('a', { class: 'btn sm', href: f.url, target: '_blank', rel: 'noopener', style: { justifyContent: 'flex-start' } }, (f.kind === 'pdf' ? '📄 ' : f.kind === 'slides' ? '📊 ' : '📎 ') + (f.name || '檔案')) : null; })) : null));
-        };
-        return card(d.title || '課程簡介', h('div', { class: 'col' }, keys.map(function (k) {
-          return h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'cs-grp' }, by === 'date' ? (k ? dayLabel(k) : '未定日期') : k), list.filter(function (c) { return (by === 'date' ? c.date : c.type) === k; }).map(one));
+        return card(d.title || '課程簡介', h('div', { class: 'col cs-list cs-' + lay }, keys.map(function (k) {
+          return h('div', { class: 'col', style: { gap: '8px' } }, h('div', { class: 'cs-grp' }, by === 'date' ? (k ? dayLabel(k) : '未定日期') : k), list.filter(function (c) { return (by === 'date' ? c.date : c.type) === k; }).map(function (c) { return courseCard(c, lay, by); }));
         })));
       }
     },
@@ -369,5 +397,5 @@ var Front = (function () {
       .map(function (b) { return { id: b.id, pkg: b.data.pkg, view: b.data.view, config: b.data.config || {} }; });
   }
 
-  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart };
+  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard };
 })();
