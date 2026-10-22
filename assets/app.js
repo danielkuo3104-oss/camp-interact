@@ -15,6 +15,9 @@
   var S = { boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false };
 
   root.classList.toggle('worker', side === 'worker');
+  // 工作人員端換靛藍色，和學員端分開（彈出視窗掛在 body 上，所以加在 html）
+  document.documentElement.classList.toggle('side-worker', side === 'worker');
+  if (side === 'worker') { var tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.content = '#3b4f8c'; }
 
   function screen(node) { clear(root); root.appendChild(node); }
   function msgScreen(title, text, extra) {
