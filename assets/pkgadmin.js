@@ -850,6 +850,17 @@ var PkgAdmin = (function () {
     },
     /** 工作分配：依活動分組，每列一個工作（角色／詳細工作／日期／需要人數／人員），人數不夠會標出來 */
     assign: function (box, D) {
+      var CN = '〇一二三四五六七八九十';
+      var nextJob = function (v) {
+        var d = String(v.detail || ''), m = d.match(/^(.*?)(\d+)(\D*)$/), c = d.match(/^(.*?)([一二三四五六七八九十]{1,2})([^一二三四五六七八九十]*)$/);
+        if (m) d = m[1] + (Number(m[2]) + 1) + m[3];
+        else if (c) {
+          var n = c[2].length === 1 ? CN.indexOf(c[2]) : c[2] === '十' ? 10 : c[2].charAt(0) === '十' ? 10 + CN.indexOf(c[2].charAt(1)) : CN.indexOf(c[2].charAt(0)) * 10 + (c[2].charAt(1) === '十' ? 0 : CN.indexOf(c[2].charAt(1)));
+          n++;
+          if (n > 0 && n < 20) d = c[1] + (n <= 10 ? (n === 10 ? '十' : CN.charAt(n)) : '十' + CN.charAt(n - 10)) + c[3];
+        }
+        return { activity: v.activity || '', role: v.role || '', detail: d === String(v.detail || '') ? '' : d, date: v.date || '', need: v.need === undefined ? '' : v.need, people: [] };
+      };
       var acts = actsOf(D);
       D.assign.forEach(function (a) { if (a.data.activity && acts.indexOf(a.data.activity) < 0) acts.push(a.data.activity); });
       var groups = [''].concat(acts);   // 第一組：不屬於某個活動的一般工作事項（接待、守夜…）
@@ -858,7 +869,7 @@ var PkgAdmin = (function () {
       var roles = [];
       D.assign.forEach(function (a) { if (a.data.role && roles.indexOf(a.data.role) < 0) roles.push(a.data.role); });
       ['關主', '機動', '守夜', '場控', '器材', '攝影'].forEach(function (x) { if (roles.indexOf(x) < 0) roles.push(x); });
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '最上面「一般工作事項」放不屬於某個活動的工作（接待、守夜、場佈…）；其他依活動分組（活動清單和營期流程同一份）。列出要做的工作和需要幾個人，再把人放進去；人數不夠會標紅、剛好是綠色。角色含「守夜」的會自動成為那一晚的守夜人員（日期要填）。'));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '最上面「一般工作事項」放不屬於某個活動的工作（接待、守夜、場佈…）；同一個工作有好幾關（例如關主），在詳細工作按 Enter 或按 ↓，會在下面多一列，自動帶好工作並接下一關，只要放人。其他依活動分組（活動清單和營期流程同一份）。列出要做的工作和需要幾個人，再把人放進去；人數不夠會標紅、剛好是綠色。角色含「守夜」的會自動成為那一晚的守夜人員（日期要填）。'));
       var sum = h('div', { class: 'row wrap', style: { marginBottom: '8px' } });
       var load = h('details', { class: 'card', style: { marginTop: '12px' } }, h('summary', { style: { cursor: 'pointer', fontWeight: 700 } }, '每個人分到的工作'), h('div', { class: 'small' }));
       var G = grid(box, [
@@ -909,7 +920,10 @@ var PkgAdmin = (function () {
               } }] });
             } }, '🗑 刪除'));
         },
-        blank: function (k) { return { activity: k || '', role: '', detail: '', date: '', need: '', people: [] }; },
+        // Enter 在下面插入一列：同一個活動、工作、日期、人數，詳細工作自動接下一關（第一關 → 第二關、第 1 關 → 第 2 關）
+        enterInsert: true,
+        blank: function (k, x, prev) { return prev ? nextJob(prev) : { activity: k || '', role: '', detail: '', date: '', need: '', people: [] }; },
+        rowActions: function (r, G) { return R.canEdit ? h('button', { class: 'btn sm ghost', type: 'button', title: '同一個工作往下加一列（例如下一關），人員空白', onclick: function () { var n = G.add({ id: '', ver: undefined, vals: { activity: '', role: '', detail: '', date: '', need: '', people: [] }, fill: nextJob(r.read()) }, r.tr.nextSibling); G.changed(n); var f = n.tr.querySelector('td[data-ci="2"] input'); if (f) { f.focus(); f.select(); } } }, '↓') : null; },
         isEmpty: function (v) { return !String(v.role || '').trim() && !(v.people || []).length; },
         validate: function (d) { return !String(d.role).trim() ? '每一列都要填工作（角色）' : ''; },
         toData: function (v, r) { return { id: r.id, activity: v.activity, role: v.role, detail: v.detail, date: v.date, need: v.need, people: v.people }; },
