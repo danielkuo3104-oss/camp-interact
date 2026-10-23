@@ -135,7 +135,7 @@
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (S.boot) render(); });
   window.addEventListener('appinstalled', function () { deferredPrompt = null; store(IK, '1', true); if (S.boot) render(); });
   /** 加到主畫面後的名稱：圖示都一樣，所以名稱先寫學員／工作人員，再接營隊名稱（iPhone 大約只顯示前 12 個字） */
-  function setAppName(campName) { document.title = homeName(side === 'worker' ? '工作' : '學員', campName) + (preview ? '（預覽）' : ''); }
+  function setAppName(campName) { document.title = homeName(side === 'worker' ? '工人' : '學員', campName) + (preview ? '（預覽）' : ''); }
   setAppName('');
   function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
   function isIos() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
