@@ -162,12 +162,19 @@ A.views.home = function (m) {
 };
 
 /* ---------------- 警示與通知 ---------------- */
-A.eventRow = function (e, after) {
+A.eventRow = function (e, after, hideIgnored) {
   var href = A.linkOf(e);
   var acts = h('div', { class: 'row', style: { gap: '4px' } });
   if (href) acts.appendChild(h('a', { class: 'btn sm', href: href }, '前往'));
   if (e.type === 'reminder') {
-    var mark = function (st) { return function (ev) { busy(ev.target, function () { return A.op('event.mark', { data: { eid: e.eid, state: st } }); }).then(after, function () {}); }; };
+    // 按下立刻生效（畫面先改），改動排隊在背景送出；可以連續按很多筆
+    var mark = function (st) { return function () {
+      var old = e.state, row = acts.closest('.ev');
+      e.state = st;
+      var nr = A.eventRow(e, after, hideIgnored);
+      if (row && row.parentNode) { if (st === 'ignore' && hideIgnored) row.remove(); else row.parentNode.replaceChild(nr, row); }
+      A.markQ = (A.markQ || Promise.resolve()).then(function () { return A.op('event.mark', { data: { eid: e.eid, state: st } }); }).then(function () { if (A.poll) A.poll(); }, function (er) { e.state = old; toast('「' + e.text.slice(0, 20) + '」沒有改成功：' + (er && er.message || er), true); if (after) after(); });
+    }; };
     if (e.state !== 'pin') acts.appendChild(h('button', { class: 'btn sm ghost', onclick: mark('pin'), title: '釘選（只對自己）' }, '📌'));
     if (e.state !== 'ignore') acts.appendChild(h('button', { class: 'btn sm ghost', onclick: mark('ignore'), title: '忽略（只對自己）' }, '忽略'));
     if (e.state) acts.appendChild(h('button', { class: 'btn sm ghost', onclick: mark('') }, '取消' + (e.state === 'pin' ? '釘選' : '忽略')));
@@ -188,7 +195,7 @@ A.views.events = function (m) {
       clear(evBox).appendChild(h('h2', null, '目前的警示與提醒', h('button', { class: 'btn sm ghost', onclick: function () { showIgnored = !showIgnored; loadEv(); } }, showIgnored ? '隱藏已忽略' : '顯示已忽略')));
       var list = r.events.filter(function (e) { return showIgnored || e.state !== 'ignore'; });
       if (!list.length) evBox.appendChild(h('div', { class: 'card empty' }, '目前沒有需要處理的事 👍'));
-      list.forEach(function (e) { evBox.appendChild(A.eventRow(e, loadEv)); });
+      list.forEach(function (e) { evBox.appendChild(A.eventRow(e, loadEv, !showIgnored)); });
       A.poll();
     }).then(null, fail);
   };
