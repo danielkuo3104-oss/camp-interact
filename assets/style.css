@@ -477,3 +477,32 @@ td.dt-merged textarea { color: var(--text-3); text-align: center; }
 /* 改了時間自動排序：移過去的那一列閃一下 */
 .t.grid tr.g-moved td { animation: g-moved .9s ease-out; }
 @keyframes g-moved { from { background: var(--brand-soft); } }
+/* 跑關表：時段列淡黃、自由列（開關、移動、結關）灰底橫跨 */
+table.rt td.rt-st { background: #fff6d6; }
+table.rt tr.rt-free td.rt-span { background: var(--mute-soft); }
+table.rt td.rt-note { text-align: left; color: var(--text-2); }
+.sched .it.rt-free { background: var(--mute-soft); }
+.rot-free { display: grid; grid-template-columns: 80px 80px 1fr 140px 1fr 36px; gap: 6px; align-items: center; }
+.rot-free .hd { font-size: 12px; font-weight: 700; color: var(--text-2); }
+@media (max-width: 700px) { .rot-free { grid-template-columns: 70px 70px 1fr 36px; } .rot-free .fr-pl, .rot-free .fr-nt, .rot-free .hd.fr-pl, .rot-free .hd.fr-nt { grid-column: span 2; } }
+.app-shell.night table.rt td.rt-st { background: #2a3550; }
+/* 活動細流表格的「現在」 */
+table.dt tr.now td { box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent); }
+table.dt tr.now-tr td { padding: 0; border: 0; height: 0; position: relative; }
+table.dt tr.now-tr td::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; border-top: 2px solid var(--bad); }
+table.dt tr.now-tr td span { position: absolute; left: 0; top: -11px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; z-index: 1; }
+/* 同時開始的流程併成一組 */
+.sched.flow .par-label { font-size: 12px; font-weight: 700; color: var(--info); margin: 8px 0 2px 4px; }
+.sched.flow .it.par { margin-left: 14px; position: relative; border-bottom: 0; margin-top: 4px; }
+.sched.flow .it.par::before { content: ''; position: absolute; left: -11px; top: 0; bottom: -4px; border-left: 3px solid var(--info); border-radius: 2px; }
+.sched.flow .it.par-last::before { bottom: 0; }
+.sched.flow .it.par.past::before { opacity: .5; }
+/* 簽名板 */
+.sign-pad { display: flex; flex-direction: column; gap: 6px; }
+.sign-box { position: relative; border: 1.5px dashed var(--line-strong); border-radius: 10px; background: #fff; }
+.sign-cv { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; cursor: crosshair; }
+.sign-cv.big { border: 1.5px dashed var(--line-strong); border-radius: 10px; background: #fff; }
+.sign-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa29d; pointer-events: none; font-size: 14px; }
+.sign-pad.signed .sign-ph { display: none; }
+.sign-img { height: 40px; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+.qr-box { background: #fff; padding: 16px; border-radius: 12px; }
