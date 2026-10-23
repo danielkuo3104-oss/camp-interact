@@ -33,6 +33,7 @@ A.reload = function () {
     A.pkgs = r[1];
     A.pool = r[1].installed.filter(function (s) { return s.active; });
     if ($('#campName')) $('#campName').textContent = A.info.name;
+    homeName('管理', A.info.name); document.title = '管理｜' + A.info.name;
   });
 };
 
