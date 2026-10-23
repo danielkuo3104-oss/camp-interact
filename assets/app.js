@@ -49,8 +49,34 @@
       return;
     }
     if (preview) { IA.token = store('ia_token'); if (!IA.token) { IA.onAuth(); return; } boot(); return; }
-    if (!store(TK)) { side === 'worker' ? workerLogin() : msgScreen('請從學員專區進入', '打開報名系統的「學員專區」，按「進入營隊互動」就會自動登入。'); return; }
+    if (!store(TK)) { side === 'worker' ? workerLogin() : studentLogin(); return; }
     boot();
+  }
+
+  /** 學員：營隊中掃 QR code 進來，輸入姓名＋身分證字號（或報名時的 Email）直接登入，不用先去學員專區 */
+  function studentLogin() {
+    var name = inp('', { autocomplete: 'name' }), idk = inp('', { autocomplete: 'off', placeholder: '例如：A123456789' });
+    var err = h('div', { class: 'err' }), title = h('h1', null, '學員登入'), btn = h('button', { class: 'btn primary' }, '進入');
+    var note = h('p', { class: 'small muted', style: { margin: 0 } }, '用報名時填的姓名和身分證字號登入（沒有填身分證的營隊，請改填報名時的 Email）。也可以從報名系統的「學員專區」按「進入營隊互動」。');
+    api('campPublicInfo', camp).then(function (c) {
+      title.textContent = c.name;
+      if (!c.studentLogin) { clear(note).appendChild(document.createTextNode('這個營隊還沒有開放直接登入，請打開報名系統的「學員專區」，按「進入營隊互動」。')); name.disabled = idk.disabled = btn.disabled = true; }
+    }, function () {});
+    var go = function () {
+      err.textContent = '';
+      if (!name.value.trim() || !idk.value.trim()) { err.textContent = '請填姓名與身分證字號'; return; }
+      busy(btn, function () { return api('studentLogin', camp, name.value, idk.value); }).then(function (r) {
+        store(TK, r.token, true);
+        try { sessionStorage.removeItem(VK); } catch (e) {}
+        if (r.nameNotice) toast(r.nameNotice);
+        boot();
+      }, function (e) { err.textContent = e.message; });
+    };
+    btn.addEventListener('click', go);
+    [name, idk].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
+    screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
+      h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '學員端'), title,
+      field('姓名', name), field('身分證字號', idk), err, btn, note)));
   }
 
   function workerLogin() {
@@ -116,7 +142,8 @@
       action: function (pkg, name, data) { return op('front.action', { camp: camp, target: { pkg: pkg, action: name, side: side }, data: data }); } };
     var em = b.ext && b.ext.emergency;
     S.nightCfg = em || null;
-    S.night = !!(em && em.night);
+    S.night = em && em.nightStart ? nightNow() : !!(em && em.night);
+    S.env.night = S.night;
     var start = (location.hash.match(/#p=([\w]+)/) || [])[1];
     var home = roots()[0];
     S.cur = start && Front.pageById(S.env, start) ? start : (home ? home.id : '');
@@ -134,14 +161,17 @@
   function nightNow() {
     var c = S.nightCfg;
     if (!c || !/^\d\d:\d\d$/.test(c.nightStart || '') || !/^\d\d:\d\d$/.test(c.nightEnd || '') || c.nightStart === c.nightEnd) return false;
-    var t = taipei().hm;
-    return c.nightStart < c.nightEnd ? (t >= c.nightStart && t < c.nightEnd) : (t >= c.nightStart || t < c.nightEnd);
+    var tp = taipei(), t = tp.hm;
+    if (!(c.nightStart < c.nightEnd ? (t >= c.nightStart && t < c.nightEnd) : (t >= c.nightStart || t < c.nightEnd))) return false;
+    // 只在營期內的晚上：凌晨（夜間結束前）算前一天晚上
+    if (c.campStart && c.campEnd) { var nd = t < c.nightEnd && c.nightStart > c.nightEnd ? taipei(new Date(nowDate().getTime() - 86400000)).ymd : tp.ymd; if (nd < c.campStart || nd >= c.campEnd) return false; }
+    return true;
   }
 
   function tick() {
     if (document.hidden) return;
     var n = nightNow();
-    if (n !== S.night) { S.night = n; render(); return; }
+    if (n !== S.night) { S.night = n; S.env.night = n; render(); return; }
     loadLive();
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden && S.env) loadLive(); });
