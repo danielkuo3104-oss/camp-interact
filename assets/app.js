@@ -59,7 +59,7 @@
     var err = h('div', { class: 'err' }), title = h('h1', null, '學員登入'), btn = h('button', { class: 'btn primary' }, '進入');
     var note = h('p', { class: 'small muted', style: { margin: 0 } }, '用報名時填的姓名和身分證字號登入（沒有填身分證的營隊，請改填報名時的 Email）。也可以從報名系統的「學員專區」按「進入營隊互動」。');
     api('campPublicInfo', camp).then(function (c) {
-      title.textContent = c.name;
+      title.textContent = c.name; setAppName(c.name);
       if (!c.studentLogin) { clear(note).appendChild(document.createTextNode('這個營隊還沒有開放直接登入，請打開報名系統的「學員專區」，按「進入營隊互動」。')); name.disabled = idk.disabled = btn.disabled = true; }
     }, function () {});
     var go = function () {
@@ -96,7 +96,7 @@
     var err = h('div', { class: 'err' }), title = h('h1', null, '工作人員登入');
     var passF = field('營隊通行碼', pass, '通行碼由籌辦團隊提供');
     api('campPublicInfo', camp).then(function (c) {
-      title.textContent = c.name; if (c.noPass) passF.classList.add('hidden');
+      title.textContent = c.name; setAppName(c.name); if (c.noPass) passF.classList.add('hidden');
       if (!(c.depts || []).length) { useText(); return; }
       c.depts.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
     }, function () { useText(); });
@@ -134,6 +134,14 @@
   var IK = 'ia_install_off_' + camp + '_' + side, deferredPrompt = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (S.boot) render(); });
   window.addEventListener('appinstalled', function () { deferredPrompt = null; store(IK, '1', true); if (S.boot) render(); });
+  /** 加到主畫面後的名稱：圖示都一樣，所以名稱先寫學員／工作人員，再接營隊名稱（iPhone 大約只顯示前 12 個字） */
+  function setAppName(campName) {
+    var short = String(campName || '').replace(/[（(《【][^）)》】]*[）)》】]/g, '').replace(/\s+/g, '').trim() || '營隊';
+    var nm = (side === 'worker' ? '工作｜' : '學員｜') + short;
+    document.title = nm + (preview ? '（預覽）' : '');
+    var m = document.querySelector('meta[name=apple-mobile-web-app-title]'); if (m) m.content = nm;
+  }
+  if (side === 'worker') { var mf = document.querySelector('link[rel=manifest]'); if (mf) mf.href = 'manifest-worker.webmanifest'; }
   function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
   function isIos() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
   function inAppBrowser() { return /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent); }
@@ -145,7 +153,7 @@
       : ['點瀏覽器右上角的選單（⋮）', '選「加到主畫面」或「安裝應用程式」', '按「安裝」或「新增」'];
     modal({ title: '加到主畫面', body: h('div', { class: 'col', style: { gap: '10px' } },
       h('ol', { class: 'install-steps' }, steps.map(function (t) { return h('li', null, t); })),
-      h('p', { class: 'small muted', style: { margin: 0 } }, '之後從主畫面的「營隊」圖示打開，就像 App 一樣。' + (isIos() ? 'iPhone 從主畫面打開時要再登入一次。' : ''))) });
+      h('p', { class: 'small muted', style: { margin: 0 } }, '主畫面上的名稱會是「' + document.title.replace('（預覽）', '') + '」，加的時候也可以自己改。之後從主畫面打開，就像 App 一樣。' + (isIos() ? 'iPhone 從主畫面打開時要再登入一次。' : ''))) });
   }
   function installBanner() {
     var bn = h('div', { class: 'install-banner' }, h('span', { class: 'brand-mark' }, '營'),
@@ -196,6 +204,7 @@
 
   function show(b) {
     S.boot = b;
+    setAppName(b.camp && b.camp.name);
     // 上次載入過的區塊資料先拿來用（打開馬上有內容），背景再更新
     if (!preview && !Object.keys(S.live).length) { var cl = jget(LK, null); if (cl) Object.keys(cl).forEach(function (k) { S.live[k] = cl[k]; }); }
     var snap = b.snapshot;
