@@ -136,6 +136,36 @@ var Front = (function () {
       el.classList.toggle('now', s0 <= t && t < e0);
       el.classList.toggle('past', t >= e0);
     });
+    // 時程清單裡畫一條「現在」的線：放在第一個還沒開始的項目前面（只在今天有行程的時候）
+    $all('.sched', root || document).forEach(function (list) {
+      $all('.now-line', list).forEach(function (x) { x.remove(); });
+      var its = $all(':scope > .it[data-s]', list), today = taipei().ymd;
+      var td = its.filter(function (el) { return taipei(new Date(Number(el.dataset.s))).ymd === today; });
+      if (!td.length) return;
+      var nx = td.filter(function (el) { return Number(el.dataset.s) > t; })[0];
+      var line = h('div', { class: 'now-line' }, h('span', null, '現在 ' + taipei().hm));
+      if (nx) list.insertBefore(line, nx); else { var last = td[td.length - 1]; last.after(line); }
+    });
+  }
+  /** 時程清單只露出 3–4 項（現在的在中間），可以展開全天 */
+  function schedWin(list, win) {
+    if (!win) return list;
+    var box = h('div', { class: 'sched-win' }, list);
+    var btn = h('button', { class: 'btn sm ghost sched-all', type: 'button', onclick: function () {
+      var all = box.classList.toggle('all'); btn.textContent = all ? '收起' : '展開全部';
+      if (!all) centerNow(box, true);
+    } }, '展開全部');
+    return h('div', { class: 'sched-wrap' }, box, h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '6px' } }, btn));
+  }
+  /** 把現在的項目（沒有的話是「現在」的線）捲到視窗中間 */
+  function centerNow(root, force) {
+    $all('.sched-win', root || document).forEach(function (box) {
+      if (box.classList.contains('all') || (!force && box.dataset.centered)) return;
+      var n = box.querySelector('.it.now') || box.querySelector('.now-line');
+      if (!n) return;
+      box.dataset.centered = 1;
+      box.scrollTop = Math.max(0, n.offsetTop - box.clientHeight / 2 + n.offsetHeight / 2);
+    });
   }
   /** 活動配色：同一個活動永遠同一個顏色（依名稱） */
   var ACT_COLORS = ['#e4efff', '#e3f5e6', '#fff0d2', '#f1e4ff', '#ffe3e8', '#dcf4f1', '#fbe7d7', '#e9ecf8', '#eef5d3', '#e6e1ff', '#fde8f6', '#e0f0fa'];
@@ -146,6 +176,7 @@ var Front = (function () {
   /** 地圖：底圖＋標點、文字、文字卡片、連線（座標是 0–1 的比例）。o.edit 時每個元素可以拿到 data-id 給編輯器用 */
   var SVGNS = 'http://www.w3.org/2000/svg';
   function sv(tag, attrs, kids) { var e = document.createElementNS(SVGNS, tag); Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]); }); (kids || []).forEach(function (k) { if (k) e.appendChild(typeof k === 'string' ? document.createTextNode(k) : k); }); return e; }
+  var MAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330];
   function mapView(map, o) {
     o = o || {};
     var wrap = h('div', { class: 'map-wrap' }), W = 1000, H = o.aspect ? Math.round(W * o.aspect) : 700;
@@ -160,6 +191,32 @@ var Front = (function () {
       var byId = {}, items = map.items || [];
       items.forEach(function (x) { if (x.t !== 'line') byId[x.id] = x; });
       var P = function (x, y) { return [x * W, y * H]; };
+      var route = function (u) {
+        var out = [{ p: u[0], k: 0 }];
+        for (var i = 1; i < u.length; i++) {
+          var p = out[out.length - 1].p, q = u[i], dx = q[0] - p[0], dy = q[1] - p[1];
+          var ang = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+          var near = MAP_ANGLES.reduce(function (m, a) { var d = Math.abs(((ang - a + 540) % 360) - 180); return d < m.d ? { a: a, d: d } : m; }, { a: 0, d: 999 });
+          var elbow = null;
+          if (near.d > 0.5) {
+            // 兩段湊起來：p + s·u1 + t·u2 = q（s、t > 0），取最短的；太小的轉角（< 8）直接畫直線
+            var best = null;
+            MAP_ANGLES.forEach(function (a1) { MAP_ANGLES.forEach(function (a2) {
+              if (a1 === a2) return;
+              var u1 = [Math.cos(a1 * Math.PI / 180), Math.sin(a1 * Math.PI / 180)], u2 = [Math.cos(a2 * Math.PI / 180), Math.sin(a2 * Math.PI / 180)];
+              var det = u1[0] * u2[1] - u1[1] * u2[0]; if (Math.abs(det) < 1e-6) return;
+              var s1 = (dx * u2[1] - dy * u2[0]) / det, t1 = (u1[0] * dy - u1[1] * dx) / det;
+              if (s1 <= 0 || t1 <= 0) return;
+              var ortho2 = a2 % 90 === 0 ? 0 : 0.01, len = s1 + t1 + ortho2 * (s1 + t1);
+              if (!best || len < best.len - 1e-6) best = { len: len, c: [p[0] + s1 * u1[0], p[1] + s1 * u1[1]], small: Math.min(s1, t1) };
+            }); });
+            if (best && best.small >= 8) elbow = best.c;
+          }
+          if (elbow) out.push({ p: elbow, k: i - 1 });
+          out.push({ p: q, k: i - 1 });
+        }
+        return out;
+      };
       var boxOf = function (x) {
         var fs = 26 * (x.size || 1), lines = String(x.text || '').split('\n');
         if (x.t === 'pin') return { w: 13 * (x.size || 1) + 4, h: 13 * (x.size || 1) + 4 };
@@ -177,14 +234,24 @@ var Front = (function () {
       items.filter(function (x) { return x.t === 'line'; }).forEach(function (x) {
         var a = byId[x.a], b = byId[x.b];
         if (!a || !b) return;
-        var c = x.color || '#c62828', pts = [P(a.x, a.y)].concat((x.pts || []).map(function (p) { return P(p[0], p[1]); }), [P(b.x, b.y)]);
+        var c = x.color || '#c62828', user = [P(a.x, a.y)].concat((x.pts || []).map(function (p) { return P(p[0], p[1]); }), [P(b.x, b.y)]);
+        // 每一段都只走水平、鉛直或 30°、45°、60°…；不合的自動加一個轉角
+        var rt = route(user), pts = rt.map(function (r) { return r.p; });
         // 線頭線尾停在標點／卡片的邊上，箭頭才不會被蓋住
         pts[0] = edge(a, pts[0], pts[1]); pts[pts.length - 1] = edge(b, pts[pts.length - 1], pts[pts.length - 2]);
         var g = sv('g', { 'data-id': o.edit ? x.id : null, class: 'm-line' + (o.sel === x.id ? ' sel' : '') });
         g.appendChild(sv('polyline', { points: pts.map(function (p) { return p.join(','); }).join(' '), fill: 'none', stroke: 'transparent', 'stroke-width': 22 }));
         g.appendChild(sv('polyline', { points: pts.map(function (p) { return p.join(','); }).join(' '), fill: 'none', stroke: c, 'stroke-width': 6, 'stroke-linejoin': 'round', 'stroke-dasharray': x.style === 'dash' ? '4 14' : null, 'stroke-linecap': 'round', 'marker-end': x.arrow !== false ? marker(c) : null }));
         svg.appendChild(g);
-        if (o.edit && o.sel === x.id) (x.pts || []).forEach(function (p, i) { var q = P(p[0], p[1]); svg.appendChild(sv('circle', { cx: q[0], cy: q[1], r: 11, class: 'm-bend', 'data-bend': x.id + ':' + i })); });
+        if (o.edit && o.sel === x.id) {
+          // 每一段中間有 ＋：按住拖曳就多一個轉折點
+          for (var k = 1; k < rt.length; k++) {
+            var m0 = [(pts[k - 1][0] + pts[k][0]) / 2, (pts[k - 1][1] + pts[k][1]) / 2];
+            if (Math.abs(pts[k][0] - pts[k - 1][0]) + Math.abs(pts[k][1] - pts[k - 1][1]) < 50) continue;
+            svg.appendChild(sv('g', { class: 'm-add', 'data-add': x.id + ':' + rt[k].k + ':' + (m0[0] / W) + ':' + (m0[1] / H), transform: 'translate(' + m0[0] + ',' + m0[1] + ')' }, [sv('circle', { r: 10 }), sv('path', { d: 'M-5,0H5M0,-5V5' })]));
+          }
+          (x.pts || []).forEach(function (p, i) { var q = P(p[0], p[1]); svg.appendChild(sv('circle', { cx: q[0], cy: q[1], r: 11, class: 'm-bend', 'data-bend': x.id + ':' + i })); });
+        }
       });
       items.filter(function (x) { return x.t !== 'line'; }).forEach(function (x) {
         var q = P(x.x, x.y), fs = 26 * (x.size || 1), c = x.color || (x.t === 'text' ? '#c62828' : '#c62828');
@@ -264,7 +331,7 @@ var Front = (function () {
     });
     if (!items.length) out.appendChild(h('div', { class: 'muted small' }, '目前沒有行程'));
     markNow(out);
-    return out;
+    return schedWin(out, items.length > 5);
   }
 
   /* ---------------- Package 畫面 ---------------- */
@@ -290,7 +357,7 @@ var Front = (function () {
         var flows = d.flows || [], cf = d.customFields || [];
         var wrap = h('div', { class: 'col' }), curDate = '';
         var tabs = h('div', { class: 'chips' }), body = h('div');
-        var show = function (f) {
+        var show = function (f, user) {
           $all('.chip', tabs).forEach(function (c) { c.classList.toggle('on', c.dataset.id === f.id); });
           clear(body);
           var day = '';
@@ -307,23 +374,30 @@ var Front = (function () {
             if (it.date !== day) { day = it.date; list.appendChild(h('div', { class: 'day' }, dayLabel(it.date))); }
             var ppl = function (lab, arr) { return arr.length ? h('div', { class: 'ppl' }, h('span', { class: 'ppl-k' }, lab), arr.join('、')) : null; };
             var places = String(it.place || '').split(/[、,，]/).map(function (y) { return y.trim(); }).filter(String);
-            var row = h('div', { class: 'it' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('small', null, hm(x.e)) : null), h('div', { class: 'grow' },
-              h('div', { class: 'it-hd' }, h('b', { class: 'nm' }, it.name), places.map(function (pl) { return h('span', { class: 'pill-place' }, pl); }),
-                it.activity && it.public === false ? h('span', { class: 'tag warn' }, '學員未公開') : null),
-              ppl('負責', it.owner), ppl('人員', it.staff), ppl('機動', it.backup),
+            // 卡片只放時間、地點、負責；其他（人員、機動、備註、細流…）點開才看
+            var more = [ppl('人員', it.staff || []), ppl('機動', it.backup || []),
               cf.map(function (k) { return it.custom && it.custom[k] ? h('div', { class: 'small' }, k + '：' + it.custom[k]) : null; }),
               it.note ? h('div', { class: 'small' }, it.note) : null,
               okUrl(it.link) ? h('a', { class: 'small', href: it.link, target: '_blank', rel: 'noopener' }, '相關連結') : null,
               goLink(it.go),
-              it.diff ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + it.diff.planned.date.slice(5) + ' ' + it.diff.planned.time + (it.diff.planned.place ? ' ' + it.diff.planned.place : '') + (it.diff.by ? '（' + it.diff.by + ' ' + fmt(it.diff.at) + ' 調整）' : '')) : null));
+              it.diff ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + it.diff.planned.date.slice(5) + ' ' + it.diff.planned.time + (it.diff.planned.place ? ' ' + it.diff.planned.place : '') + (it.diff.by ? '（' + it.diff.by + ' ' + fmt(it.diff.at) + ' 調整）' : '')) : null];
+            var hasMore = more.some(function (m) { return m && (!Array.isArray(m) || m.some(Boolean)); });
+            var row = h('div', { class: 'it' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') + (hasMore ? ' has-more' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('small', null, hm(x.e)) : null), h('div', { class: 'grow it-main' },
+              h('div', { class: 'it-hd' }, h('b', { class: 'nm', title: it.name }, it.name),
+                it.activity && it.public === false ? h('span', { class: 'tag warn' }, '學員未公開') : null),
+              places.length || (it.owner || []).length ? h('div', { class: 'it-sub' }, places.map(function (pl) { return h('span', { class: 'pill-place' }, pl); }),
+                (it.owner || []).length ? h('span', { class: 'own', title: it.owner.join('、') }, h('span', { class: 'ppl-k' }, '負責'), it.owner.join('、')) : null) : null,
+              hasMore ? h('div', { class: 'it-more' }, more) : null), hasMore ? h('span', { class: 'it-chev', 'aria-hidden': 'true' }, '›') : null);
+            if (hasMore) row.addEventListener('click', function (e) { if (e.target.closest('.it-more a, .it-more details, .it-more button')) return; if (e.target.closest('.it-more') && row.classList.contains('open')) return; row.classList.toggle('open'); });
             if (it.tone === 'act') row.style.background = actColor(it.activity || it.name);
             var s0 = tms(it.date, it.time);
             if (s0) { row.dataset.s = s0; row.dataset.e = s0 + (x.d || 60) * 60000; }
             list.appendChild(row);
           });
           if (!f.items.length) list.appendChild(h('div', { class: 'muted small' }, '這份流程還沒有項目'));
-          body.appendChild(list);
+          body.appendChild(schedWin(list, f.items.length > 4));
           markNow(body);
+          if (user) setTimeout(function () { centerNow(body, true); }, 0);
         };
         // 連到活動細流：點了切到那份流程；連到跑關：展開各隊順序
         function goLink(go) {
@@ -341,7 +415,7 @@ var Front = (function () {
             h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, h('th', null, '小隊'), r.slots.map(function (t) { return h('th', null, t); }))),
               h('tbody', null, r.rows.map(function (row) { return h('tr', null, h('td', null, row.squad), row.cells.map(function (c) { var i = r.stations.indexOf(c); return h('td', null, c || '—', c && r.places[i] ? h('div', { class: 'muted' }, r.places[i]) : null); })); })))));
         }
-        flows.forEach(function (f) { var c = h('span', { class: 'chip', 'data-id': f.id }, f.name); c.addEventListener('click', function () { show(f); }); tabs.appendChild(c); });
+        flows.forEach(function (f) { var c = h('span', { class: 'chip', 'data-id': f.id }, f.name); c.addEventListener('click', function () { show(f, true); }); tabs.appendChild(c); });
         wrap.appendChild(tabs);
         wrap.appendChild(body);
         if (flows.length) show(flows[0]); else body.appendChild(h('div', { class: 'muted small' }, '還沒有流程'));
@@ -549,5 +623,5 @@ var Front = (function () {
       .map(function (b) { return { id: b.id, pkg: b.data.pkg, view: b.data.view, config: b.data.config || {} }; });
   }
 
-  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, actColor: actColor, mapView: mapView, detailTable: detailTable, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard };
+  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, centerNow: centerNow, actColor: actColor, mapView: mapView, detailTable: detailTable, MAP_ANGLES: MAP_ANGLES, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard };
 })();
