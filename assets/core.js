@@ -15,7 +15,7 @@ function store(key, val, persist) {
 function jget(key, dflt) { try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
 function jset(key, v) { try { if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
 
-var NO_TOKEN_ = { login: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, campPublicInfo: 1 };
+var NO_TOKEN_ = { login: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, studentLogin: 1, campPublicInfo: 1 };
 
 /**
  * 呼叫 Apps Script 後端（text/plain 避免 CORS 預檢）。錯誤帶 code：AUTH／LOCK／CONFLICT／NET
@@ -396,3 +396,112 @@ function icon(name, size) {
   return h('span', { class: 'ico', html: svg, style: { display: 'inline-flex' } });
 }
 var ICON_CHOICES = ['home', 'user', 'sos', 'flag', 'more', 'clock', 'users', 'page', 'star', 'moon', 'phone', 'map', 'info'];
+
+/* ---------------- 匯出 .xlsx（Excel、Numbers、Google 試算表都打得開） ----------------
+ * sheets: [{ name, cols: [寬度], rows: [[cell…]], merges: [[r0, c0, r1, c1]] }]
+ * cell: 字串／數字，或 { v, bg: '#rrggbb', color, bold, size, align: 'center', border: false }
+ */
+function xlsxBlob(sheets) {
+  var X = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ''); };
+  var col = function (i) { var s = ''; i++; while (i) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  var hex = function (c) { c = String(c || '').replace('#', ''); if (c.length === 3) c = c.replace(/./g, '$&$&'); return /^[0-9a-f]{6}$/i.test(c) ? 'FF' + c.toUpperCase() : ''; };
+  var fonts = ['<font><sz val="11"/><name val="Arial"/></font>'], fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'], xfs = ['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'], idx = {};
+  var fontOf = function (c) { var f = '<font>' + (c.bold ? '<b/>' : '') + '<sz val="' + (c.size || 11) + '"/>' + (hex(c.color) ? '<color rgb="' + hex(c.color) + '"/>' : '') + '<name val="Arial"/></font>'; var i = fonts.indexOf(f); if (i < 0) { fonts.push(f); i = fonts.length - 1; } return i; };
+  var fillOf = function (c) { if (!hex(c.bg)) return 0; var f = '<fill><patternFill patternType="solid"><fgColor rgb="' + hex(c.bg) + '"/><bgColor indexed="64"/></patternFill></fill>'; var i = fills.indexOf(f); if (i < 0) { fills.push(f); i = fills.length - 1; } return i; };
+  var styleOf = function (c) {
+    var k = [c.bold, c.size, c.color, c.bg, c.align, c.border].join('|');
+    if (idx[k] !== undefined) return idx[k];
+    var x = '<xf numFmtId="49" fontId="' + fontOf(c) + '" fillId="' + fillOf(c) + '" borderId="' + (c.border === false ? 0 : 1) + '" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1" applyNumberFormat="1"><alignment vertical="center" wrapText="1"' + (c.align ? ' horizontal="' + c.align + '"' : '') + '/></xf>';
+    xfs.push(x); idx[k] = xfs.length - 1; return idx[k];
+  };
+  var sst = [], sstI = {};
+  var files = [];
+  var sheetXml = sheets.map(function (sh) {
+    var rows = (sh.rows || []).map(function (r, ri) {
+      return '<row r="' + (ri + 1) + '">' + r.map(function (c, ci) {
+        if (c === null || c === undefined) c = '';
+        if (typeof c !== 'object') c = { v: c };
+        var ref = col(ci) + (ri + 1), s = styleOf(c), v = c.v === undefined || c.v === null ? '' : String(c.v);
+        if (v === '') return '<c r="' + ref + '" s="' + s + '"/>';
+        if (sstI[v] === undefined) { sstI[v] = sst.length; sst.push(v); }
+        return '<c r="' + ref + '" s="' + s + '" t="s"><v>' + sstI[v] + '</v></c>';
+      }).join('') + '</row>';
+    }).join('');
+    var cols = (sh.cols || []).map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('');
+    var mg = (sh.merges || []).map(function (m) { return '<mergeCell ref="' + col(m[1]) + (m[0] + 1) + ':' + col(m[3]) + (m[2] + 1) + '"/>'; }).join('');
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/>' + (cols ? '<cols>' + cols + '</cols>' : '') + '<sheetData>' + rows + '</sheetData>' + (mg ? '<mergeCells count="' + sh.merges.length + '">' + mg + '</mergeCells>' : '') + '</worksheet>';
+  });
+  var names = sheets.map(function (sh, i) { var n = String(sh.name || ('工作表' + (i + 1))).replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31); return n; });
+  names = names.map(function (n, i) { return names.indexOf(n) < i ? (n.slice(0, 28) + ' ' + (i + 1)) : n; });
+  files.push(['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' + sheets.map(function (s, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('') + '</Types>']);
+  files.push(['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>']);
+  files.push(['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' + names.map(function (n, i) { return '<sheet name="' + X(n) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join('') + '</sheets></workbook>']);
+  files.push(['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map(function (s, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join('') + '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdT" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>']);
+  sheetXml.forEach(function (x, i) { files.push(['xl/worksheets/sheet' + (i + 1) + '.xml', x]); });
+  files.push(['xl/sharedStrings.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' + sst.length + '" uniqueCount="' + sst.length + '">' + sst.map(function (s) { return '<si><t xml:space="preserve">' + X(s) + '</t></si>'; }).join('') + '</sst>']);
+  files.push(['xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="' + fonts.length + '">' + fonts.join('') + '</fonts><fills count="' + fills.length + '">' + fills.join('') + '</fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFC9CFCC"/></left><right style="thin"><color rgb="FFC9CFCC"/></right><top style="thin"><color rgb="FFC9CFCC"/></top><bottom style="thin"><color rgb="FFC9CFCC"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="' + xfs.length + '">' + xfs.join('') + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>']);
+  return new Blob([zipStore_(files)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+/** 不壓縮的 zip（xlsx 用） */
+function zipStore_(files) {
+  var enc = new TextEncoder(), T = zipStore_.T;
+  if (!T) { T = zipStore_.T = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[n] = c >>> 0; } }
+  var crc = function (b) { var c = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  var parts = [], central = [], off = 0;
+  var u16 = function (v) { return [v & 255, (v >>> 8) & 255]; }, u32 = function (v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; };
+  files.forEach(function (f) {
+    var name = enc.encode(f[0]), data = enc.encode(f[1]), c = crc(data);
+    var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(c), u32(data.length), u32(data.length), u16(name.length), u16(0));
+    parts.push(new Uint8Array(head), name, data);
+    central.push(new Uint8Array([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(c), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(off))), name);
+    off += head.length + name.length + data.length;
+  });
+  var csize = central.reduce(function (s, b) { return s + b.length; }, 0);
+  var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(csize), u32(off), u16(0)));
+  return new Blob(parts.concat(central, [end]));
+}
+function saveBlob(blob, name) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/** 簽名板：手指／滑鼠簽；get() 回傳縮小過的 PNG（data URL），沒簽回傳 ''；「放大簽名」開全螢幕的大板子 */
+function signPad(o) {
+  o = o || {};
+  var W = 600, H = 200, drawn = false;
+  var cv = h('canvas', { class: 'sign-cv', width: W, height: H });
+  var ctx2 = cv.getContext('2d');
+  var line = function (c) { c.lineWidth = 3.2; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = '#111'; };
+  var bind = function (canvas, c, onInk) {
+    var last = null;
+    var pt = function (e) { var r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; };
+    canvas.addEventListener('pointerdown', function (e) { e.preventDefault(); canvas.setPointerCapture(e.pointerId); last = pt(e); line(c); c.beginPath(); c.arc(last[0], last[1], 1.2, 0, 7); c.fillStyle = '#111'; c.fill(); onInk(); });
+    canvas.addEventListener('pointermove', function (e) { if (!last) return; var p = pt(e); line(c); c.beginPath(); c.moveTo(last[0], last[1]); c.lineTo(p[0], p[1]); c.stroke(); last = p; });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { canvas.addEventListener(ev, function () { last = null; }); });
+    canvas.style.touchAction = 'none';
+  };
+  var ink = function () { drawn = true; el.classList.add('signed'); if (o.onChange) o.onChange(); };
+  bind(cv, ctx2, ink);
+  var clearIt = function () { ctx2.clearRect(0, 0, W, H); drawn = false; el.classList.remove('signed'); if (o.onChange) o.onChange(); };
+  var big = function () {
+    var bc = h('canvas', { class: 'sign-cv big', width: 1200, height: 400 }), bx = bc.getContext('2d'), any = false;
+    bind(bc, bx, function () { any = true; });
+    var m = modal({ title: o.title || '請簽名', full: true, body: h('div', { class: 'col', style: { gap: '8px' } }, h('div', { class: 'small muted' }, o.hint || '手機可以橫過來簽'), bc), actions: [
+      { text: '清除', onClick: function () { bx.clearRect(0, 0, 1200, 400); any = false; return false; } },
+      { text: '用這個簽名', cls: 'primary', onClick: function () { if (!any) { toast('還沒有簽名', true); return false; } ctx2.clearRect(0, 0, W, H); ctx2.drawImage(bc, 0, 0, W, H); ink(); } }] });
+    return m;
+  };
+  var el = h('div', { class: 'sign-pad' }, h('div', { class: 'sign-box' }, cv, h('span', { class: 'sign-ph' }, o.placeholder || '在這裡簽名')),
+    h('div', { class: 'row', style: { gap: '6px' } }, h('button', { class: 'btn sm', type: 'button', onclick: big }, '放大簽名'), h('button', { class: 'btn sm ghost', type: 'button', onclick: clearIt }, '清除')));
+  return {
+    el: el, clear: clearIt, isSigned: function () { return drawn; },
+    get: function () {
+      if (!drawn) return '';
+      var sm = document.createElement('canvas'); sm.width = 360; sm.height = 120;
+      var c = sm.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, 360, 120); c.drawImage(cv, 0, 0, 360, 120);
+      var png = sm.toDataURL('image/png');
+      return png.length <= 40000 ? png : sm.toDataURL('image/jpeg', 0.6);
+    }
+  };
+}
