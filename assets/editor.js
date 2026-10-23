@@ -454,7 +454,7 @@ var Editor = (function () {
       case 'pkg': {
         var pp = A.pool.filter(function (p) { return p.pkg === d.pkg; })[0];
         if (!pp) { body.appendChild(h('div', { class: 'fb-notice' }, '這個 Package（' + d.pkg + '）沒有安裝或初始化失敗，發布會被擋下。')); break; }
-        var vs = sel((pp.views || []).filter(function (v) { return (v.sides || []).indexOf(E.side) >= 0; }).map(function (v) { return { value: v.key, label: v.name }; }), d.view, { disabled: ro });
+        var vs = sel((pp.views || []).filter(function (v) { return E.side === 'worker' || (v.sides || []).indexOf(E.side) >= 0; }).map(function (v) { return { value: v.key, label: v.name + ((v.sides || []).indexOf(E.side) < 0 ? '〔學員端畫面〕' : '') }; }), d.view, { disabled: ro });
         vs.addEventListener('change', function () { set('view', vs.value); preview(); });
         body.appendChild(h('div', { class: 'row' }, h('div', { class: 'grow' }, field(pp.name + (pp.maintenance ? '（維護中）' : '') + ' 的畫面', vs)), h('a', { class: 'btn sm', href: '#data/' + d.pkg, style: { alignSelf: 'flex-end' } }, '編輯資料')));
         break;
