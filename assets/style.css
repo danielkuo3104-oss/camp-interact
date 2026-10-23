@@ -538,3 +538,12 @@ table.rt .rt-vs { display: inline-block; margin-top: 4px; padding: 1px 6px; bord
 .rt-chips .chip { flex: none; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .rt-chips .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 .app-shell.night table.rt td.dt-tm { background: #1b2540; }
+
+/* 工作分配：同一組工作（例如都是關主）左邊同色、連在一起 */
+tr.job-grp > td:first-child { box-shadow: inset 4px 0 0 var(--job-c, #6b8f71); }
+tr.job-grp[data-job="0"] { --job-c: #4f8a6e; } tr.job-grp[data-job="1"] { --job-c: #c07a2c; } tr.job-grp[data-job="2"] { --job-c: #4a6fb0; }
+tr.job-grp[data-job="3"] { --job-c: #9a4fa6; } tr.job-grp[data-job="4"] { --job-c: #b0504a; } tr.job-grp[data-job="5"] { --job-c: #3f9aa3; }
+tr.job-cont > td { border-top-color: transparent !important; }
+tr.job-cont td[data-ci="1"] input { color: var(--text-3); }
+.job-n { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; font-size: 11px; color: var(--job-c, var(--text-3)); font-weight: 600; }
+tr.job-dup td[data-ci="5"] { background: #fdecea; }
