@@ -90,6 +90,14 @@
     });
   }
 
+  /** 重新整理：拿最新發布的版本和資料（不用整頁重新載入） */
+  function refresh() {
+    try { sessionStorage.removeItem(VK); } catch (e) {}
+    S.prefetched = false; S.scrolled = {};
+    Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
+    toast('重新整理中…');
+    boot();
+  }
   function logoutBtn() {
     if (preview) return null;
     return h('button', { class: 'btn sm', onclick: function () { api('logout').catch(function () {}); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {} start(); } }, side === 'worker' ? '登出' : '離開');
@@ -160,6 +168,7 @@
     var head = h('div', { class: 'app-head' },
       cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : h('span', { class: 'brand-mark' }, '營'),
       h('div', { class: 'grow' }, h('div', { class: 'small muted' }, b.camp.name + (b.me && b.me.name ? ' · ' + b.me.name : '')), h('h1', null, cur ? cur.title : '')),
+      h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, '⟳ 重新整理'),
       logoutBtn());
     var banners = [];
     if (preview) banners.push(h('div', { class: 'recall-banner row wrap', style: { gap: '8px' } }, h('span', { class: 'grow' }, preview === 'draft' ? '預覽：目前的草稿（還沒發布）' : '預覽：目前發布的第 ' + b.snapshot.ver + ' 版'), simBox()));
