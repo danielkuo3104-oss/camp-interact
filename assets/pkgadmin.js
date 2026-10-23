@@ -315,6 +315,7 @@ var PkgAdmin = (function () {
     var fire = function () { el.dispatchEvent(new Event('change', { bubbles: true })); };
     var draw = function () {
       clear(box);
+      el.dataset.n = sel_.length;
       sel_.forEach(function (v, i) {
         var it = byVal[v];
         box.appendChild(h('span', { class: 'chip on pp-chip' + (it || o.free ? '' : ' gone') }, it ? (it.short || it.label) : (o.free ? v : '（已移除）'), o.disabled ? null : h('button', { class: 'pp-x', type: 'button', 'aria-label': '移除', onclick: function (e) { e.stopPropagation(); sel_.splice(i, 1); draw(); drawPop(); fire(); } }, '✕')));
@@ -629,7 +630,17 @@ var PkgAdmin = (function () {
       });
       toast('已貼上 ' + lines.length + ' 列' + (made ? '（新增 ' + made + ' 列）' : '') + '，記得按「儲存變更」');
     });
-    G.bar = h('div', { class: 'row wrap g-bar' }, ro ? null : save, status, upMsg, o.tools ? o.tools(G) : null);
+    // 檢視：「展開」人員、場地全部列出；「窄」每格一行（人多時不會把列撐很高），點格子一樣可以改
+    var narrowOn = false; try { narrowOn = localStorage.getItem('ia_grid_narrow') === '1'; } catch (e) {}
+    var viewBtn = h('span', { class: 'seg g-view' }, [['wide', '展開'], ['narrow', '窄']].map(function (m) {
+      return h('button', { type: 'button', class: 'seg-b' + ((m[0] === 'narrow') === narrowOn ? ' on' : ''), 'data-view': m[0], onclick: function () {
+        narrowOn = m[0] === 'narrow'; table.classList.toggle('narrow', narrowOn);
+        $all('.seg-b', viewBtn).forEach(function (b) { b.classList.toggle('on', (b.dataset.view === 'narrow') === narrowOn); });
+        try { localStorage.setItem('ia_grid_narrow', narrowOn ? '1' : '0'); } catch (e) {}
+      } }, m[1]);
+    }));
+    table.classList.toggle('narrow', narrowOn);
+    G.bar = h('div', { class: 'row wrap g-bar' }, ro ? null : save, status, upMsg, o.tools ? o.tools(G) : null, h('span', { class: 'grow' }), h('span', { class: 'small muted' }, '檢視'), viewBtn);
     box.appendChild(G.bar);
     box.appendChild(h('div', { class: 'tbl-wrap g-wrap' }, table));
     box.appendChild(lists);
@@ -973,14 +984,35 @@ var PkgAdmin = (function () {
             return run('item.save', { id: it.id, flow: flow.value, date: date.value, time: time.value, dur: dur.value, name: name.value, place: place.value, activity: act.value, owner: owner.get(), staff: staff.get(), backup: backup.get(), squads: sq.get(), note: note.value, link: link.value, tone: d.tone || '', go: d.go || '', custom: c }, { ver: it.id ? it.version : undefined });
           }, true);
       };
+      // 匯出 Excel：全部流程、全部天，顏色和這裡一樣（活動淡色、重要黃、極重要紅底白字）
       var csv = function () {
-        var rows = [['流程', '日期', '時間', '時長', '活動名稱', '場地', '負責人員', '關主／參與人員', '機動人員', '備註', '連結'].concat(cf)];
-        var fname = {};
-        flows.forEach(function (f) { fname[f.id] = f.data.name; });
-        D.items.forEach(function (it) { var d = it.data; rows.push([fname[d.flow] || d.flow, d.date, d.time, d.dur || '', d.name, d.place, nameOf(D.workers, d.owner), nameOf(D.workers, d.staff), nameOf(D.workers, d.backup), d.note || '', d.link || ''].concat(cf.map(function (k) { return (d.custom || {})[k] || ''; }))); });
-        var text = '﻿' + rows.map(function (r) { return r.map(function (c) { c = String(c === undefined ? '' : c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\r\n');
-        var a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/csv' })), download: A.info.name + '-營期流程.csv' });
-        document.body.appendChild(a); a.click(); a.remove();
+        var esc = function (x) { return String(x === undefined || x === null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); };
+        var mm = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+        var hmx = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
+        var heads = ['日期', '開始', '時長', '結束', '標示', '活動名稱', '場地', '負責人員', '關主／參與人員', '機動人員', '備註', '連結'].concat(cf);
+        var toneName = { act: '活動', key: '重要', crit: '極重要' };
+        var order = flows.slice().sort(function (x, y) { return (x.id === cur ? -1 : 0) - (y.id === cur ? -1 : 0) || (Number(x.data.order) || 0) - (Number(y.data.order) || 0); });
+        var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>td,th{border:1px solid #c9cfcc;padding:4px 8px;font-family:"Noto Sans TC",sans-serif;font-size:11pt;vertical-align:middle;mso-number-format:"\\@";}th{background:#2f5d57;color:#fff;}.day td{background:#e8ecea;font-weight:bold;}.flow td{background:#ffffff;font-size:14pt;font-weight:bold;border:0;}</style></head><body><table>';
+        order.forEach(function (f) {
+          var its = D.items.filter(function (it) { return (it.data.flow || 'main') === f.id; }).slice().sort(function (x, y) { return String(x.data.date || '9999').localeCompare(String(y.data.date || '9999')) || (mm(x.data.time) === null ? 9999 : mm(x.data.time)) - (mm(y.data.time) === null ? 9999 : mm(y.data.time)); });
+          html += '<tr class="flow"><td colspan="' + heads.length + '">' + esc(f.data.name) + '</td></tr><tr>' + heads.map(function (x) { return '<th>' + esc(x) + '</th>'; }).join('') + '</tr>';
+          var day = null;
+          its.forEach(function (it) {
+            var d = it.data;
+            if (d.date !== day) { day = d.date; html += '<tr class="day"><td colspan="' + heads.length + '">' + esc(d.date ? dayNo(d.date) + dayLabel(d.date) : '（沒填日期）') + '</td></tr>'; }
+            var st = d.tone === 'crit' ? 'background:#b3261e;color:#ffffff;font-weight:bold;' : d.tone === 'key' ? 'background:#ffe3a3;font-weight:bold;' : d.tone === 'act' ? 'background:' + Front.actColor(d.name) + ';' : '';
+            var s0 = mm(d.time), en = s0 !== null && d.dur ? hmx(s0 + Number(d.dur)) : '';
+            var cells = [d.date || '', d.time || '', d.dur || '', en, toneName[d.tone] || '', d.name || '', d.place || '', nameOf(D.workers, d.owner), nameOf(D.workers, d.staff), nameOf(D.workers, d.backup), d.note || '', d.link || ''].concat(cf.map(function (k) { return (d.custom || {})[k] || ''; }));
+            html += '<tr>' + cells.map(function (c) { return '<td style="' + st + '">' + esc(c) + '</td>'; }).join('') + '</tr>';
+          });
+          html += '<tr><td colspan="' + heads.length + '" style="border:0"></td></tr>';
+        });
+        html += '</table></body></html>';
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' }));
+        a.download = (A.info.name || '營隊') + '-營期流程.xls';
+        document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        toast('已匯出全部流程、全部天（Excel 打開時如果問格式，按「是」）');
       };
       var items = D.items.filter(function (it) { return (it.data.flow || 'main') === cur; });
       // 一覽編輯（像 Excel）：依日期分組，直接改；同時段並行的項目用同色的左邊線標出來，同一人同時被排兩個會標紅
@@ -1136,7 +1168,7 @@ var PkgAdmin = (function () {
           } }, '複製一份'));
           selBar.appendChild(h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { G.selected().forEach(function (r) { if (r.id) { r.del = true; r.tr.classList.add('g-del'); r.t.check(); } else { r.tr.remove(); G.rows = G.rows.filter(function (x) { return x !== r; }); } r.ck.checked = false; }); G.selChanged(); G.changed(); } }, '刪除'));
           return [h('button', { class: 'btn', type: 'button', title: '每一天依時間重新排好', onclick: function () { G.sort(); } }, '依時間排序'),
-            h('button', { class: 'btn', onclick: csv }, '匯出 Excel（CSV）'),
+            h('button', { class: 'btn', onclick: csv }, '匯出 Excel（全部）'),
             A.isAdmin() && R.canEdit ? h('button', { class: 'btn', onclick: function () {
               confirmBox('鎖定既定行程', '把目前所有項目的日期、時間、時長、場地記為「既定行程」。之後的修改會在工作人員端顯示「與既定行程不同」（原訂、調整者、時間）。', '鎖定').then(function (ok) { if (ok) run('baseline', {}, { action: 'run', msg: '已鎖定既定行程' }).catch(fail); });
             } }, '鎖定既定行程') : null, selBar];
@@ -1232,7 +1264,7 @@ var PkgAdmin = (function () {
       var tableCard = function (r) {
         r = r || { id: '', data: { kind: 'table', cols: ['各小隊', '關主', '備註'], rows: [] } };
         var d = JSON.parse(JSON.stringify(r.data)), ro = !R.canEdit;
-        var cols = (d.cols || []).slice(), rows = (d.rows || []).map(function (x) { return { start: x.start || '', end: x.end || '', color: x.color || '', cells: (x.cells || []).slice() }; });
+        var cols = (d.cols || []).slice(), rows = (d.rows || []).map(function (x) { return { start: x.start || '', end: x.end || '', place: x.place || '', color: x.color || '', cells: (x.cells || []).slice() }; });
         var act = sel(acts, d.activity || '', { disabled: ro }), name = inp(d.name, { placeholder: '例如：賭場、晚會', disabled: ro });
         var colBox = h('div', { class: 'row wrap', style: { gap: '6px' } }), body = h('div');
         var ME = mapEditor(d.map, ro, function () { t.check(); });
@@ -1268,10 +1300,12 @@ var PkgAdmin = (function () {
             var st = h('input', { class: 'g-in g-tm', value: w.start, placeholder: '16:20', disabled: ro });
             var du = h('input', { class: 'g-in', type: 'number', min: 0, value: dur(w), style: { width: '56px' }, disabled: ro });
             var en = h('input', { class: 'g-in g-tm', value: w.end, placeholder: '16:30', disabled: ro });
+            var pl = h('input', { class: 'g-in', value: w.place || '', placeholder: '場地', list: placeList, disabled: ro });
+            pl.addEventListener('input', function () { w.place = pl.value; refreshPrev(); t.check(); });
             st.addEventListener('change', function () { var n = normTime(st.value); if (n !== null) st.value = n; var old = Number(du.value); w.start = st.value; if (old && toMin(w.start) !== null) { w.end = toHm(toMin(w.start) + old); en.value = w.end; } refreshPrev(); t.check(); });
             du.addEventListener('change', function () { if (toMin(w.start) !== null && du.value !== '') { w.end = toHm(toMin(w.start) + Number(du.value)); en.value = w.end; } refreshPrev(); t.check(); });
             en.addEventListener('change', function () { var n = normTime(en.value); if (n !== null) en.value = n; w.end = en.value; du.value = dur(w); t.check(); });
-            var tr = h('tr', null, h('td', null, st), h('td', null, du), h('td', null, en));
+            var tr = h('tr', null, h('td', null, st), h('td', null, du), h('td', null, en), h('td', null, pl));
             cols.forEach(function (c, j) {
               var ta = h('textarea', { class: 'g-in dt-in', rows: 1, disabled: ro });
               ta.value = w.cells[j] || '';
@@ -1289,7 +1323,7 @@ var PkgAdmin = (function () {
               ro ? null : h('button', { class: 'btn sm ghost', type: 'button', title: '刪除這一列', onclick: function () { rows.splice(i, 1); drawRows(); t.check(); } }, '✕')));
             tb.appendChild(tr);
           });
-          body.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 't grid dt-ed' }, h('thead', null, h('tr', null, h('th', { style: { width: '74px' } }, '開始'), h('th', { style: { width: '64px' } }, '分鐘'), h('th', { style: { width: '74px' } }, '結束'), cols.map(function (c) { return h('th', { style: { minWidth: '130px' } }, c); }), h('th', { style: { width: '70px' } }, '顏色'), h('th', { style: { width: '70px' } }))), tb)));
+          body.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 't grid dt-ed' }, h('thead', null, h('tr', null, h('th', { style: { width: '74px' } }, '開始'), h('th', { style: { width: '64px' } }, '分鐘'), h('th', { style: { width: '74px' } }, '結束'), h('th', { style: { width: '110px' } }, '場地'), cols.map(function (c) { return h('th', { style: { minWidth: '130px' } }, c); }), h('th', { style: { width: '70px' } }, '顏色'), h('th', { style: { width: '70px' } }))), tb)));
           if (!ro) body.appendChild(h('div', { class: 'row wrap', style: { marginTop: '6px' } },
             h('button', { class: 'btn sm', type: 'button', onclick: function () { var last = rows[rows.length - 1]; rows.push({ start: last ? last.end : '', end: '', color: '', cells: [] }); drawRows(); t.check(); } }, '＋ 加一列（接上一列結束）'),
             h('button', { class: 'btn sm ghost', type: 'button', onclick: importXls }, '從 Excel 整張貼上'),
@@ -1333,7 +1367,7 @@ var PkgAdmin = (function () {
         } }, '儲存');
         var warnBox = spanWarn(r);
         var el = h('div', { class: 'card col' },
-          h('div', { class: 'row' }, h('span', { class: 'tag info' }, '時間表')),
+          h('div', { class: 'row' }, h('span', { class: 'tag info' }, '時間表'), h('span', { class: 'grow' }), ro ? null : h('button', { class: 'btn sm ghost', type: 'button', title: '活動、名稱、地圖會保留；每一列的開始時間變成跑關的時段', onclick: function () { convert(el, toRot(get(), r)); } }, '改成跑關／對抗')),
           h('div', { class: 'grid2' }, field('活動', act), field('名稱', name)),
           h('div', null, h('div', { class: 'small', style: { fontWeight: 700, marginBottom: '4px' } }, '欄位（例如：各小隊、主持人、賭馬、關主、備註）'), colBox),
           body, warnBox,
@@ -1341,6 +1375,7 @@ var PkgAdmin = (function () {
           ro ? null : h('div', { class: 'row' }, save, h('button', { class: 'btn ghost', type: 'button', onclick: function () { if (!r.id) { el.remove(); return; } del('rotation.delete', { id: r.id }, d.name || '活動細流'); } }, '刪除')));
         var t = track(el, function () { var v = get(); delete v.id; return v; }, save);
         if (!ro) save.parentNode.appendChild(t.status);
+        el._t = t;
         return el;
       };
       var cardOf = function (r) {
@@ -1353,6 +1388,8 @@ var PkgAdmin = (function () {
         var len = inp(d.len || '', { type: 'number', min: 0, placeholder: '分鐘', style: { width: '90px' }, disabled: ro });
         var turn = inp(d.turn || '', { type: 'number', min: 0, placeholder: '分鐘', style: { width: '90px' }, disabled: ro });
         var slots = inp((d.slots || []).join(' '), { placeholder: '時段用空白分隔，例如：09:00 09:30 10:00；或用上面的開始時間＋每關＋換關自動排', disabled: ro });
+        var vs = sel([{ value: '', label: '跑關：一關一隊，輪流換關' }, { value: 'fixed', label: '對抗 A：固定兩隊一起，輪流換關' }, { value: 'round', label: '對抗 B：每隊輪流遇到每一隊（不同關）' }], d.vs || '', { disabled: ro });
+        vs.addEventListener('change', function () { drawGrid(); });
         var ME = mapEditor(d.map || (d.mode === 'map' && d.image ? { img: d.image, items: [] } : null), ro, function () { t.check(); });
         var placeBox = h('div', { class: 'row wrap', style: { gap: '6px' } }), placeIn = [];
         var gridBox = h('div');
@@ -1365,13 +1402,35 @@ var PkgAdmin = (function () {
         var autoSlots = function () {
           var s0 = toMin(normTime(start.value)), n = split(stations.value).length, L = Number(len.value) || 0, T = Number(turn.value) || 0;
           if (s0 === null || !n || !L) { toast('先填開始時間、關卡、每關幾分鐘', true); return; }
-          var out = []; for (var i = 0; i < n; i++) out.push(toHm(s0 + i * (L + T)));
+          var nq = D.squads.length, k = vs.value === 'round' ? (nq % 2 ? nq : nq - 1) : vs.value === 'fixed' ? n : n;
+          var out = []; for (var i = 0; i < k; i++) out.push(toHm(s0 + i * (L + T)));
           slots.value = out.join(' '); drawGrid(); t.check();
         };
         var autoFill = function () {
           var n = split(stations.value).length, m = split(slots.value).length;
           if (!n || !m) { toast('先填關卡和時段', true); return; }
-          D.squads.forEach(function (sq, i) { var row = d.grid[String(sq.no)] = []; for (var j = 0; j < m; j++) row.push((i + j) % n); });
+          var qs = D.squads.map(function (q) { return String(q.no); });
+          qs.forEach(function (q) { d.grid[q] = []; for (var j = 0; j < m; j++) d.grid[q].push(''); });
+          if (vs.value === 'fixed') {
+            // 對抗 A：1、2 隊一組，3、4 隊一組…；每一組一起換關
+            var np = Math.ceil(qs.length / 2);
+            if (np > n) toast('有 ' + np + ' 組，但只有 ' + n + ' 關：有的時段會有組沒有關卡', true);
+            for (var p2 = 0; p2 < np; p2++) for (var j2 = 0; j2 < m; j2++) { var st2 = (p2 + j2) % n; d.grid[qs[2 * p2]][j2] = st2; if (qs[2 * p2 + 1]) d.grid[qs[2 * p2 + 1]][j2] = st2; }
+          } else if (vs.value === 'round') {
+            // 對抗 B：輪轉法（circle method），每一輪兩兩對戰；每一組換到不同關
+            var arr = qs.slice(); if (arr.length % 2) arr.push('');
+            var R2 = arr.length - 1, half = arr.length / 2;
+            if (half > n) toast('每一輪有 ' + half + ' 場，但只有 ' + n + ' 關：多出來的場次沒有關卡', true);
+            for (var rd = 0; rd < Math.min(R2, m); rd++) {
+              var pairs = [];
+              for (var q2 = 0; q2 < half; q2++) pairs.push([arr[q2], arr[arr.length - 1 - q2]]);
+              pairs.filter(function (pp) { return pp[0] && pp[1]; }).forEach(function (pp, pi) { var st3 = (pi + rd) % n; if (pi < n) { d.grid[pp[0]][rd] = st3; d.grid[pp[1]][rd] = st3; } });
+              arr.splice(1, 0, arr.pop());
+            }
+            if (m < R2) toast('要 ' + R2 + ' 個時段才能每一隊都遇到，現在只有 ' + m + ' 個', true);
+          } else {
+            qs.forEach(function (q, i) { for (var j = 0; j < m; j++) d.grid[q][j] = (i + j) % n; });
+          }
           drawGrid(); t.check();
         };
         var drawGrid = function () {
@@ -1381,10 +1440,19 @@ var PkgAdmin = (function () {
           gridBox.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 't grid-rot' }, h('thead', null, h('tr', null, h('th', null, '小隊＼時段'), sl.map(function (x) { var s0 = toMin(x); return h('th', null, x, L && s0 !== null ? h('div', { class: 'small muted' }, '–' + toHm(s0 + L)) : null); }))),
             h('tbody', null, D.squads.map(function (sq) {
               var row = d.grid[String(sq.no)] = (d.grid[String(sq.no)] || []).slice(0, sl.length);
+              while (row.length < sl.length) row.push('');
               return h('tr', null, h('td', null, sq.name), sl.map(function (x, i) {
                 var c = sel([{ value: '', label: '—' }].concat(st.map(function (n, j) { return { value: j, label: n }; })), row[i] === undefined || row[i] === null ? '' : row[i], { disabled: ro });
-                c.addEventListener('change', function () { row[i] = c.value === '' ? '' : Number(c.value); });
-                return h('td', null, c);
+                var opp = h('div', { class: 'small muted vs-opp' });
+                var upd = function () {
+                  if (!vs.value) { opp.textContent = ''; return; }
+                  var mine = row[i], o2 = mine === '' || mine === undefined ? [] : D.squads.filter(function (q) { return q !== sq && (d.grid[String(q.no)] || [])[i] === mine; });
+                  opp.textContent = mine === '' || mine === undefined ? '' : o2.length ? '對 ' + o2.map(function (q) { return q.name; }).join('、') : '（沒有對手）';
+                  opp.classList.toggle('bad', o2.length > 1);
+                };
+                c.addEventListener('change', function () { row[i] = c.value === '' ? '' : Number(c.value); $all('.vs-opp', gridBox).forEach(function (x) { if (x._upd) x._upd(); }); });
+                opp._upd = upd; upd();
+                return h('td', null, c, opp);
               }));
             })))));
         };
@@ -1393,7 +1461,7 @@ var PkgAdmin = (function () {
         slots.addEventListener('change', drawGrid);
         len.addEventListener('change', drawGrid);
         drawPlaces(); drawGrid();
-        var get = function () { return { id: r.id, kind: 'rot', activity: act.value, name: name.value, stations: split(stations.value), places: placeIn.map(function (x) { return x.value; }), slots: split(slots.value).map(function (x) { var n = normTime(x); return n === null ? x : n; }), len: len.value, turn: turn.value, grid: d.grid, mode: 'table', image: '', map: ME.get() }; };
+        var get = function () { return { id: r.id, kind: 'rot', activity: act.value, name: name.value, stations: split(stations.value), places: placeIn.map(function (x) { return x.value; }), slots: split(slots.value).map(function (x) { var n = normTime(x); return n === null ? x : n; }), len: len.value, turn: turn.value, grid: d.grid, mode: 'table', image: '', map: ME.get(), vs: vs.value }; };
         var save = h('button', { class: 'btn', onclick: function () {
           var v = get();
           if (!v.stations.length) { toast('先填關卡', true); return; }
@@ -1404,8 +1472,9 @@ var PkgAdmin = (function () {
           } });
         } }, '儲存');
         var el = h('div', { class: 'card col' },
-          h('div', { class: 'row' }, h('span', { class: 'tag info' }, '跑關（小隊輪流換關）')),
+          h('div', { class: 'row' }, h('span', { class: 'tag info' }, '跑關／對抗（小隊輪流換關）'), h('span', { class: 'grow' }), ro ? null : h('button', { class: 'btn sm ghost', type: 'button', title: '活動、名稱、地圖會保留；時段會變成時間表的列', onclick: function () { convert(el, toTable(get(), r)); } }, '改成時間表')),
           h('div', { class: 'grid2' }, field('活動', act), field('名稱', name)),
+          field('玩法', vs),
           field('關卡（用空白分隔）', stations),
           h('div', null, h('div', { class: 'small', style: { fontWeight: 700, marginBottom: '4px' } }, '每一關的場地'), placeBox),
           h('div', { class: 'row wrap', style: { alignItems: 'flex-end' } }, field('開始時間', start), field('每關幾分鐘', len), field('換關幾分鐘', turn), ro ? null : h('button', { class: 'btn sm', type: 'button', onclick: autoSlots }, '自動排時段')),
@@ -1420,7 +1489,24 @@ var PkgAdmin = (function () {
           } }, '刪除')));
         var t = track(el, function () { var v = get(); delete v.id; return v; }, save);   // 存好後才拿到的 ID 不算改動
         if (!ro) save.parentNode.appendChild(t.status);
+        el._t = t;
         return el;
+      };
+      // 換模式（跑關 ↔ 時間表）：活動、名稱、地圖保留，時間帶過去；按儲存才會生效
+      var toTable = function (v, r) {
+        var L = Number(v.len) || 0;
+        return { id: r.id, version: r.version, data: { kind: 'table', activity: v.activity, name: v.name, map: v.map, cols: ['各小隊', '關主', '備註'],
+          rows: (v.slots || []).map(function (x) { var a = toMin(x); return { start: x, end: a !== null && L ? toHm(a + L) : '', place: '', color: '', cells: [] }; }) } };
+      };
+      var toRot = function (v, r) {
+        var st = (v.rows || []).map(function (w) { return w.start; }).filter(Boolean), w0 = (v.rows || [])[0], L = w0 && toMin(w0.start) !== null && toMin(w0.end) !== null ? ((toMin(w0.end) - toMin(w0.start)) % 1440 + 1440) % 1440 : '';
+        return { id: r.id, version: r.version, data: { kind: 'rot', activity: v.activity, name: v.name, map: v.map, stations: [], places: [], slots: st, grid: {}, len: L, turn: '' } };
+      };
+      var convert = function (oldEl, r2) {
+        var n = r2.data.kind === 'table' ? tableCard(r2) : cardOf(r2);
+        oldEl.replaceWith(n);
+        if (n._t) n._t.restore('"converted"');
+        toast('已換成' + (r2.data.kind === 'table' ? '時間表' : '跑關') + '，活動、名稱、地圖保留；記得按「儲存」');
       };
       box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '每個活動的細流：可以是「時間表」（像賭場、晚會：每列一個時段，好幾欄分給各小隊、主持人、關主、備註…），或「跑關」（小隊輪流換關）。每一張改好按自己的「儲存」（背景上傳）。在營期流程的「連到流程／活動細流」選它，工作人員點了就會展開。時間超出營期流程排的時段會提醒。'));
       if (R.canEdit) box.appendChild(h('div', { class: 'row wrap', style: { marginBottom: '10px' } },
@@ -1621,6 +1707,28 @@ var PkgAdmin = (function () {
 
   /** 地圖編輯：上傳底圖，再加標點、文字、文字卡片、連線（線一定接在兩個點／卡片之間，選到線後點線上可加轉折點，拖曳轉折點移動、點兩下刪除） */
   var MAP_COLORS = [{ value: '#c62828', label: '紅' }, { value: '#1f1f1f', label: '黑' }, { value: '#1565c0', label: '藍' }, { value: '#2e7d32', label: '綠' }, { value: '#ef6c00', label: '橘' }, { value: '#6a1b9a', label: '紫' }, { value: '#ffffff', label: '白' }];
+  /** 不重畫畫面的小操作（例如存到圖庫）：正在改、還沒存的卡片不會被洗掉 */
+  function runQuiet(name, data, action) {
+    return A.op('pkg.data', { action: action || 'update', target: { pkg: R.pkg, op: name, tab: pageTab(), fresh: true }, data: data }).then(function (x) {
+      applyAdmin(R.pkg, x && x._extra && x._extra.admin, false);
+      return x;
+    });
+  }
+  /** 常用圖庫：存目前的地圖、或從圖庫拿一張來用 */
+  function mapLibPick(cb) {
+    var body = h('div', { class: 'map-lib' });
+    var m;
+    var draw = function () {
+      clear(body);
+      if (!(R.data.maps || []).length) { body.appendChild(h('div', { class: 'hint' }, '圖庫還是空的：在任何一張地圖按「存到圖庫」就會出現在這裡。')); return; }
+      (R.data.maps || []).forEach(function (x) {
+        body.appendChild(h('div', { class: 'map-lib-it' }, h('button', { type: 'button', class: 'map-lib-pick', onclick: function () { m.close(); cb(JSON.parse(JSON.stringify(x.data.map))); } }, Front.mapView(x.data.map).el, h('b', null, x.data.name), h('span', { class: 'small muted' }, (x.data.map.items || []).length + ' 個標記')),
+          R.canEdit ? h('button', { type: 'button', class: 'btn sm ghost', onclick: function () { confirmBox('從圖庫刪除', '刪除「' + x.data.name + '」？已經用這張圖的細流不受影響。', '刪除', true).then(function (ok) { if (ok) runQuiet('map.delete', { id: x.id }, 'delete').then(function () { toast('已從圖庫刪除'); draw(); }, fail); }); } }, '刪除') : null));
+      });
+    };
+    m = modal({ title: '常用圖庫', wide: true, body: body });
+    draw();
+  }
   function mapEditor(map0, ro, onChange) {
     var map = map0 && map0.img ? JSON.parse(JSON.stringify(map0)) : null;
     if (map) map.items = map.items || [];
@@ -1704,6 +1812,12 @@ var PkgAdmin = (function () {
       V.redraw(selId); drawProps(); changed();
     };
     var setMode = function (m) { mode = m; pending = ''; draw(); };
+    // 放大編輯：整個編輯器搬到全螢幕視窗，關掉再放回原位
+    var zoom = function () {
+      var holder = h('span'); el.replaceWith(holder); el.classList.add('map-zoom');
+      var mm = modal({ title: '地圖（放大編輯）', full: true, body: el, onClose: function () { el.classList.remove('map-zoom'); holder.replaceWith(el); draw(); } });
+      draw(); void mm;
+    };
     var draw = function () {
       clear(el);
       if (!map) {
@@ -1712,7 +1826,8 @@ var PkgAdmin = (function () {
         pick.addEventListener('change', function () {
           if (pick.files[0]) upload(pick.files[0], note).then(function (r) { map = { img: String(r.img || r.url).replace('sz=w1000', 'sz=w2000'), items: [] }; draw(); changed(); }, function (e) { toast(e.message, true); });
         });
-        el.appendChild(h('div', { class: 'row wrap', style: { gap: '6px' } }, pick, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, '上傳底圖'), url,
+        el.appendChild(h('div', { class: 'row wrap', style: { gap: '6px' } }, pick, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, '上傳底圖'),
+          h('button', { class: 'btn sm', type: 'button', onclick: function () { mapLibPick(function (mp) { map = mp; map.items = map.items || []; draw(); changed(); }); } }, '從常用圖庫選'), url,
           h('button', { class: 'btn sm', type: 'button', onclick: function () { var u = url.value.trim(); if (!/^https:\/\//.test(u)) return toast('網址要用 https:// 開頭', true); map = { img: u, items: [] }; draw(); changed(); } }, '用這張')));
         el.appendChild(note);
         return;
@@ -1722,6 +1837,11 @@ var PkgAdmin = (function () {
       el.appendChild(h('div', { class: 'row wrap map-tools', style: { gap: '4px' } }, MODES.map(function (m) {
         return h('button', { class: 'btn sm' + (mode === m[0] ? ' primary' : ''), type: 'button', 'data-mode': m[0], onclick: function () { setMode(m[0]); } }, m[1]);
       }), h('span', { style: { flex: 1 } }),
+        el.classList.contains('map-zoom') ? null : h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { zoom(); } }, '⤢ 放大編輯'),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: function () {
+          askText('存到常用圖庫', '名稱', '').then(function (nm) { nm = String(nm || '').trim(); if (!nm) return; runQuiet('map.save', { name: nm, map: { img: map.img, items: map.items } }, 'create').then(function () { toast('已存到常用圖庫「' + nm + '」'); }, fail); });
+        } }, '存到圖庫'),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { mapLibPick(function (mp) { if (map.items.length && !confirm('換成圖庫的地圖？目前的標記會被取代（按儲存才會生效）')) return; map = mp; map.items = map.items || []; selId = ''; draw(); changed(); }); } }, '換圖庫的圖'),
         h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { if (map.items.length && !confirm('移除底圖和上面所有標記？（按儲存才會生效）')) return; map = null; selId = ''; draw(); changed(); } }, '移除地圖')));
       var hint = h('div', { class: 'hint map-hint' }, HINT[mode] + (mode === 'line' && pending ? '　已選起點，再點終點。' : ''));
       el.appendChild(hint);
