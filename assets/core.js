@@ -505,3 +505,26 @@ function signPad(o) {
     }
   };
 }
+
+/* ---------------- 加到主畫面的名稱 ---------------- */
+/**
+ * 圖示都一樣，所以名稱前面放身分（學員／工作／管理），後面接營隊名稱（拿掉年份和括號，iPhone 大約只顯示 12 個字）。
+ * iPhone 有 manifest 時會用 manifest 的名稱，所以 iPhone 不放 manifest，只用 apple-mobile-web-app-title；
+ * 其他手機用這一頁產生的 manifest（網址就是現在這一頁，帶著營隊 ID）。
+ */
+function homeName(label, campName) {
+  var short = String(campName || '').replace(/[（(《【［\[][^）)》】］\]]*[）)》】］\]]/g, '').replace(/^\s*\d{4}\s*(年)?/, '').replace(/\s+/g, '').trim() || '營隊';
+  var nm = label + '｜' + short;
+  var meta = function (name, content) { var m = document.querySelector('meta[name="' + name + '"]'); if (!m) { m = document.createElement('meta'); m.name = name; document.head.appendChild(m); } m.content = content; };
+  meta('apple-mobile-web-app-title', nm); meta('apple-mobile-web-app-capable', 'yes'); meta('mobile-web-app-capable', 'yes');
+  var old = document.querySelector('link[rel=manifest]'); if (old) old.remove();
+  var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  if (!ios) {
+    var abs = function (p) { try { return new URL(p, location.href).href; } catch (e) { return p; } };
+    var tc = document.querySelector('meta[name=theme-color]');
+    var man = { name: label + '｜' + (campName || '營隊互動'), short_name: nm, display: 'standalone', lang: 'zh-Hant', start_url: location.href.split('#')[0], scope: abs('./'), background_color: '#f4f3ee', theme_color: tc ? tc.content : '#2f5d62',
+      icons: [{ src: abs('icon-192.png'), sizes: '192x192', type: 'image/png' }, { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png' }] };
+    var l = document.createElement('link'); l.rel = 'manifest'; l.href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(man)); document.head.appendChild(l);
+  }
+  return nm;
+}
