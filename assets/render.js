@@ -324,7 +324,7 @@ var Front = (function () {
     var out = h('div', { class: 'sched' }), day = '';
     items.forEach(function (it) {
       if (it.date !== day && it.showDay) { day = it.date; out.appendChild(h('div', { class: 'day' }, dayLabel(it.date))); }
-      var row = h('div', { class: 'it' + (onItem && it.page ? ' link' : '') }, h('span', { class: 'tm' }, it.time || '—'), h('div', { class: 'grow' }, h('span', { class: 'nm' }, it.title), it.note ? h('div', { class: 'small muted' }, it.note) : null));
+      var row = h('div', { class: 'it' + (onItem && it.page ? ' link' : '') }, h('span', { class: 'tm' }, (it.time || '—') + (it.end ? '–' + it.end : '')), h('div', { class: 'grow' }, h('span', { class: 'nm' }, it.title), it.note ? h('div', { class: 'small muted' }, it.note) : null));
       var s0 = tms(it.date, it.time);
       if (s0) { row.dataset.s = s0; var nx = items.filter(function (y) { return y.date === it.date && y.time > it.time; })[0]; row.dataset.e = it.end ? tms(it.date, it.end) : nx ? tms(nx.date, nx.time) : s0 + 3600000; }
       if (onItem && it.page) row.addEventListener('click', function () { onItem(it); });
@@ -557,7 +557,7 @@ var Front = (function () {
     var items = (pub && pub.items) || [], t = taipei(), tm = taipei(new Date(nowDate().getTime() + 86400000));
     var title = (pub && pub.title) || '行程表';
     var pageOf = function (it) { var p = it.activity ? env.pages.filter(function (x) { return x.activity === it.activity; })[0] : null; return p ? p.id : ''; };
-    var map = function (arr, showDay) { return arr.map(function (x) { return { date: x.date, time: x.time, title: x.title, note: x.note, page: pageOf(x), showDay: showDay }; }); };
+    var map = function (arr, showDay) { return arr.map(function (x) { return { date: x.date, time: x.time, end: x.end, title: x.title, note: x.note, page: pageOf(x), showDay: showDay }; }); };
     var go = function (it) { env.nav(it.page); };
     if (which === 'today') return card('今日行程 · ' + dayLabel(t.ymd), schedList(map(items.filter(function (x) { return x.date === t.ymd; })), go));
     if (which === 'tomorrow') return card('明日行程 · ' + dayLabel(tm.ymd), schedList(map(items.filter(function (x) { return x.date === tm.ymd; })), go));
