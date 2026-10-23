@@ -380,7 +380,9 @@ var Editor = (function () {
       list: { items: [''] }, table: { rows: [['項目', '說明'], ['', '']], header: true }, divider: {}, pagelink: { page: '' }, notice: { text: '' } };
     if (type !== 'pkg') { mk(dflt[type]); return; }
     var opts = [];
+    // 工作人員端可以放所有畫面（學員看得到的，工作人員也可以看）；學員端只放學員的畫面
     A.pool.forEach(function (p) { (p.views || []).filter(function (v) { return (v.sides || []).indexOf(E.side) >= 0; }).forEach(function (v) { opts.push({ value: p.pkg + '|' + v.key, label: p.name + '：' + v.name }); }); });
+    if (E.side === 'worker') A.pool.forEach(function (p) { (p.views || []).filter(function (v) { return (v.sides || []).indexOf('worker') < 0; }).forEach(function (v) { opts.push({ value: p.pkg + '|' + v.key, label: p.name + '：' + v.name + '〔學員端畫面〕' }); }); });
     if (!opts.length) { toast('沒有可以放在這一端的 Package 畫面，請先到「Package 管理」安裝', true); return; }
     var s = sel(opts, opts[0].value);
     modal({ title: '放入 Package 畫面', body: field('畫面', s, 'Package 畫面的內容來自各 Package 的資料，在左邊選單「資料」編輯'), actions: [{ text: '取消' }, { text: '放入', cls: 'primary', onClick: function () { var v = s.value.split('|'); mk({ pkg: v[0], view: v[1] }); } }] });
@@ -495,8 +497,15 @@ var Editor = (function () {
     wrap.appendChild(h('div', { class: 'small muted', style: { textAlign: 'center', marginBottom: '6px' } }, '手機預覽（草稿）'));
     wrap.appendChild(phone);
     if (cur) Front.page(content, cur.id, env);
-    var need = Front.liveBlocks(env, E.sel).filter(function (b) { return E.live[b.id] === undefined; });
-    if (need.length) api('frontLive', A.camp, E.side, need).then(function (r) { if (!E) return; Object.keys(r.live).forEach(function (k) { E.live[k] = r.live[k]; }); preview(); }, function () {});
+    // 每個區塊只抓一次：伺服器沒回的（或抓失敗）不會一直重抓，切換學員端／工作人員端也不會卡住
+    var E0 = E; E0.asked = E0.asked || {};
+    var need = Front.liveBlocks(env, E.sel).filter(function (b) { return E.live[b.id] === undefined && !E0.asked[b.id]; }).slice(0, 60);
+    need.forEach(function (b) { E0.asked[b.id] = 1; });
+    if (need.length) api('frontLive', A.camp, E0.side, need).then(function (r) {
+      if (E !== E0) return;
+      need.forEach(function (b) { E.live[b.id] = r.live[b.id] === undefined ? {} : r.live[b.id]; });
+      preview();
+    }, function () { need.forEach(function (b) { delete E0.asked[b.id]; }); });
   }
   function blocks_() { blocks(); }
 
