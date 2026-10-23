@@ -474,3 +474,6 @@ td.dt-merged textarea { color: var(--text-3); text-align: center; }
 .map-lib-pick:hover { border-color: var(--brand); }
 .vs-opp { margin-top: 2px; } .vs-opp.bad { color: var(--bad); font-weight: 700; }
 .vs-line { color: var(--info, #3563a8); font-weight: 600; } table.dt td.dt-pl { white-space: nowrap; color: var(--text-2); }
+/* 改了時間自動排序：移過去的那一列閃一下 */
+.t.grid tr.g-moved td { animation: g-moved .9s ease-out; }
+@keyframes g-moved { from { background: var(--brand-soft); } }
