@@ -12,7 +12,9 @@
   var camp = param('c'), side = param('s') === 'worker' ? 'worker' : 'student', preview = param('preview');
   var root = $('#root');
   var TK = 'ia_f_' + camp + '_' + side, VK = 'ia_ver_' + camp + '_' + side, BK = 'ia_boot_' + camp + '_' + side;
-  var S = { boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false };
+  var S = { boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false, scrolled: {} };
+  var LK = 'ia_live_' + camp + '_' + side;
+  SIM_OK_ = !!preview;
 
   root.classList.toggle('worker', side === 'worker');
   // 工作人員端換靛藍色，和學員端分開（彈出視窗掛在 body 上，所以加在 html）
@@ -76,7 +78,7 @@
     var ver = '';
     if (preview === 'draft') ver = 'draft';
     else if (!preview) { try { ver = sessionStorage.getItem(VK) || ''; } catch (e) {} }
-    api('frontBoot', camp, side, ver).then(function (b) {
+    api('frontBoot', camp, side, ver, simNow()).then(function (b) {
       S.offline = false;
       if (!b.snapshot) { msgScreen(b.camp.name, side === 'student' ? '學員端還沒有發布內容，晚點再來看看。' : '工作人員端還沒有發布內容。', logoutBtn()); return; }
       if (!preview) { try { sessionStorage.setItem(VK, b.snapshot.ver); } catch (e) {} jset(BK, b); }
@@ -99,6 +101,8 @@
 
   function show(b) {
     S.boot = b;
+    // 上次載入過的區塊資料先拿來用（打開馬上有內容），背景再更新
+    if (!preview && !Object.keys(S.live).length) { var cl = jget(LK, null); if (cl) Object.keys(cl).forEach(function (k) { S.live[k] = cl[k]; }); }
     var snap = b.snapshot;
     S.env = { pages: snap.pages, blocks: snap.blocks.slice(), packages: snap.packages || {}, live: S.live, side: side, me: b.me, preview: !!preview, nav: nav,
       action: function (pkg, name, data) { return op('front.action', { camp: camp, target: { pkg: pkg, action: name, side: side }, data: data }); } };
@@ -158,7 +162,7 @@
       h('div', { class: 'grow' }, h('div', { class: 'small muted' }, b.camp.name + (b.me && b.me.name ? ' · ' + b.me.name : '')), h('h1', null, cur ? cur.title : '')),
       logoutBtn());
     var banners = [];
-    if (preview) banners.push(h('div', { class: 'recall-banner' }, preview === 'draft' ? '預覽：目前的草稿（還沒發布）' : '預覽：目前發布的第 ' + b.snapshot.ver + ' 版'));
+    if (preview) banners.push(h('div', { class: 'recall-banner row wrap', style: { gap: '8px' } }, h('span', { class: 'grow' }, preview === 'draft' ? '預覽：目前的草稿（還沒發布）' : '預覽：目前發布的第 ' + b.snapshot.ver + ' 版'), simBox()));
     if (b.recall) banners.push(h('div', { class: 'recall-banner' }, '營隊已結束，這裡是回憶模式：內容保留，不會再更新。'));
     if (S.offline) banners.push(h('div', { class: 'recall-banner' }, '目前離線，顯示上次載入的內容。'));
     if (S.night && side === 'worker') banners.push(h('div', { class: 'night-banner' }, icon('moon'), '夜間時段：學員端已切換為夜間模式'));
@@ -182,23 +186,59 @@
     loadLive();
   }
 
+  /** 預覽可以設定模擬時間：看某個時間點的「現在主題」、目前時程、夜間模式 */
+  function simBox() {
+    var v = simNow(), inp2 = h('input', { type: 'datetime-local', class: 'input', style: { width: '200px', height: '32px' } });
+    if (v) { var t = taipei(new Date(v)); inp2.value = t.ymd + 'T' + t.hm; }
+    var apply = function (iso) { try { if (iso) sessionStorage.setItem('ia_sim', iso); else sessionStorage.removeItem('ia_sim'); } catch (e) {} S.scrolled = {}; S.prefetched = false; Object.keys(S.live).forEach(function (k) { delete S.live[k]; }); boot(); };
+    inp2.addEventListener('change', function () { if (inp2.value) apply(new Date(inp2.value + ':00+08:00').toISOString()); });
+    return h('span', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'small' }, '模擬時間'), inp2, v ? h('button', { class: 'btn sm', onclick: function () { apply(''); } }, '回到現在') : null);
+  }
+  /** 拿到的區塊資料：有變的才重畫（正在填的表單不會被洗掉） */
+  function applyLive(r) {
+    var changed = Object.keys(r.live).filter(function (k) { return JSON.stringify(S.live[k]) !== JSON.stringify(r.live[k]); });
+    changed.forEach(function (k) { S.live[k] = r.live[k]; });
+    if (!preview) jset(LK, S.live);
+    if (!body) return;
+    changed.forEach(function (k) {
+      var old = body.querySelector('[data-bid="' + k + '"]'), b = S.env.blocks.filter(function (x) { return x.id === k; })[0];
+      if (!old || !b) return;
+      var n = Front.block(b, S.env);
+      if (n) { n.dataset.bid = k; old.replaceWith(n); } else old.remove();
+    });
+    afterDraw();
+  }
+  /** 標出現在的時程；工作人員端第一次打開這一頁時自動捲到現在（之後可以自己捲） */
+  function afterDraw() {
+    if (!body) return;
+    Front.markNow(body);
+    if (side !== 'worker' || S.scrolled[S.cur]) return;
+    var n = body.querySelector('.sched .it.now, table.dt tr.now');
+    if (n) { S.scrolled[S.cur] = 1; setTimeout(function () { n.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 50); }
+  }
+  /** 背景先把其他頁的資料抓好：首頁、緊急聯絡優先，切過去就不用等 */
+  function prefetch() {
+    if (S.offline || !S.env || S.prefetched) return;
+    S.prefetched = true;
+    var rs = roots(), first = [], rest = [];
+    var emPages = {};
+    S.env.blocks.forEach(function (b) { if (b.type === 'pkg' && b.data && b.data.pkg === 'emergency') emPages[b.page] = 1; });
+    S.env.pages.forEach(function (p) { if (p.id === S.cur) return; ((rs[0] && p.id === rs[0].id) || emPages[p.id] ? first : rest).push(p.id); });
+    var all = [];
+    first.concat(rest).forEach(function (pid) { Front.liveBlocks(S.env, pid).forEach(function (b) { if (!all.some(function (x) { return x.id === b.id; })) all.push(b); }); });
+    var chunks = [];
+    for (var i = 0; i < all.length; i += 20) chunks.push(all.slice(i, i + 20));
+    chunks.reduce(function (p, list) { return p.then(function () { return api('frontLive', camp, side, list, simNow()).then(applyLive, function () {}); }); }, Promise.resolve());
+  }
+
   function loadLive() {
     if (S.offline || !S.env) return;
     var list = Front.liveBlocks(S.env, S.cur);
-    if (!list.length) return;
-    var pid = S.cur;
-    api('frontLive', camp, side, list).then(function (r) {
-      // 只換掉資料有變的區塊，正在填的表單不會被洗掉
-      var changed = Object.keys(r.live).filter(function (k) { return JSON.stringify(S.live[k]) !== JSON.stringify(r.live[k]); });
-      changed.forEach(function (k) { S.live[k] = r.live[k]; });
-      if (pid !== S.cur || !body) return;
-      changed.forEach(function (k) {
-        var old = body.querySelector('[data-bid="' + k + '"]'), b = S.env.blocks.filter(function (x) { return x.id === k; })[0];
-        if (!old || !b) return;
-        var n = Front.block(b, S.env);
-        if (n) { n.dataset.bid = k; old.replaceWith(n); } else old.remove();
-      });
+    if (!list.length) { afterDraw(); prefetch(); return; }
+    api('frontLive', camp, side, list, simNow()).then(function (r) {
+      applyLive(r);
       S.liveFail = 0;
+      prefetch();
     }, function (e) {
       if (e.code !== 'NET') { fail(e); return; }
       // 連線不穩：不要等一分鐘，5 秒、15 秒後再試；還在「載入中」的區塊改成提示
