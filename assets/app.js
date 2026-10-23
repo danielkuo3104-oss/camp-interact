@@ -135,13 +135,8 @@
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (S.boot) render(); });
   window.addEventListener('appinstalled', function () { deferredPrompt = null; store(IK, '1', true); if (S.boot) render(); });
   /** 加到主畫面後的名稱：圖示都一樣，所以名稱先寫學員／工作人員，再接營隊名稱（iPhone 大約只顯示前 12 個字） */
-  function setAppName(campName) {
-    var short = String(campName || '').replace(/[（(《【][^）)》】]*[）)》】]/g, '').replace(/\s+/g, '').trim() || '營隊';
-    var nm = (side === 'worker' ? '工作｜' : '學員｜') + short;
-    document.title = nm + (preview ? '（預覽）' : '');
-    var m = document.querySelector('meta[name=apple-mobile-web-app-title]'); if (m) m.content = nm;
-  }
-  if (side === 'worker') { var mf = document.querySelector('link[rel=manifest]'); if (mf) mf.href = 'manifest-worker.webmanifest'; }
+  function setAppName(campName) { document.title = homeName(side === 'worker' ? '工作' : '學員', campName) + (preview ? '（預覽）' : ''); }
+  setAppName('');
   function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
   function isIos() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
   function inAppBrowser() { return /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent); }
