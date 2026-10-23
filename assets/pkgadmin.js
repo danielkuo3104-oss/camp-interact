@@ -928,6 +928,31 @@ var PkgAdmin = (function () {
         validate: function (d) { return !String(d.role).trim() ? '每一列都要填工作（角色）' : ''; },
         toData: function (v, r) { return { id: r.id, activity: v.activity, role: v.role, detail: v.detail, date: v.date, need: v.need, people: v.people }; },
         onChange: function (G) {
+          // 同一組工作（同活動＋同工作，例如都是關主）：左邊同一個顏色、標「第幾列／共幾列」；同一組裡（同一天）同一個人出現兩次標紅
+          var norm = function (x) { return String(x || '').replace(/\s+/g, ''); }, jobs = {}, order = [];
+          G.rows.filter(function (r) { return !r.del && r.tr.parentNode; }).sort(function (a, b) { return a.tr.compareDocumentPosition(b.tr) & 4 ? -1 : 1; }).forEach(function (r) {
+            var v = r.read(), k = norm(v.activity) + '|' + norm(v.role);
+            if (!norm(v.role)) k = '';
+            if (k && !jobs[k]) { jobs[k] = []; order.push(k); }
+            r._job = k; if (k) jobs[k].push(r);
+          });
+          var dupN = 0;
+          G.rows.forEach(function (r) {
+            var td = r.tr.querySelector('td[data-ci="1"]'); if (!td) return;
+            var tag = td.querySelector('.job-n'); if (tag) tag.remove();
+            r.tr.classList.remove('job-grp', 'job-cont', 'job-dup'); r.tr.removeAttribute('data-job');
+            var list = r._job ? jobs[r._job] : null;
+            if (r.del || !list || list.length < 2) return;
+            var i = list.indexOf(r), v = r.read(), names = [];
+            (v.people || []).forEach(function (p) {
+              if (list.some(function (o2) { if (o2 === r) return false; var w = o2.read(); return (w.date || '') === (v.date || '') && (w.people || []).indexOf(p) >= 0; })) names.push(wById[p] ? wById[p].data.name : p);
+            });
+            r.tr.classList.add('job-grp'); if (i > 0 && list[i - 1].tr === r.tr.previousSibling) r.tr.classList.add('job-cont');
+            r.tr.dataset.job = String(order.indexOf(r._job) % 6);
+            var t = h('div', { class: 'job-n' }, h('span', null, '同一組 ' + (i + 1) + '／' + list.length));
+            if (names.length) { r.tr.classList.add('job-dup'); dupN++; t.appendChild(h('span', { class: 'tag bad' }, '重複：' + names.join('、'))); }
+            td.appendChild(t);
+          });
           var need = 0, have = 0, short = 0, per = {};
           G.rows.forEach(function (r) {
             if (r.del) return;
@@ -936,6 +961,7 @@ var PkgAdmin = (function () {
             (v.people || []).forEach(function (p) { (per[p] = per[p] || []).push((v.activity ? v.activity + '／' : '') + (v.role || '') + (v.date ? '（' + v.date.slice(5) + '）' : '')); });
           });
           clear(sum).appendChild(h('span', { class: 'tag ' + (short ? 'bad' : 'ok') }, short ? short + ' 個工作還缺人' : '人數都夠了'));
+          if (dupN) sum.appendChild(h('span', { class: 'tag bad' }, '同一組工作有人重複（' + dupN + ' 列）'));
           if (need) sum.appendChild(h('span', { class: 'small muted' }, '需要 ' + need + ' 人次，已安排 ' + have));
           var lb = load.lastChild, free = D.workers.filter(function (w) { return !w.data.inactive && !per[w.id]; });
           clear(lb).appendChild(h('div', { class: 'col', style: { gap: '4px', marginTop: '8px' } }, D.workers.filter(function (w) { return per[w.id]; }).sort(function (a, b) { return per[b.id].length - per[a.id].length; }).map(function (w) {
