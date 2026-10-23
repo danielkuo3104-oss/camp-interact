@@ -15,7 +15,7 @@ function store(key, val, persist) {
 function jget(key, dflt) { try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
 function jset(key, v) { try { if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
 
-var NO_TOKEN_ = { login: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, studentLogin: 1, campPublicInfo: 1 };
+var NO_TOKEN_ = { login: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, studentLogin: 1, campPublicInfo: 1, workerDepts: 1 };
 
 /**
  * 呼叫 Apps Script 後端（text/plain 避免 CORS 預檢）。錯誤帶 code：AUTH／LOCK／CONFLICT／NET
