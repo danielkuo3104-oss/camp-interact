@@ -354,10 +354,14 @@ function fmt(iso) {
   return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
 /** 營隊所在地（台灣）的今天與現在時間，不受手機時區影響 */
+/** 現在時間：編輯者預覽可以設定模擬時間（sessionStorage ia_sim） */
+var SIM_OK_ = false;   // 只有前台預覽（app.html&preview）才用模擬時間
+function simNow() { if (!SIM_OK_) return ''; try { return sessionStorage.getItem('ia_sim') || ''; } catch (e) { return ''; } }
+function nowDate() { var v = simNow(), t = Date.parse(v); return v && isFinite(t) ? new Date(t) : new Date(); }
 function taipei(d) {
   var p = {};
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-    .formatToParts(d || new Date()).forEach(function (x) { p[x.type] = x.value; });
+    .formatToParts(d || nowDate()).forEach(function (x) { p[x.type] = x.value; });
   return { ymd: p.year + '-' + p.month + '-' + p.day, hm: p.hour + ':' + p.minute };
 }
 var WEEK_ = ['日', '一', '二', '三', '四', '五', '六'];
