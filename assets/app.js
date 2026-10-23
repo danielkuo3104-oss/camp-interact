@@ -208,13 +208,11 @@
     });
     afterDraw();
   }
-  /** 標出現在的時程；工作人員端第一次打開這一頁時自動捲到現在（之後可以自己捲） */
+  /** 標出現在的時程；時程清單的小視窗第一次畫好時把現在捲到中間（之後可以自己捲，不會被拉回去） */
   function afterDraw() {
     if (!body) return;
     Front.markNow(body);
-    if (side !== 'worker' || S.scrolled[S.cur]) return;
-    var n = body.querySelector('.sched .it.now, table.dt tr.now');
-    if (n) { S.scrolled[S.cur] = 1; setTimeout(function () { n.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 50); }
+    setTimeout(function () { Front.centerNow(body); }, 0);
   }
   /** 背景先把其他頁的資料抓好：首頁、緊急聯絡優先，切過去就不用等 */
   function prefetch() {
