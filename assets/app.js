@@ -66,6 +66,7 @@
       err.textContent = '';
       if (!name.value.trim() || !idk.value.trim()) { err.textContent = '請填姓名與身分證字號'; return; }
       busy(btn, function () { return api('studentLogin', camp, name.value, idk.value); }).then(function (r) {
+        loggedIn(btn, [name, idk]);
         store(TK, r.token, true);
         try { sessionStorage.removeItem(VK); } catch (e) {}
         if (r.nameNotice) toast(r.nameNotice);
@@ -76,27 +77,87 @@
     [name, idk].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '學員端'), title,
-      field('姓名', name), field('身分證字號', idk), err, btn, note)));
+      field('姓名', name), field('身分證字號', idk), err, btn, note, installTip())));
+  }
+
+  /** 登入成功：按鈕維持不能按，等畫面載入（不要又亮起來讓人再按一次） */
+  function loggedIn(btn, inputs) {
+    btn.disabled = true; btn.textContent = '登入成功，載入中…';
+    (inputs || []).forEach(function (x) { x.disabled = true; });
   }
 
   function workerLogin() {
-    var name = inp('', { autocomplete: 'name' }), dept = inp('', { placeholder: '例如：輔導、活動、總務' }), pass = inp('', { type: 'password' });
+    var name = inp('', { autocomplete: 'name' }), pass = inp('', { type: 'password' });
+    // 股別：用選的（清單來自工作人員名單）；打好姓名自動帶出
+    var dept = h('select', { class: 'input' }, h('option', { value: '' }, '請選擇股別'));
+    var deptTx = inp('', { placeholder: '例如：輔導、活動、總務' }), deptF = field('股別', dept), deptHint = h('span', { class: 'hint' });
+    deptF.appendChild(deptHint);
+    var useText = function () { dept.replaceWith(deptTx); dept = deptTx; };
     var err = h('div', { class: 'err' }), title = h('h1', null, '工作人員登入');
     var passF = field('營隊通行碼', pass, '通行碼由籌辦團隊提供');
-    api('campPublicInfo', camp).then(function (c) { title.textContent = c.name; if (c.noPass) passF.classList.add('hidden'); }, function () {});
+    api('campPublicInfo', camp).then(function (c) {
+      title.textContent = c.name; if (c.noPass) passF.classList.add('hidden');
+      if (!(c.depts || []).length) { useText(); return; }
+      c.depts.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
+    }, function () { useText(); });
+    var lastName = '';
+    var detect = function () {
+      var n = name.value.trim();
+      if (!n || n === lastName || dept.tagName !== 'SELECT') return;
+      lastName = n;
+      api('workerDepts', camp, n).then(function (ds) {
+        if (name.value.trim() !== n) return;
+        if (ds.length === 1) { dept.value = ds[0]; deptHint.textContent = '已自動帶出你的股別'; }
+        else if (ds.length > 1) deptHint.textContent = '你在 ' + ds.join('、') + '，請選要登入的股別';
+        else deptHint.textContent = '名單裡找不到這個名字，請確認姓名';
+      }, function () {});
+    };
+    name.addEventListener('change', detect); name.addEventListener('blur', detect);
     var btn = h('button', { class: 'btn primary' }, '登入');
     var go = function () {
       err.textContent = '';
+      if (!dept.value.trim()) { err.textContent = '請選擇股別'; return; }
       busy(btn, function () { return api('workerLogin', camp, name.value, dept.value, pass.value); }).then(function (r) {
+        loggedIn(btn, [name, dept, pass]);
         store(TK, r.token, true);
         boot();
       }, function (e) { err.textContent = e.message; });
     };
     btn.addEventListener('click', go);
-    [name, dept, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
+    [name, deptTx, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') { if (x === name) detect(); go(); } }); });
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '工作人員端'), title,
-      field('姓名', name), field('股別', dept), passF, err, btn)));
+      field('姓名', name), deptF, passF, err, btn, installTip())));
+  }
+
+  /* ---------- 加到主畫面（安裝成 App） ---------- */
+  var IK = 'ia_install_off_' + camp + '_' + side, deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (S.boot) render(); });
+  window.addEventListener('appinstalled', function () { deferredPrompt = null; store(IK, '1', true); if (S.boot) render(); });
+  function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+  function isIos() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
+  function inAppBrowser() { return /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent); }
+  function canInstall() { return !standalone() && (!!deferredPrompt || isIos() || /Android/.test(navigator.userAgent)); }
+  function doInstall() {
+    if (deferredPrompt) { var e = deferredPrompt; deferredPrompt = null; e.prompt(); (e.userChoice || Promise.resolve()).then(function (c) { if (c && c.outcome === 'accepted') store(IK, '1', true); if (S.boot) render(); }); return; }
+    var steps = inAppBrowser() ? ['先點右上角（或右下角）的選單，選「用預設瀏覽器開啟」或「用 Safari 開啟」', '再照下面的步驟加到主畫面']
+      : isIos() ? ['點 Safari 下方（或網址列旁）的分享按鈕（方框加箭頭）', '往下滑，選「加入主畫面」', '右上角按「加入」']
+      : ['點瀏覽器右上角的選單（⋮）', '選「加到主畫面」或「安裝應用程式」', '按「安裝」或「新增」'];
+    modal({ title: '加到主畫面', body: h('div', { class: 'col', style: { gap: '10px' } },
+      h('ol', { class: 'install-steps' }, steps.map(function (t) { return h('li', null, t); })),
+      h('p', { class: 'small muted', style: { margin: 0 } }, '之後從主畫面的「營隊」圖示打開，就像 App 一樣。' + (isIos() ? 'iPhone 從主畫面打開時要再登入一次。' : ''))) });
+  }
+  function installBanner() {
+    var bn = h('div', { class: 'install-banner' }, h('span', { class: 'brand-mark' }, '營'),
+      h('div', { class: 'grow' }, h('b', null, '加到主畫面'), h('div', { class: 'small muted' }, '之後一鍵打開，不用再找連結')),
+      h('button', { class: 'btn primary sm', onclick: doInstall }, '加入'),
+      h('button', { class: 'btn ghost sm', 'aria-label': '不要再顯示', onclick: function () { store(IK, '1', true); bn.remove(); } }, '✕'));
+    return bn;
+  }
+  /** 登入畫面的小提示：iPhone 主畫面的 App 和 Safari 分開登入，所以建議先加再登入 */
+  function installTip() {
+    if (!canInstall()) return null;
+    return h('button', { class: 'btn ghost sm install-tip', type: 'button', onclick: doInstall }, '＋ 加到主畫面' + (isIos() ? '（建議先加，再從主畫面打開登入）' : ''));
   }
 
   function boot() {
@@ -198,12 +259,13 @@
     var head = h('div', { class: 'app-head' },
       cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : h('span', { class: 'brand-mark' }, '營'),
       h('div', { class: 'grow' }, h('div', { class: 'small muted' }, b.camp.name + (b.me && b.me.name ? ' · ' + b.me.name : '')), h('h1', null, cur ? cur.title : '')),
-      h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, '⟳ 重新整理'),
+      h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, h('span', { class: 'rf-ic', 'aria-hidden': 'true' }, '⟳'), h('span', { class: 'rf-tx' }, '重新整理')),
       logoutBtn());
     var banners = [];
     if (preview) banners.push(h('div', { class: 'recall-banner row wrap', style: { gap: '8px' } }, h('span', { class: 'grow' }, preview === 'draft' ? '預覽：目前的草稿（還沒發布）' : '預覽：目前發布的第 ' + b.snapshot.ver + ' 版'), simBox()));
     if (b.recall) banners.push(h('div', { class: 'recall-banner' }, '營隊已結束，這裡是回憶模式：內容保留，不會再更新。'));
     if (S.offline) banners.push(h('div', { class: 'recall-banner' }, '目前離線，顯示上次載入的內容。'));
+    if (!preview && rs[0] && S.cur === rs[0].id && canInstall() && !store(IK)) banners.push(installBanner());
     if (S.night && side === 'worker') banners.push(h('div', { class: 'night-banner' }, icon('moon'), '夜間時段：學員端已切換為夜間模式'));
     body = h('div', { class: 'app-body' }, banners);
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
