@@ -353,6 +353,13 @@ var Front = (function () {
     return h('div', { class: 'tbl-wrap' }, h('table', { class: 't dt rt' }, h('thead', null, h('tr', null, h('th', null, '時間'), h('th', null, '分'), sq.map(function (row) { return h('th', null, row.squad); }), hasNote ? h('th', null, '備註') : null)), tb));
   }
   function card(title, body, extra) { return h('div', { class: 'fb' }, title ? h('h2', null, title) : null, body, extra || null); }
+  /** 團隊計分明細：每個 Game 與加減分 */
+  function sbParts(parts) {
+    parts = parts || [];
+    return h('div', { class: 'sched' }, parts.map(function (p) {
+      return h('div', { class: 'it' }, h('span', { class: 'grow' }, p.name), h('b', { style: { color: p.score < 0 ? 'var(--bad)' : 'var(--ok)' } }, (p.score > 0 ? '+' : '') + p.score));
+    }), !parts.length ? h('div', { class: 'muted small' }, '還沒有分數') : null);
+  }
   function contactRow(name, sub, phone, sos) {
     return h('div', { class: 'contact' }, h('div', { class: 'who' }, h('b', null, name), sub ? h('small', null, sub) : null),
       phone ? h('a', { class: 'call' + (sos ? ' sos' : ''), href: 'tel:' + String(phone).replace(/[^\d+]/g, '') }, icon('phone', 16), ' 撥打') : null);
@@ -501,20 +508,20 @@ var Front = (function () {
     },
     scoreboard: {
       mini: function (d) {
-        return h('div', { class: 'fb row' }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
+        var open = function () { if (d.mine) modal({ title: d.mine.name + ' · ' + d.mine.score + ' 分', body: sbParts(d.mine.parts) }); };
+        return h('div', { class: 'fb row' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
           d.mine ? h('div', null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', null, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊')),
           d.top ? h('div', { style: { textAlign: 'right' } }, h('div', { class: 'small muted' }, '目前第一'), h('b', null, d.top.name), h('div', { class: 'small' }, d.top.score + ' 分')) : null);
       },
       team: function (d) {
         if (!d.mine) return card('我的隊伍分數', h('div', { class: 'muted small' }, '你還沒有分到小隊'));
-        return card(d.mine.name + ' · ' + d.mine.score + ' 分' + (d.provisional ? '（暫定）' : ''), h('div', { class: 'sched' }, (d.mine.parts || []).map(function (p) {
-          return h('div', { class: 'it' }, h('span', { class: 'grow' }, p.name), h('b', { style: { color: p.score < 0 ? 'var(--bad)' : 'var(--ok)' } }, (p.score > 0 ? '+' : '') + p.score));
-        }), !(d.mine.parts || []).length ? h('div', { class: 'muted small' }, '還沒有分數') : null), h('div', { class: 'small muted', style: { marginTop: '6px' } }, '目前第 ' + d.mine.rank + ' 名'));
+        return card(d.mine.name + ' · ' + d.mine.score + ' 分' + (d.provisional ? '（暫定）' : ''), sbParts(d.mine.parts), h('div', { class: 'small muted', style: { marginTop: '6px' } }, '目前第 ' + d.mine.rank + ' 名'));
       },
       full: function (d, b, env) {
         var my = env.me && env.me.squad;
         return card((d.title || '團隊積分') + (d.provisional ? '（暫定排名）' : ''), h('div', { class: 'board' }, (d.rows || []).map(function (r) {
-          return h('div', { class: 'r' + (String(r.no) === String(my) ? ' me' : '') }, h('span', { class: 'rk' }, r.rank), h('span', { class: 'grow' }, r.name), h('span', { class: 'sc' }, r.score));
+          // 點一隊展開分數明細
+          return h('details', { class: 'r-wrap' }, h('summary', { class: 'r' + (String(r.no) === String(my) ? ' me' : '') }, h('span', { class: 'rk' }, r.rank), h('span', { class: 'grow' }, r.name), h('span', { class: 'sc' }, r.score), h('span', { class: 'cs-chev' }, '›')), h('div', { class: 'r-parts' }, sbParts(r.parts)));
         })), d.provisional ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, '有關卡成績還沒公布，排名可能會變') : null);
       }
     },
