@@ -336,21 +336,50 @@ var Front = (function () {
       .concat((r.free || []).map(function (x) { return { free: true, start: x.start, end: x.end, text: x.text, place: x.place, note: x.note || '' }; }))
       .sort(function (a, b) { return (mm(a.start) === null ? 9999 : mm(a.start)) - (mm(b.start) === null ? 9999 : mm(b.start)) || (b.free ? 1 : 0) - (a.free ? 1 : 0); });
     var sq = r.rows || [], hasNote = rows.some(function (x) { return x.note; });
+    var cellOf = function (row, x) {
+      var c = row.cells[x.k] || '', i = (r.stations || []).indexOf(c), opp = r.vs && c ? sq.filter(function (o2) { return o2 !== row && o2.cells[x.k] === c; }).map(function (o2) { return o2.squad; }) : [];
+      return { st: c, place: c ? (r.places || [])[i] || '' : '', opp: opp };
+    };
+    var timeTd = function (x) {
+      var a = mm(x.start), b = mm(x.end);
+      return h('td', { class: 'dt-tm' }, h('b', null, x.start), x.end ? h('div', { class: 'small' }, '–' + x.end + (a !== null && b !== null && b > a ? ' · ' + (b - a) + ' 分' : '')) : null);
+    };
+    var mark = function (tr, x) { if (date && x.start) { var s0 = tms(date, x.start); tr.dataset.s = s0; tr.dataset.e = x.end ? tms(date, x.end) : s0 + 600000; } return tr; };
+    // 全部小隊：一列一個時段、一欄一個小隊（手機可以左右滑，時間欄固定）
     var tb = h('tbody');
     rows.forEach(function (x) {
-      var a = mm(x.start), b = mm(x.end), tr = h('tr', { class: x.free ? 'rt-free' : '' });
-      if (date && x.start) { var s0 = tms(date, x.start); tr.dataset.s = s0; tr.dataset.e = x.end ? tms(date, x.end) : s0 + 600000; }
-      tr.appendChild(h('td', { class: 'dt-tm' }, x.start + (x.end ? '–' + x.end : '')));
-      tr.appendChild(h('td', { class: 'dt-dur' }, a !== null && b !== null && b > a ? String(b - a) : ''));
+      var tr = mark(h('tr', { class: x.free ? 'rt-free' : '' }), x);
+      tr.appendChild(timeTd(x));
       if (x.free) tr.appendChild(h('td', { colspan: Math.max(1, sq.length), class: 'rt-span' }, h('b', null, x.text), x.place ? h('div', { class: 'small muted' }, x.place) : null));
       else sq.forEach(function (row) {
-        var c = row.cells[x.k] || '', i = (r.stations || []).indexOf(c), opp = r.vs && c ? sq.filter(function (o2) { return o2 !== row && o2.cells[x.k] === c; }).map(function (o2) { return o2.squad; }) : [];
-        tr.appendChild(h('td', { class: c ? 'rt-st' : 'rt-none' }, c || '—', c && (r.places || [])[i] ? h('div', { class: 'small muted' }, '（' + r.places[i] + '）') : null, opp.length ? h('div', { class: 'small vs-line' }, '對 ' + opp.join('、')) : null));
+        var c = cellOf(row, x);
+        tr.appendChild(h('td', { class: c.st ? 'rt-st' : 'rt-none' }, c.st ? h('b', null, c.st) : '休息', c.place ? h('div', { class: 'rt-pl' }, c.place) : null, c.opp.length ? h('div', { class: 'rt-vs' }, '對 ' + c.opp.join('、')) : null));
       });
       if (hasNote) tr.appendChild(h('td', { class: 'rt-note' }, x.note));
       tb.appendChild(tr);
     });
-    return h('div', { class: 'tbl-wrap' }, h('table', { class: 't dt rt' }, h('thead', null, h('tr', null, h('th', null, '時間'), h('th', null, '分'), sq.map(function (row) { return h('th', null, row.squad); }), hasNote ? h('th', null, '備註') : null)), tb));
+    var all = h('div', { class: 'tbl-wrap rt-wrap' }, h('table', { class: 't dt rt' }, h('thead', null, h('tr', null, h('th', { class: 'dt-tm' }, '時間'), sq.map(function (row) { return h('th', null, row.squad); }), hasNote ? h('th', null, '備註') : null)), tb));
+    // 只看一隊：照時間往下列，像自己的行程
+    var one = function (row) {
+      return h('div', { class: 'sched rt-one' }, rows.map(function (x) {
+        var c = x.free ? null : cellOf(row, x);
+        var it = mark(h('div', { class: 'it' + (x.free ? ' rt-free' : '') }, h('span', { class: 'tm' }, x.start, x.end ? h('small', null, x.end) : null),
+          h('div', { class: 'grow' }, h('b', null, x.free ? x.text : c.st || '休息'), (x.free ? x.place : c.place) ? h('span', { class: 'pill-place' }, x.free ? x.place : c.place) : null,
+            c && c.opp.length ? h('div', { class: 'small vs-line' }, '對手：' + c.opp.join('、')) : null, x.note ? h('div', { class: 'small muted' }, x.note) : null)), x);
+        return it;
+      }));
+    };
+    if (sq.length < 2) return all;
+    var view = h('div'), chips = h('div', { class: 'rt-chips' });
+    var pick = function (i) {
+      [].forEach.call(chips.children, function (b, k) { b.classList.toggle('on', k === i + 1); });
+      clear(view).appendChild(i < 0 ? all : one(sq[i]));
+      if (typeof markNow === 'function') markNow(view);
+    };
+    chips.appendChild(h('button', { type: 'button', class: 'chip on', onclick: function () { pick(-1); } }, '全部小隊'));
+    sq.forEach(function (row, i) { chips.appendChild(h('button', { type: 'button', class: 'chip', onclick: function () { pick(i); } }, row.squad)); });
+    view.appendChild(all);
+    return h('div', { class: 'col rt-box', style: { gap: '8px' } }, h('div', { class: 'small muted' }, '每一格是那一隊在這個時段去的關卡；點小隊只看那一隊的順序。'), chips, view);
   }
   function card(title, body, extra) { return h('div', { class: 'fb' }, title ? h('h2', null, title) : null, body, extra || null); }
   /** 團隊計分明細：每個 Game 與加減分 */
