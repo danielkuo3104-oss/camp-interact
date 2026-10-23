@@ -334,9 +334,11 @@ details.cs[open] .cs-chev { transform: rotate(90deg); }
 .sw-wrap input.sw:disabled + .sw-k { opacity: .5; }
 .sched .it.tone-act { background: #eef4fb; border-radius: 10px; }
 .sched .it.tone-key { background: #ffe3a3; border-radius: 10px; }
-.sched .it.tone-crit { background: #c0392b; color: #fff; border-radius: 10px; }
-.sched .it.tone-crit .tm, .sched .it.tone-crit .tm small, .sched .it.tone-crit .ppl, .sched .it.tone-crit .ppl-k, .sched .it.tone-crit .muted { color: #fff; }
-.sched .it.tone-crit .pill-place { background: rgba(255,255,255,.2); color: #fff; border-color: rgba(255,255,255,.5); }
+.sched .it.tone-crit { background: #b3261e; color: #fff; border-radius: 10px; }
+.sched .it.tone-crit .tm, .sched .it.tone-crit .tm small, .sched .it.tone-crit .ppl, .sched .it.tone-crit .own, .sched .it.tone-crit .muted, .sched .it.tone-crit .small, .sched .it.tone-crit a, .sched .it.tone-crit .it-chev { color: #fff; }
+.sched .it.tone-crit .ppl-k { background: rgba(255,255,255,.24); color: #fff; }
+.sched .it.tone-crit .pill-place { background: #fff; color: #b3261e; border-color: #fff; font-weight: 700; }
+.sched .it.tone-crit.past { opacity: .6; }
 .sched .it.inner { margin-left: 22px; border-left: 3px solid var(--info); padding-left: 10px; }
 .card.g-up { background-image: repeating-linear-gradient(-45deg, rgba(53, 99, 168, .08) 0 8px, transparent 8px 16px); pointer-events: none; opacity: .85; }
 .card.g-bad { border: 2px solid var(--bad); }
@@ -408,3 +410,35 @@ td.dt-merged { background: var(--surface-2, #f3f4f6); }
 td.dt-merged textarea { color: var(--text-3); text-align: center; }
 .map-ed .map-wrap { max-width: 760px; }
 .map-props select { width: auto; min-width: 80px; }
+
+/* 時程卡片精簡：時間、地點、負責；點開看其他 */
+.sched.flow .it { padding: 8px 10px; align-items: flex-start; }
+.it-main { min-width: 0; }
+.it-hd { flex-wrap: nowrap; min-width: 0; }
+.it-hd .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.it-hd .tag { flex-shrink: 0; }
+.it-sub { display: flex; gap: 6px; align-items: center; margin-top: 4px; white-space: nowrap; overflow: hidden; min-width: 0; }
+.it-sub .pill-place { flex-shrink: 1; min-width: 0; max-width: 10em; overflow: hidden; text-overflow: ellipsis; display: inline-block; line-height: 20px; }
+.it-sub .own { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.it-sub .own .ppl-k { min-width: 0; }
+.it-more { display: none; margin-top: 6px; }
+.sched .it.open .it-more { display: block; }
+.sched .it.has-more { cursor: pointer; }
+.it-chev { align-self: center; color: var(--text-3); font-size: 18px; transition: transform .15s; }
+.sched .it.open .it-chev { transform: rotate(90deg); }
+.sched .it.now .nm::after, .sched .it.now .it-hd > b::after { content: none; }
+.sched .it.now .it-hd::after { content: '現在'; flex-shrink: 0; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; }
+.sched .it.now:not(:has(.it-hd)) .nm::after { content: '現在'; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; }
+/* 小視窗：大約 3–4 項，現在的在中間；可以展開全部 */
+.sched-win { position: relative; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; -webkit-mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 14px), transparent); padding: 4px 0; }
+.sched-win.all { max-height: none; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+.now-line { position: relative; height: 0; border-top: 2px solid #e53935; margin: 12px 0 10px; }
+.now-line span { position: absolute; left: 0; top: -11px; background: #e53935; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.t.grid tr.g-tone-crit td .muted, .t.grid tr.g-tone-crit td .small { color: #fff !important; }
+/* 選人：依股別／依工作分配 */
+.mp-modes { display: flex; gap: 4px; padding: 6px 6px 4px; position: sticky; top: 0; background: var(--surface, #fff); z-index: 1; border-bottom: 1px solid var(--line); }
+.mp-mode { flex: 1; border: 1px solid var(--line-strong); background: transparent; border-radius: 999px; font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer; color: var(--text-2); }
+.mp-mode.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.map-svg .m-add { cursor: copy; }
+.map-svg .m-add circle { fill: #1e88e5; stroke: #fff; stroke-width: 3; }
+.map-svg .m-add path { stroke: #fff; stroke-width: 2.5; }
