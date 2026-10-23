@@ -214,7 +214,7 @@ function fail(e) { toast(e && e.message ? e.message : String(e), true); }
  */
 function modal(o) {
   var bg = h('div', { class: 'modal-bg' });
-  var box = h('div', { class: 'modal' + (o.wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': o.title || '' });
+  var box = h('div', { class: 'modal' + (o.wide ? ' wide' : '') + (o.full ? ' full' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': o.title || '' });
   var close = function () { bg.remove(); document.removeEventListener('keydown', onKey); if (o.onClose) o.onClose(); };
   var onKey = function (e) { if (e.key === 'Escape' && !o.sticky) close(); };
   document.addEventListener('keydown', onKey);
