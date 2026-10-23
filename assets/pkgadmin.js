@@ -550,7 +550,7 @@ var PkgAdmin = (function () {
       return hd;
     };
     /** 把一列搬到另一組（例如改日期） */
-    G.moveTo = function (r, k) { G.ensureGroup(k); body.insertBefore(r.tr, G.groupEnd(k)); G.labels(); };
+    G.moveTo = function (r, k) { G.ensureGroup(k); body.insertBefore(r.tr, G.groupEnd(k)); G.labels(); G.place(r); };
     /** 每組內依 o.sortKey 排好 */
     G.sort = function () {
       if (!o.sortKey) return;
@@ -560,6 +560,29 @@ var PkgAdmin = (function () {
         rs.forEach(function (r) { body.insertBefore(r.tr, end); });
       });
     };
+    /** 自動排序：改了時間，這一列自己移到同一天正確的位置（沒填時間的列不動，焦點跟著） */
+    var tCol = cols.filter(function (c) { return c.type === 'time'; })[0];
+    G.place = function (r) {
+      if (!o.sortKey || !tCol || r.del) return;
+      var v = r.read(), k = o.groupOf ? o.groupOf(v) : '';
+      if (!v[tCol.k]) return;
+      var me = String(o.sortKey(v));
+      var timed = Array.prototype.filter.call(body.children, function (tr) { return tr.dataset.key; }).map(function (tr) { return G.rows.filter(function (x) { return x.tr === tr; })[0]; })
+        .filter(function (x) { if (!x || x.del) return false; var w = x.read(); return x === r || ((o.groupOf ? o.groupOf(w) : '') === k && w[tCol.k]); });
+      var i = timed.indexOf(r), pv = timed[i - 1], nv = timed[i + 1];
+      if ((!pv || String(o.sortKey(pv.read())) <= me) && (!nv || String(o.sortKey(nv.read())) >= me)) return;
+      var others = timed.filter(function (x) { return x !== r; }), tgt = others.filter(function (x) { return String(o.sortKey(x.read())) > me; })[0];
+      var act = document.activeElement, keep = act && r.tr.contains(act) ? act : null;
+      body.insertBefore(r.tr, tgt ? tgt.tr : others[others.length - 1].tr.nextSibling);
+      r.tr.classList.add('g-moved'); setTimeout(function () { r.tr.classList.remove('g-moved'); }, 900);
+      if (keep) try { keep.focus(); } catch (e) {}
+    };
+    body.addEventListener('change', function (e) {
+      var td = e.target.closest && e.target.closest('td[data-ci]');
+      if (!td || !tCol || cols[Number(td.dataset.ci)] !== tCol) return;
+      var r = G.rows.filter(function (x) { return x.tr === td.parentNode; })[0];
+      if (r) setTimeout(function () { G.place(r); }, 0);
+    });
     G.labels = function () {
       if (!o.groupOf) return;
       Object.keys(heads).forEach(function (k) { var rs = G.rows.filter(function (r) { return !r.del && o.groupOf(r.read()) === k; }); clear(heads[k].lab).appendChild(document.createTextNode(o.groupLabel ? o.groupLabel(k, rs) : k)); });
@@ -598,6 +621,16 @@ var PkgAdmin = (function () {
       var td = e.target.closest('td'), tr = td && td.parentNode;
       if (!td || !td.dataset.ci) return;
       e.preventDefault();
+      if (o.enterInsert && !ro) {
+        // Enter＝在這一列下面插入一列（同一天），游標停在同一欄
+        var cr = G.rows.filter(function (x) { return x.tr === tr; })[0], gk3 = o.groupOf && cr ? o.groupOf(cr.read()) : '';
+        if (e.target.dispatchEvent) e.target.dispatchEvent(new Event('change', { bubbles: true }));
+        if (cr) G.place(cr);
+        var nr = G.newRow(gk3, tr.nextSibling); G.changed(nr);
+        var t3 = nr.tr.querySelector('td[data-ci="' + td.dataset.ci + '"] input, td[data-ci="' + td.dataset.ci + '"] select') || nr.tr.querySelector('input:not([type=checkbox])');
+        if (t3) t3.focus();
+        return;
+      }
       var nx = tr.nextSibling;
       while (nx && nx.classList.contains('hidden')) nx = nx.nextSibling;
       if ((!nx || nx.classList.contains('g-grp')) && !ro) { var cur = G.rows.filter(function (x) { return x.tr === tr; })[0], gk2 = o.groupOf && cur ? o.groupOf(cur.read()) : ''; nx = G.newRow(gk2, o.groupOf ? G.groupEnd(gk2) : null).tr; }
@@ -626,7 +659,7 @@ var PkgAdmin = (function () {
           if (!c) return;
           r.ed[c.k].set(o.parse ? o.parse(c, v.trim()) : v.trim());
         });
-        r.t.check(); G.changed(r);
+        r.t.check(); G.changed(r); G.place(r);
       });
       toast('已貼上 ' + lines.length + ' 列' + (made ? '（新增 ' + made + ' 列）' : '') + '，記得按「儲存變更」');
     });
@@ -1069,6 +1102,7 @@ var PkgAdmin = (function () {
         groupOf: function (v) { return v.date || ''; }, extraGroups: days,
         groupOrder: function (keys) { return keys.sort(function (x, y) { return (x || '9999').localeCompare(y || '9999'); }); },
         groupLabel: function (k, rs) { return k ? dayNo(k) + dayLabel(k) + '　' + rs.length + ' 項' : '（沒填日期）'; },
+        enterInsert: true,
         sortKey: function (v) { return (v.time || '99:99') + String(10000 - (Number(v.dur) || 0)).padStart(5, '0') + v.name; },
         // 新的一列：開始時間接上一列的結束
         blank: function (k, _, prev) { var e = prev ? endOf(prev) : null; var v = { date: k, flow: cur, time: e === null ? '' : toHm(e), dur: '', end: '', tone: '', name: '', place: '', owner: [], staff: [], backup: [], note: '', go: '', link: '' }; cf.forEach(function (c) { v['cf:' + c] = ''; }); return v; },
@@ -1175,7 +1209,7 @@ var PkgAdmin = (function () {
         }
       });
       box.insertBefore(h('div', { class: 'chips', style: { marginBottom: '10px' } }, flows.map(function (f) { return h('a', { class: 'chip' + (f.id === cur ? ' on' : ''), href: '#data/schedule/items?flow=' + f.id, style: { textDecoration: 'none' }, title: f.data.hidden ? '工作人員端還看不到（到「流程清單」打開）' : null }, f.data.name, f.data.hidden ? h('span', { class: 'small muted' }, '（未顯示）') : null); }), h('a', { class: 'chip', href: '#data/schedule/flows', style: { textDecoration: 'none' } }, '＋ 管理流程（複製、顯示）')), G.bar);
-      box.insertBefore(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '像 Excel 一樣直接改：↑↓ 和 Enter 換列、Ctrl+S 儲存；時間直接打 930 或 9:30；改「結束」會自動算時長；新的一列開始時間接上一列結束。活動名稱可以從選單選（活動、集合、緩衝時間、三餐、工人用餐），也可以自己打，打過的下次會出現在選單。「標示」：活動是淡色、重要時程是鮮豔色。包在另一項時段裡的（例如午餐裡的工人用餐）會縮排標「期間內」；只有部分重疊的會標「時間交錯」。⧉ 複製一列再改；勾選左邊可以一次平移時間、改日期、複製；可以從 Excel 複製整塊（開始、時長、活動名稱、場地、負責、關主、機動、備註、連結）貼上。'), G.bar);
+      box.insertBefore(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '像 Excel 一樣直接改：↑↓ 換列、Enter 在下面插入一列、Ctrl+S 儲存；改了時間會自動排到正確的位置；時間直接打 930 或 9:30；改「結束」會自動算時長；新的一列開始時間接上一列結束。活動名稱可以從選單選（活動、集合、緩衝時間、三餐、工人用餐），也可以自己打，打過的下次會出現在選單。「標示」：活動是淡色、重要時程是鮮豔色。包在另一項時段裡的（例如午餐裡的工人用餐）會縮排標「期間內」；只有部分重疊的會標「時間交錯」。⧉ 複製一列再改；勾選左邊可以一次平移時間、改日期、複製；可以從 Excel 複製整塊（開始、時長、活動名稱、場地、負責、關主、機動、備註、連結）貼上。'), G.bar);
       if (Q.id) { var hit = G.rows.filter(function (r) { return r.id === Q.id; })[0]; if (hit) { hit.tr.style.background = 'var(--warn-soft)'; setTimeout(function () { hit.tr.scrollIntoView({ block: 'center' }); }, 50); } }
     },
     activities: function (box, D) {
@@ -1389,7 +1423,7 @@ var PkgAdmin = (function () {
         var turn = inp(d.turn || '', { type: 'number', min: 0, placeholder: '分鐘', style: { width: '90px' }, disabled: ro });
         var slots = inp((d.slots || []).join(' '), { placeholder: '時段用空白分隔，例如：09:00 09:30 10:00；或用上面的開始時間＋每關＋換關自動排', disabled: ro });
         var vs = sel([{ value: '', label: '跑關：一關一隊，輪流換關' }, { value: 'fixed', label: '對抗 A：固定兩隊一起，輪流換關' }, { value: 'round', label: '對抗 B：每隊輪流遇到每一隊（不同關）' }], d.vs || '', { disabled: ro });
-        vs.addEventListener('change', function () { drawGrid(); });
+        vs.addEventListener('change', function () { drawGrid(); if (Object.keys(d.grid).some(function (k) { return (d.grid[k] || []).some(function (x) { return x !== ''; }); })) toast('換了模式：按「自動輪流排」重新排一次'); });
         var ME = mapEditor(d.map || (d.mode === 'map' && d.image ? { img: d.image, items: [] } : null), ro, function () { t.check(); });
         var placeBox = h('div', { class: 'row wrap', style: { gap: '6px' } }), placeIn = [];
         var gridBox = h('div');
@@ -1413,9 +1447,11 @@ var PkgAdmin = (function () {
           qs.forEach(function (q) { d.grid[q] = []; for (var j = 0; j < m; j++) d.grid[q].push(''); });
           if (vs.value === 'fixed') {
             // 對抗 A：1、2 隊一組，3、4 隊一組…；每一組一起換關
-            var np = Math.ceil(qs.length / 2);
-            if (np > n) toast('有 ' + np + ' 組，但只有 ' + n + ' 關：有的時段會有組沒有關卡', true);
-            for (var p2 = 0; p2 < np; p2++) for (var j2 = 0; j2 < m; j2++) { var st2 = (p2 + j2) % n; d.grid[qs[2 * p2]][j2] = st2; if (qs[2 * p2 + 1]) d.grid[qs[2 * p2 + 1]][j2] = st2; }
+            // 一定兩隊對抗：單數隊時最後一隊空著；組數比關卡多時，多出來的組那個時段休息（空白）
+            var np = Math.floor(qs.length / 2), cyc = Math.max(np, n);
+            if (qs.length % 2) toast(D.squads[qs.length - 1].name + ' 沒有可以配對的隊，先空著（可以手動放進某一組）', true);
+            if (np > n) toast('有 ' + np + ' 組，但只有 ' + n + ' 關：每個時段有 ' + (np - n) + ' 組休息', true);
+            for (var p2 = 0; p2 < np; p2++) for (var j2 = 0; j2 < m; j2++) { var st2 = (p2 + j2) % cyc; if (st2 < n) { d.grid[qs[2 * p2]][j2] = st2; d.grid[qs[2 * p2 + 1]][j2] = st2; } }
           } else if (vs.value === 'round') {
             // 對抗 B：輪轉法（circle method），每一輪兩兩對戰；每一組換到不同關
             var arr = qs.slice(); if (arr.length % 2) arr.push('');
@@ -1448,7 +1484,7 @@ var PkgAdmin = (function () {
                   if (!vs.value) { opp.textContent = ''; return; }
                   var mine = row[i], o2 = mine === '' || mine === undefined ? [] : D.squads.filter(function (q) { return q !== sq && (d.grid[String(q.no)] || [])[i] === mine; });
                   opp.textContent = mine === '' || mine === undefined ? '' : o2.length ? '對 ' + o2.map(function (q) { return q.name; }).join('、') : '（沒有對手）';
-                  opp.classList.toggle('bad', o2.length > 1);
+                  opp.classList.toggle('bad', mine !== '' && mine !== undefined && o2.length !== 1);
                 };
                 c.addEventListener('change', function () { row[i] = c.value === '' ? '' : Number(c.value); $all('.vs-opp', gridBox).forEach(function (x) { if (x._upd) x._upd(); }); });
                 opp._upd = upd; upd();
@@ -1554,26 +1590,28 @@ var PkgAdmin = (function () {
       var acts = [{ value: '', label: '（不連活動）' }].concat((D.activities || []).map(function (a) { return { value: a.id, label: a.data.name }; }));
       var days = [];
       if (A.info.start && A.info.end) for (var dd = new Date(A.info.start + 'T12:00:00+08:00'); taipei(dd).ymd <= A.info.end; dd = new Date(dd.getTime() + 86400000)) days.push(taipei(dd).ymd);
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '放進這裡＝學員看得到（要保密就先不要放）。像試算表一樣一次打好幾列，改完按一次「儲存變更」；「引用」選營期流程的項目會帶入時間和名稱（之後流程改了會出現在「待處理變更」，不會自動改）。內容跟著學員端一起發布。'));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '放進這裡＝學員看得到（要保密就先不要放）。像試算表一樣一次打好幾列，改完按一次「儲存變更」。時間只寫開始也可以，「結束」可不填；Enter 在下面插入一列，改了時間會自動排好。「引用」選營期流程的項目會帶入時間和名稱（之後流程改了會出現在「待處理變更」，不會自動改）。內容跟著學員端一起發布。'));
       if (D.pending.length) box.appendChild(h('a', { class: 'fb-notice', href: '#data/studentflow/pending', style: { display: 'block', marginBottom: '10px' } }, '營期流程有 ' + D.pending.length + ' 項變更還沒處理 →'));
       var G = grid(box, [
         { k: 'date', type: 'hidden' },
         { k: 'time', label: '時間', type: 'time', w: '74px' },
+        { k: 'end', label: '結束', type: 'time', w: '74px', ph: '可不填' },
         { k: 'title', label: '名稱', w: '180px', list: D.schedule.map(function (x) { return x.data.name; }).filter(function (n, i, a) { return n && a.indexOf(n) === i; }) },
         { k: 'note', label: '說明', w: '260px' },
         { k: 'ref', label: '引用營期流程', type: 'select', w: '210px', nopaste: true, opts: sch },
         { k: 'activity', label: '連到活動', type: 'select', w: '150px', nopaste: true, opts: acts }
       ], {
-        rows: D.items.slice().sort(function (a, b) { return ((a.data.date || '') + (a.data.time || '')).localeCompare((b.data.date || '') + (b.data.time || '')); }).map(function (it) { var d = it.data; return { id: it.id, ver: it.version, vals: { date: d.date || '', time: d.time || '', title: d.title || '', note: d.note || '', ref: d.ref || '', activity: d.activity || '' } }; }),
+        rows: D.items.slice().sort(function (a, b) { return ((a.data.date || '') + (a.data.time || '')).localeCompare((b.data.date || '') + (b.data.time || '')); }).map(function (it) { var d = it.data; return { id: it.id, ver: it.version, vals: { date: d.date || '', time: d.time || '', end: d.end || '', title: d.title || '', note: d.note || '', ref: d.ref || '', activity: d.activity || '' } }; }),
         saveOp: 'item.save', delOp: 'item.delete', parse: parseCell, addText: '＋ 這一天加一項',
         groupOf: function (v) { return v.date || ''; }, extraGroups: days,
         groupOrder: function (keys) { return keys.sort(function (x, y) { return (x || '9999').localeCompare(y || '9999'); }); },
         groupLabel: function (k, rs) { return k ? dayLabel(k) + '　' + rs.length + ' 項' : '（沒填日期）'; },
+        enterInsert: true,
         sortKey: function (v) { return v.time || '99:99'; },
-        blank: function (k) { return { date: k, time: '', title: '', note: '', ref: '', activity: '' }; },
+        blank: function (k) { return { date: k, time: '', end: '', title: '', note: '', ref: '', activity: '' }; },
         isEmpty: function (v) { return !String(v.title || '').trim(); },
         validate: function (d) { return !String(d.title).trim() ? '有一列沒有名稱' : ''; },
-        toData: function (v, r) { return { id: r.id, date: v.date, time: v.time, title: v.title, note: v.note, activity: v.activity, ref: v.ref }; },
+        toData: function (v, r) { return { id: r.id, date: v.date, time: v.time, end: v.end, title: v.title, note: v.note, activity: v.activity, ref: v.ref }; },
         rowInit: function (r, G) {
           r.ed.ref.input.addEventListener('change', function () {
             var x = schById[r.ed.ref.get()];
