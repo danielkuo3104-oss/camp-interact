@@ -125,6 +125,128 @@ var Front = (function () {
     if (!more) return h('div', { class: 'cs' }, head);
     return h('details', { class: 'cs' }, h('summary', null, head, h('span', { class: 'cs-chev', 'aria-hidden': 'true' }, '›')), body);
   }
+  function hmOf(t, add) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); if (!m) return ''; var n = (Number(m[1]) * 60 + Number(m[2]) + (Number(add) || 0)) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); }
+  /** 日期＋時間 → 毫秒（台北時間） */
+  function tms(date, time) { if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !/^\d{1,2}:\d{2}$/.test(time || '')) return 0; var t = Date.parse(date + 'T' + (time.length === 4 ? '0' + time : time) + ':00+08:00'); return isFinite(t) ? t : 0; }
+  /** 標出現在進行中的時程（data-s、data-e），已經過去的變淡；每分鐘重跑一次 */
+  function markNow(root) {
+    var t = nowDate().getTime();
+    $all('[data-s]', root || document).forEach(function (el) {
+      var s0 = Number(el.dataset.s), e0 = Number(el.dataset.e) || s0 + 3600000;
+      el.classList.toggle('now', s0 <= t && t < e0);
+      el.classList.toggle('past', t >= e0);
+    });
+  }
+  /** 活動配色：同一個活動永遠同一個顏色（依名稱） */
+  var ACT_COLORS = ['#e4efff', '#e3f5e6', '#fff0d2', '#f1e4ff', '#ffe3e8', '#dcf4f1', '#fbe7d7', '#e9ecf8', '#eef5d3', '#e6e1ff', '#fde8f6', '#e0f0fa'];
+  function actColor(name) { var x = 0; String(name || '').split('').forEach(function (c) { x = (x * 31 + c.charCodeAt(0)) >>> 0; }); return ACT_COLORS[x % ACT_COLORS.length]; }
+  /** 活動細流的格子顏色 */
+  var CELL_COLORS = { yellow: '#fff59a', cyan: '#9ff0f3', green: '#d6ecd2', blue: '#d3e3f5', purple: '#ddd5ee', orange: '#fde2c8', pink: '#fbd3e6', red: '#f6c4bf', gray: '#e6e6e6' };
+
+  /** 地圖：底圖＋標點、文字、文字卡片、連線（座標是 0–1 的比例）。o.edit 時每個元素可以拿到 data-id 給編輯器用 */
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function sv(tag, attrs, kids) { var e = document.createElementNS(SVGNS, tag); Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]); }); (kids || []).forEach(function (k) { if (k) e.appendChild(typeof k === 'string' ? document.createTextNode(k) : k); }); return e; }
+  function mapView(map, o) {
+    o = o || {};
+    var wrap = h('div', { class: 'map-wrap' }), W = 1000, H = o.aspect ? Math.round(W * o.aspect) : 700;
+    var img = h('img', { src: map.img, alt: '地圖', draggable: false });
+    var svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'map-svg' });
+    wrap.appendChild(img); wrap.appendChild(svg);
+    var draw = function () {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      var defs = sv('defs');
+      svg.appendChild(defs);
+      var byId = {}, items = map.items || [];
+      items.forEach(function (x) { if (x.t !== 'line') byId[x.id] = x; });
+      var P = function (x, y) { return [x * W, y * H]; };
+      var boxOf = function (x) {
+        var fs = 26 * (x.size || 1), lines = String(x.text || '').split('\n');
+        if (x.t === 'pin') return { w: 13 * (x.size || 1) + 4, h: 13 * (x.size || 1) + 4 };
+        var w = Math.max.apply(null, lines.map(function (ln) { return ln.length; })) * fs;
+        return x.t === 'card' ? { w: (w + 34) / 2 + 4, h: (lines.length * fs * 1.2 + 24) / 2 + 4 } : { w: w / 2 + 4, h: lines.length * fs * 0.6 + 4 };
+      };
+      var edge = function (it, p, q) {
+        var dx = q[0] - p[0], dy = q[1] - p[1], d = Math.sqrt(dx * dx + dy * dy); if (!d) return p;
+        var b = boxOf(it), t = it.t === 'pin' ? b.w / d : Math.min(dx ? b.w / Math.abs(dx) : Infinity, dy ? b.h / Math.abs(dy) : Infinity);
+        t = Math.min(t, 0.45);
+        return [p[0] + dx * t, p[1] + dy * t];
+      };
+      var mk = {};
+      var marker = function (c) { var id = 'ar' + c.replace('#', ''); if (!mk[id]) { mk[id] = 1; defs.appendChild(sv('marker', { id: id, viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 5, markerHeight: 5, orient: 'auto-start-reverse' }, [sv('path', { d: 'M0,0 L10,5 L0,10 z', fill: c })])); } return 'url(#' + id + ')'; };
+      items.filter(function (x) { return x.t === 'line'; }).forEach(function (x) {
+        var a = byId[x.a], b = byId[x.b];
+        if (!a || !b) return;
+        var c = x.color || '#c62828', pts = [P(a.x, a.y)].concat((x.pts || []).map(function (p) { return P(p[0], p[1]); }), [P(b.x, b.y)]);
+        // 線頭線尾停在標點／卡片的邊上，箭頭才不會被蓋住
+        pts[0] = edge(a, pts[0], pts[1]); pts[pts.length - 1] = edge(b, pts[pts.length - 1], pts[pts.length - 2]);
+        var g = sv('g', { 'data-id': o.edit ? x.id : null, class: 'm-line' + (o.sel === x.id ? ' sel' : '') });
+        g.appendChild(sv('polyline', { points: pts.map(function (p) { return p.join(','); }).join(' '), fill: 'none', stroke: 'transparent', 'stroke-width': 22 }));
+        g.appendChild(sv('polyline', { points: pts.map(function (p) { return p.join(','); }).join(' '), fill: 'none', stroke: c, 'stroke-width': 6, 'stroke-linejoin': 'round', 'stroke-dasharray': x.style === 'dash' ? '4 14' : null, 'stroke-linecap': 'round', 'marker-end': x.arrow !== false ? marker(c) : null }));
+        svg.appendChild(g);
+        if (o.edit && o.sel === x.id) (x.pts || []).forEach(function (p, i) { var q = P(p[0], p[1]); svg.appendChild(sv('circle', { cx: q[0], cy: q[1], r: 11, class: 'm-bend', 'data-bend': x.id + ':' + i })); });
+      });
+      items.filter(function (x) { return x.t !== 'line'; }).forEach(function (x) {
+        var q = P(x.x, x.y), fs = 26 * (x.size || 1), c = x.color || (x.t === 'text' ? '#c62828' : '#c62828');
+        var g = sv('g', { 'data-id': o.edit ? x.id : null, class: 'm-it m-' + x.t + (o.sel === x.id ? ' sel' : ''), transform: 'translate(' + q[0] + ',' + q[1] + ')' });
+        var lines = String(x.text || '').split('\n');
+        if (x.t === 'pin') {
+          g.appendChild(sv('circle', { r: 13 * (x.size || 1), fill: c, stroke: '#fff', 'stroke-width': 4 }));
+          if (x.text) lines.forEach(function (ln, i) { g.appendChild(sv('text', { x: 20 * (x.size || 1), y: 8 + i * fs * 1.15, 'font-size': fs, 'font-weight': 700, fill: c, class: 'm-halo' }, [ln])); });
+        } else if (x.t === 'text') {
+          lines.forEach(function (ln, i) { g.appendChild(sv('text', { x: 0, y: i * fs * 1.15, 'font-size': fs, 'font-weight': 700, fill: c, 'text-anchor': 'middle', 'dominant-baseline': 'middle', class: 'm-halo' }, [ln])); });
+        } else {
+          var w = Math.max.apply(null, lines.map(function (ln) { return ln.length; })) * fs + 34, hh = lines.length * fs * 1.2 + 24;
+          g.appendChild(sv('rect', { x: -w / 2, y: -hh / 2, width: w, height: hh, rx: 6, fill: '#fff', 'fill-opacity': 0.9, stroke: c, 'stroke-width': 3 }));
+          lines.forEach(function (ln, i) { g.appendChild(sv('text', { x: 0, y: -hh / 2 + 12 + fs * 0.95 + i * fs * 1.2, 'font-size': fs, 'font-weight': 700, fill: c, 'text-anchor': 'middle' }, [ln])); });
+        }
+        svg.appendChild(g);
+      });
+    };
+    // 外框用 aspect-ratio 撐開：底圖還沒載好（或載不到）也能畫、能編輯
+    var fit = function () { if (img.naturalWidth) { var nh = Math.round(W * img.naturalHeight / img.naturalWidth); if (nh !== H) { H = nh; wrap.style.aspectRatio = W + ' / ' + H; draw(); if (o.onAspect) o.onAspect(H / W); } } };
+    wrap.style.aspectRatio = W + ' / ' + H;
+    img.addEventListener('load', fit);
+    img.addEventListener('error', function () { wrap.classList.add('map-noimg'); });
+    draw();
+    if (img.complete) setTimeout(fit, 0);
+    return { el: wrap, svg: svg, redraw: function (sel) { o.sel = sel; draw(); }, size: function () { return { W: W, H: H }; } };
+  }
+
+  /** 時間表型的活動細流（賭場、晚會）：格子 < 併到左邊、^ 併到上面；第一欄的顏色跟著列的顏色 */
+  function detailTable(r, date) {
+    var cols = r.cols || [], rows = r.rows || [], n = cols.length;
+    var mm = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    // 先算每格屬於哪一格（< 跟左邊、^ 跟上面），再算每個主格的 colspan、rowspan
+    var own = rows.map(function () { return []; }), span = rows.map(function () { return []; });
+    rows.forEach(function (row, i) {
+      for (var j = 0; j < n; j++) {
+        var v = String((row.cells || [])[j] || '').trim();
+        own[i][j] = v === '<' && j > 0 ? own[i][j - 1] : v === '^' && i > 0 ? own[i - 1][j] : [i, j];
+        if (own[i][j][0] === i && own[i][j][1] === j) span[i][j] = { v: (row.cells || [])[j] || '', r1: i, c1: j };
+        else span[i][j] = { skip: true };
+      }
+    });
+    rows.forEach(function (row, i) { for (var j = 0; j < n; j++) { var o2 = own[i][j], m = span[o2[0]][o2[1]]; m.r1 = Math.max(m.r1, i); m.c1 = Math.max(m.c1, j); } });
+    rows.forEach(function (row, i) { for (var j = 0; j < n; j++) { var m = span[i][j]; if (!m.skip) { m.rs = m.r1 - i + 1; m.cs = m.c1 - j + 1; } } });
+    var tb = h('tbody');
+    rows.forEach(function (row, i) {
+      var a = mm(row.start), b = mm(row.end), tr = h('tr');
+      if (date && row.start) { var s0 = tms(date, row.start); tr.dataset.s = s0; tr.dataset.e = row.end ? tms(date, row.end) : s0 + 600000; }
+      tr.appendChild(h('td', { class: 'dt-tm' }, row.start + (row.end ? '–' + row.end : '')));
+      tr.appendChild(h('td', { class: 'dt-dur' }, a !== null && b !== null && b > a ? String(b - a) : ''));
+      for (var j = 0; j < n; j++) {
+        var c = span[i][j];
+        if (!c || c.skip) continue;
+        var td = h('td', { colspan: c.cs > 1 ? c.cs : null, rowspan: c.rs > 1 ? c.rs : null, class: j === 0 ? 'dt-main' : '' });
+        String(c.v || '').split('\n').forEach(function (ln, k) { if (k) td.appendChild(h('br')); td.appendChild(document.createTextNode(ln)); });
+        if (j === 0 && row.color && CELL_COLORS[row.color]) td.style.background = CELL_COLORS[row.color];
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    });
+    return h('div', { class: 'tbl-wrap' }, h('table', { class: 't dt' }, h('thead', null, h('tr', null, h('th', null, '時間'), h('th', null, '分'), cols.map(function (c) { return h('th', null, c); }))), tb));
+  }
   function card(title, body, extra) { return h('div', { class: 'fb' }, title ? h('h2', null, title) : null, body, extra || null); }
   function contactRow(name, sub, phone, sos) {
     return h('div', { class: 'contact' }, h('div', { class: 'who' }, h('b', null, name), sub ? h('small', null, sub) : null),
@@ -135,10 +257,13 @@ var Front = (function () {
     items.forEach(function (it) {
       if (it.date !== day && it.showDay) { day = it.date; out.appendChild(h('div', { class: 'day' }, dayLabel(it.date))); }
       var row = h('div', { class: 'it' + (onItem && it.page ? ' link' : '') }, h('span', { class: 'tm' }, it.time || '—'), h('div', { class: 'grow' }, h('span', { class: 'nm' }, it.title), it.note ? h('div', { class: 'small muted' }, it.note) : null));
+      var s0 = tms(it.date, it.time);
+      if (s0) { row.dataset.s = s0; var nx = items.filter(function (y) { return y.date === it.date && y.time > it.time; })[0]; row.dataset.e = it.end ? tms(it.date, it.end) : nx ? tms(nx.date, nx.time) : s0 + 3600000; }
       if (onItem && it.page) row.addEventListener('click', function () { onItem(it); });
       out.appendChild(row);
     });
     if (!items.length) out.appendChild(h('div', { class: 'muted small' }, '目前沒有行程'));
+    markNow(out);
     return out;
   }
 
@@ -163,13 +288,13 @@ var Front = (function () {
       },
       flow: function (d) {
         var flows = d.flows || [], cf = d.customFields || [];
-        var wrap = h('div', { class: 'col' });
+        var wrap = h('div', { class: 'col' }), curDate = '';
         var tabs = h('div', { class: 'chips' }), body = h('div');
         var show = function (f) {
           $all('.chip', tabs).forEach(function (c) { c.classList.toggle('on', c.dataset.id === f.id); });
           clear(body);
           var day = '';
-          var list = h('div', { class: 'sched' });
+          var list = h('div', { class: 'sched flow' });
           // 包在另一項時段裡的（例如午餐裡的工人用餐）縮排顯示在那一項下面
           var mins = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
           var hm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
@@ -178,20 +303,27 @@ var Front = (function () {
           its.forEach(function (x) { x.inner = x.s !== null && x.d > 0 && its.some(function (y) { return y !== x && y.it.date === x.it.date && y.s !== null && y.d > x.d && y.s <= x.s && x.e <= y.e; }); });
           its.forEach(function (x) {
             var it = x.it;
+            curDate = it.date;
             if (it.date !== day) { day = it.date; list.appendChild(h('div', { class: 'day' }, dayLabel(it.date))); }
-            var people = [it.owner.length ? '負責：' + it.owner.join('、') : '', it.staff.length ? '人員：' + it.staff.join('、') : '', it.backup.length ? '機動：' + it.backup.join('、') : ''].filter(String).join('　');
-            list.appendChild(h('div', { class: 'it' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('span', { class: 'small muted', style: { display: 'block' } }, '–' + hm(x.e)) : null), h('div', { class: 'grow' },
-              h('b', null, it.name), it.place ? h('span', { class: 'muted' }, '　📍' + it.place) : null,
-              it.activity && it.public === false ? h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '學員未公開') : null,
-              people ? h('div', { class: 'small muted' }, people) : null,
+            var ppl = function (lab, arr) { return arr.length ? h('div', { class: 'ppl' }, h('span', { class: 'ppl-k' }, lab), arr.join('、')) : null; };
+            var places = String(it.place || '').split(/[、,，]/).map(function (y) { return y.trim(); }).filter(String);
+            var row = h('div', { class: 'it' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('small', null, hm(x.e)) : null), h('div', { class: 'grow' },
+              h('div', { class: 'it-hd' }, h('b', { class: 'nm' }, it.name), places.map(function (pl) { return h('span', { class: 'pill-place' }, pl); }),
+                it.activity && it.public === false ? h('span', { class: 'tag warn' }, '學員未公開') : null),
+              ppl('負責', it.owner), ppl('人員', it.staff), ppl('機動', it.backup),
               cf.map(function (k) { return it.custom && it.custom[k] ? h('div', { class: 'small' }, k + '：' + it.custom[k]) : null; }),
               it.note ? h('div', { class: 'small' }, it.note) : null,
               okUrl(it.link) ? h('a', { class: 'small', href: it.link, target: '_blank', rel: 'noopener' }, '相關連結') : null,
               goLink(it.go),
-              it.diff ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + it.diff.planned.date.slice(5) + ' ' + it.diff.planned.time + (it.diff.planned.place ? ' ' + it.diff.planned.place : '') + (it.diff.by ? '（' + it.diff.by + ' ' + fmt(it.diff.at) + ' 調整）' : '')) : null)));
+              it.diff ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + it.diff.planned.date.slice(5) + ' ' + it.diff.planned.time + (it.diff.planned.place ? ' ' + it.diff.planned.place : '') + (it.diff.by ? '（' + it.diff.by + ' ' + fmt(it.diff.at) + ' 調整）' : '')) : null));
+            if (it.tone === 'act') row.style.background = actColor(it.activity || it.name);
+            var s0 = tms(it.date, it.time);
+            if (s0) { row.dataset.s = s0; row.dataset.e = s0 + (x.d || 60) * 60000; }
+            list.appendChild(row);
           });
           if (!f.items.length) list.appendChild(h('div', { class: 'muted small' }, '這份流程還沒有項目'));
           body.appendChild(list);
+          markNow(body);
         };
         // 連到活動細流：點了切到那份流程；連到跑關：展開各隊順序
         function goLink(go) {
@@ -203,7 +335,9 @@ var Front = (function () {
           }
           var r = (d.rots || {})[m[2]];
           if (!r) return null;
-          return h('details', { class: 'small', style: { marginTop: '4px' } }, h('summary', { style: { cursor: 'pointer', color: 'var(--info)' } }, '→ 跑關：' + r.name + (r.len ? '（每關 ' + r.len + ' 分' + (r.turn ? '、換關 ' + r.turn + ' 分' : '') + '）' : '')),
+          var mapEl = r.map && okUrl(r.map.img) ? h('div', { style: { marginTop: '8px' } }, mapView(r.map).el) : null;
+          if (r.kind === 'table') return h('details', { class: 'small go-det' }, h('summary', null, '→ 活動細流：' + r.name), detailTable(r, curDate), mapEl);
+          return h('details', { class: 'small go-det' }, h('summary', null, '→ 活動細流（跑關）：' + r.name + (r.len ? '（每關 ' + r.len + ' 分' + (r.turn ? '、換關 ' + r.turn + ' 分' : '') + '）' : '')), mapEl,
             h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, h('th', null, '小隊'), r.slots.map(function (t) { return h('th', null, t); }))),
               h('tbody', null, r.rows.map(function (row) { return h('tr', null, h('td', null, row.squad), row.cells.map(function (c) { var i = r.stations.indexOf(c); return h('td', null, c || '—', c && r.places[i] ? h('div', { class: 'muted' }, r.places[i]) : null); })); })))));
         }
@@ -250,17 +384,35 @@ var Front = (function () {
       mywork: function (d) {
         var box = h('div', { class: 'col' });
         box.appendChild(card('你好，' + (d.name || ''), h('div', { class: 'kv' }, h('span', null, '股別'), h('span', null, d.dept || (d.preview ? '（預覽）' : '')), h('span', null, '帶隊'), h('span', null, d.squadName || '—'))));
+        var whenTxt = function (w) { return (w.date ? dayLabel(w.date) + ' ' : '') + (w.time || '') + (w.dur && w.time ? '–' + hmOf(w.time, w.dur) : ''); };
+        var placeTags = function (pl) { return String(pl || '').split(/[、,，]/).map(function (y) { return y.trim(); }).filter(String).map(function (y) { return h('span', { class: 'pill-place' }, y); }); };
         if (d.route) {
           (d.route.rotations || []).forEach(function (r) {
-            box.appendChild(card(r.activity + '：' + d.squadName + '的順序', r.mode === 'map' && okUrl(r.image) ? h('img', { src: r.image, alt: '跑關地圖' }) :
-              h('div', { class: 'sched' }, r.steps.map(function (s, i) { return h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('span', { class: 'small muted', style: { display: 'block' } }, '–' + s.end) : null), h('span', null, '第 ' + (i + 1) + ' 站　', h('b', null, s.station || '休息'), s.place ? h('span', { class: 'muted' }, '　📍' + s.place) : null)); }),
-                r.turn ? h('div', { class: 'small muted' }, '每站之間換關 ' + r.turn + ' 分鐘') : null)));
+            var list = h('div', { class: 'sched' }, r.steps.map(function (s, i) {
+              var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('small', null, s.end) : null), h('div', { class: 'grow' }, h('div', { class: 'it-hd' }, h('span', { class: 'muted small' }, '第 ' + (i + 1) + ' 站'), h('b', null, s.station || '休息'), placeTags(s.place))));
+              var s0 = tms(r.date, s.time); if (s0) { row.dataset.s = s0; row.dataset.e = s.end ? tms(r.date, s.end) : s0 + 1800000; }
+              return row;
+            }), r.turn ? h('div', { class: 'small muted' }, '每站之間換關 ' + r.turn + ' 分鐘') : null);
+            markNow(list);
+            box.appendChild(card(r.activity + '：' + d.squadName + '的順序', h('div', { class: 'col' }, r.map && okUrl(r.map.img) ? mapView(r.map).el : r.mode === 'map' && okUrl(r.image) ? h('img', { src: r.image, alt: '跑關地圖' }) : null, list)));
           });
           if ((d.route.items || []).length) box.appendChild(card('我的帶隊流程', schedList(d.route.items.map(function (x) { return { date: x.date, time: x.time, title: x.name, note: x.place, showDay: true }; }))));
         }
+        // 我的工作：點開看同組的人、活動時間地點
         box.appendChild(card('我的工作', (d.tasks || []).length ? h('div', { class: 'col', style: { gap: '6px' } }, d.tasks.map(function (t) {
-          return h('div', { class: 'contact' }, h('div', { class: 'who' }, h('b', null, t.activity + '　' + t.role), h('small', null, [t.date ? dayLabel(t.date) : '', t.detail].filter(String).join(' · '))));
+          return h('details', { class: 'job' }, h('summary', null, h('div', { class: 'grow' }, h('b', null, (t.activity ? t.activity + '　' : '') + t.role), h('div', { class: 'small muted' }, [t.date ? dayLabel(t.date) : '', t.detail].filter(String).join(' · '))), h('span', { class: 'cs-chev' }, '›')),
+            h('div', { class: 'job-body' },
+              t.detail ? h('div', null, h('span', { class: 'ppl-k' }, '內容'), t.detail) : null,
+              (t.when || []).length ? h('div', null, h('span', { class: 'ppl-k' }, '時間'), h('div', { class: 'col', style: { gap: '2px' } }, t.when.map(function (w) { return h('div', null, whenTxt(w), ' ', placeTags(w.place)); }))) : null,
+              h('div', null, h('span', { class: 'ppl-k' }, '同組'), (t.with || []).length ? t.with.join('、') : '只有你' + (t.need ? '（需要 ' + t.need + ' 人）' : ''))));
         })) : h('div', { class: 'muted small' }, d.preview ? '預覽時不會帶入個人工作' : '目前沒有分配到工作')));
+        // 所有人的工作（依活動分）
+        if ((d.allWork || []).length) box.appendChild(card('所有人的工作', h('div', { class: 'col', style: { gap: '6px' } }, d.allWork.map(function (g) {
+          return h('details', { class: 'job' }, h('summary', null, h('div', { class: 'grow' }, h('b', null, g.activity || '一般工作事項'), h('div', { class: 'small muted' }, g.jobs.length + ' 個工作' + ((g.when || [])[0] ? ' · ' + whenTxt(g.when[0]) : ''))), h('span', { class: 'cs-chev' }, '›')),
+            h('div', { class: 'job-body' }, g.jobs.map(function (j) {
+              return h('div', { class: 'job-row' + (j.mine ? ' mine' : '') }, h('div', null, h('b', null, j.role), j.detail ? h('span', { class: 'muted' }, '　' + j.detail) : null, j.date ? h('span', { class: 'muted small' }, '　' + dayLabel(j.date)) : null), h('div', { class: 'small' }, j.people.length ? j.people.join('、') : h('span', { class: 'muted' }, '還沒有人')));
+            })));
+        }))));
         return box;
       },
       rooms: function (d) {
@@ -299,7 +451,7 @@ var Front = (function () {
   };
 
   function sfView(pub, which, env) {
-    var items = (pub && pub.items) || [], t = taipei(), tm = taipei(new Date(Date.now() + 86400000));
+    var items = (pub && pub.items) || [], t = taipei(), tm = taipei(new Date(nowDate().getTime() + 86400000));
     var title = (pub && pub.title) || '行程表';
     var pageOf = function (it) { var p = it.activity ? env.pages.filter(function (x) { return x.activity === it.activity; })[0] : null; return p ? p.id : ''; };
     var map = function (arr, showDay) { return arr.map(function (x) { return { date: x.date, time: x.time, title: x.title, note: x.note, page: pageOf(x), showDay: showDay }; }); };
@@ -397,5 +549,5 @@ var Front = (function () {
       .map(function (b) { return { id: b.id, pkg: b.data.pkg, view: b.data.view, config: b.data.config || {} }; });
   }
 
-  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard };
+  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, actColor: actColor, mapView: mapView, detailTable: detailTable, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard };
 })();
