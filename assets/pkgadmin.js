@@ -311,7 +311,7 @@ var PkgAdmin = (function () {
     (items || []).forEach(function (it) { byVal[it.value] = it; byLabel[it.label] = it.value; if (it.short) byLabel[it.short] = byLabel[it.short] || it.value; });
     var el = h('div', { class: 'pp' + (o.compact ? ' compact' : '') }), box = h('span', { class: 'pp-list' });
     var input = h('input', { class: 'pp-in', placeholder: o.placeholder || '＋', disabled: o.disabled, autocomplete: 'off' });
-    var pop = h('div', { class: 'mp-pop hidden' }), me, cbs = {}, cntEl = null;
+    var pop = h('div', { class: 'mp-pop hidden' }), me, cbs = {}, cntEl = null, mode = 'main';
     var fire = function () { el.dispatchEvent(new Event('change', { bubbles: true })); };
     var draw = function () {
       clear(box);
@@ -321,26 +321,40 @@ var PkgAdmin = (function () {
       });
     };
     // 勾選只更新那一格，不重畫清單（捲到一半不會跳回最上面）
-    var toggle = function (v) { var i = sel_.indexOf(v); if (i >= 0) sel_.splice(i, 1); else sel_.push(v); draw(); if (cbs[v] && !input.value) { cbs[v].checked = i < 0; if (cntEl) cntEl.textContent = '已選 ' + sel_.length; } else drawPop(); fire(); };
+    var toggle = function (v) { var i = sel_.indexOf(v); if (i >= 0) sel_.splice(i, 1); else sel_.push(v); draw(); if (cbs[v] && !input.value) { cbs[v].forEach(function (c) { c.checked = i < 0; }); if (cntEl) cntEl.textContent = '已選 ' + sel_.length; } else drawPop(); fire(); };
+    // o.alt：另一種分組（例如依工作分配的活動、工作），同一個人可以出現在好幾組
+    var altGroups = function () { return typeof o.alt.groups === 'function' ? o.alt.groups() : o.alt.groups; };
+    var listOf = function () {
+      if (mode !== 'alt') return items || [];
+      var out = [];
+      altGroups().forEach(function (g, gi) { g.values.forEach(function (v) { var it = byVal[v]; if (it) out.push({ value: it.value, label: it.label, group: g.name, gkey: 'g' + gi }); }); });
+      return out;
+    };
     var drawPop = function () {
       if (pop.classList.contains('hidden')) return;
       var st = pop.scrollTop;
       clear(pop); cbs = {};
-      var q = input.value.trim(), grp = '';
-      var list = (items || []).filter(function (it) { return !q || it.label.indexOf(q) >= 0 || String(it.group || '').indexOf(q) >= 0; });
+      var q = input.value.trim(), grp = '', all0 = listOf();
+      if (o.alt) pop.appendChild(h('div', { class: 'mp-modes' }, [['main', o.mainLabel || '依股別'], ['alt', o.alt.label]].map(function (m) {
+        return h('button', { type: 'button', class: 'mp-mode' + (mode === m[0] ? ' on' : ''), onmousedown: function (e) { e.preventDefault(); }, onclick: function () { mode = m[0]; pop.scrollTop = 0; drawPop(); } }, m[1]);
+      })));
+      if (mode === 'alt' && !altGroups().length) pop.appendChild(h('div', { class: 'small muted', style: { padding: '6px 8px' } }, o.alt.empty || '沒有資料'));
+      var list = all0.filter(function (it) { return !q || it.label.indexOf(q) >= 0 || String(it.group || '').indexOf(q) >= 0; });
       if (o.free && q && !byLabel[q] && sel_.indexOf(q) < 0) pop.appendChild(h('button', { type: 'button', class: 'mp-new', onclick: function () { input.value = ''; toggle(q); input.focus(); } }, '＋ 加入「' + q + '」'));
       list.forEach(function (it) {
-        if (it.group !== undefined && it.group !== grp) {
-          grp = it.group;
-          // 整個股別一次勾（再按一次全部取消）
-          var g0 = grp, inG = (items || []).filter(function (y) { return y.group === g0; });
-          pop.appendChild(h('div', { class: 'mp-grp' }, h('span', { class: 'grow' }, grp || '未分組'), h('button', { type: 'button', class: 'mp-all', onmousedown: function (e) { e.preventDefault(); }, onclick: function () {
+        var gk = it.gkey || it.group;
+        if (it.group !== undefined && gk !== grp) {
+          grp = gk;
+          // 整組一次勾（再按一次全部取消）
+          var g0 = grp, inG = all0.filter(function (y) { return (y.gkey || y.group) === g0; });
+          pop.appendChild(h('div', { class: 'mp-grp' }, h('span', { class: 'grow' }, it.group || '未分組'), h('button', { type: 'button', class: 'mp-all', onmousedown: function (e) { e.preventDefault(); }, onclick: function () {
             var all = inG.every(function (y) { return sel_.indexOf(y.value) >= 0; });
             inG.forEach(function (y) { var k = sel_.indexOf(y.value); if (all && k >= 0) sel_.splice(k, 1); else if (!all && k < 0) sel_.push(y.value); });
             draw(); drawPop(); fire();
           } }, inG.every(function (y) { return sel_.indexOf(y.value) >= 0; }) ? '全部取消' : '整組勾選（' + inG.length + '）')));
         }
-        var cb = cbs[it.value] = h('input', { type: 'checkbox', checked: sel_.indexOf(it.value) >= 0, tabindex: -1 });
+        var cb = h('input', { type: 'checkbox', checked: sel_.indexOf(it.value) >= 0, tabindex: -1 });
+        (cbs[it.value] = cbs[it.value] || []).push(cb);
         pop.appendChild(h('label', { class: 'mp-it', onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); toggle(it.value); } }, cb, h('span', null, it.label)));
       });
       if (!pop.firstChild) pop.appendChild(h('div', { class: 'small muted', style: { padding: '6px 8px' } }, '沒有符合的'));
@@ -352,7 +366,7 @@ var PkgAdmin = (function () {
     me = {
       el: el, pop: pop,
       open: function () { if (o.disabled) return; if (MP_OPEN && MP_OPEN !== me) MP_OPEN.close(); MP_OPEN = me; document.body.appendChild(pop); pop.classList.remove('hidden'); place(); drawPop(); },
-      close: function () { pop.classList.add('hidden'); pop.remove(); if (MP_OPEN === me) MP_OPEN = null; input.value = ''; },
+      close: function () { pop.classList.add('hidden'); pop.remove(); if (MP_OPEN === me) MP_OPEN = null; input.value = ''; mode = 'main'; },
       get: function () { return sel_.slice(); }, set: function (vs) { sel_ = (vs || []).map(String); draw(); drawPop(); }, input: input
     };
     var addTyped = function () {
@@ -379,7 +393,7 @@ var PkgAdmin = (function () {
   function peoplePicker(workers, selected, o) {
     o = o || {};
     var ws = (workers || []).slice().sort(function (a, b) { return String(a.data.dept || '').localeCompare(String(b.data.dept || '')); });
-    return multiPicker(ws.map(function (w) { return { value: w.id, label: w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : ''), short: w.data.name, group: w.data.dept || '' }; }), selected, { compact: o.compact, disabled: o.disabled, placeholder: o.placeholder || '＋ 加人' });
+    return multiPicker(ws.map(function (w) { return { value: w.id, label: w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : ''), short: w.data.name, group: w.data.dept || '' }; }), selected, { compact: o.compact, disabled: o.disabled, placeholder: o.placeholder || '＋ 加人', alt: o.alt });
   }
   function workerItems(list) { return (list || []).map(function (w) { return { value: w.id, label: w.data.name + (w.data.dept ? '（' + w.data.dept + '）' : '') }; }); }
   function nameOf(list, ids) { var m = {}; (list || []).forEach(function (w) { m[w.id] = w.data.name; }); return (ids || []).map(function (i) { return m[i] || '（已移除）'; }).join('、'); }
@@ -410,7 +424,7 @@ var PkgAdmin = (function () {
 
     var editor = function (c, v, row) {
       var t = c.type || 'text', e = {};
-      if (t === 'people') { var pp = peoplePicker(o.workers || [], v || [], { compact: true, disabled: ro, placeholder: '＋' }); e = { el: pp.el, get: pp.get, set: function (x) { pp.set(x); }, input: pp.input }; }
+      if (t === 'people') { var pp = peoplePicker(o.workers || [], v || [], { compact: true, disabled: ro, placeholder: '＋', alt: o.workGroups ? { label: '依工作分配', groups: function () { return o.workGroups(row); }, empty: '工作分配還沒有人' } : null }); e = { el: pp.el, get: pp.get, set: function (x) { pp.set(x); }, input: pp.input }; }
       else if (t === 'tags') {
         // 複選文字（例如好幾個場地）：存成「操場、禮堂」
         var split = function (x) { return Array.isArray(x) ? x : String(x || '').split(/[、,，]/).map(function (y) { return y.trim(); }).filter(String); };
@@ -1011,6 +1025,14 @@ var PkgAdmin = (function () {
         { k: 'link', label: '其他連結', w: '110px', ph: 'https://' }
       ].concat(cf.map(function (k) { return { k: 'cf:' + k, label: k, w: '110px' }; })), {
         rows: items.map(function (it) { var d = it.data, v = { date: d.date, flow: d.flow || cur, time: d.time, dur: d.dur || '', end: '', tone: d.tone || '', name: d.name, place: d.place, owner: d.owner || [], staff: d.staff || [], backup: d.backup || [], note: d.note || '', go: d.go || '', link: d.link || '' }; var e = endOf(v); if (e !== null && d.dur) v.end = toHm(e); cf.forEach(function (k) { v['cf:' + k] = (d.custom || {})[k] || ''; }); return { id: it.id, ver: it.version, vals: v, it: it }; }),
+        // 選人時可以改成「依工作分配」：每個工作一組，這一列的活動排最前面
+        workGroups: function (row) {
+          var nm = String((row && row.ed && row.ed.name && row.ed.name.get ? row.ed.name.get() : row && row.vals.name) || '').trim();
+          var gs = (D.assign || []).filter(function (a) { return (a.data.people || []).length; }).map(function (a) {
+            var d = a.data; return { act: String(d.activity || '').trim(), name: (d.activity || '一般工作') + '｜' + (d.role || '') + (d.detail ? '　' + d.detail : '') + (d.date ? '　' + String(d.date).slice(5) : ''), values: d.people };
+          });
+          return gs.filter(function (g) { return g.act === nm; }).concat(gs.filter(function (g) { return g.act !== nm; }));
+        },
         workers: D.workers, saveOp: 'item.save', delOp: 'item.delete', parse: parseCell, flash: 'items', select: true, drag: true, addText: '＋ 這一天加一項',
         groupOf: function (v) { return v.date || ''; }, extraGroups: days,
         groupOrder: function (keys) { return keys.sort(function (x, y) { return (x || '9999').localeCompare(y || '9999'); }); },
@@ -1606,7 +1628,7 @@ var PkgAdmin = (function () {
     var changed = function () { if (onChange) onChange(); };
     var byId = function (id) { return (map.items || []).filter(function (x) { return x.id === id; })[0]; };
     var MODES = [['sel', '選取／移動'], ['pin', '＋ 標點'], ['text', '＋ 文字'], ['card', '＋ 文字卡片'], ['line', '＋ 連線'], ['del', '刪除']];
-    var HINT = { sel: '拖曳可以移動；點一下線可以選取，選到的線再點線上任一處就加一個轉折點，拖曳轉折點移動、點兩下刪除。', pin: '在圖上點一下放一個標點。', text: '在圖上點一下放一段文字。', card: '在圖上點一下放一張文字卡片（有框）。', line: '先點起點（標點或卡片），再點終點，兩點會連起來。', del: '點要刪除的東西（刪除標點或卡片，連到它的線也會一起刪掉）。' };
+    var HINT = { sel: '拖曳可以移動。點一下線選取，線上每一段中間有「＋」，按住拖曳就多一個轉折點；轉折點會吸到水平、鉛直或 30°、45°、60°，點兩下刪除。線會自動只走這些角度。', pin: '在圖上點一下放一個標點。', text: '在圖上點一下放一段文字。', card: '在圖上點一下放一張文字卡片（有框）。', line: '先點起點（標點或卡片），再點終點，兩點會連起來。', del: '點要刪除的東西（刪除標點或卡片，連到它的線也會一起刪掉）。' };
     var pt = function (e) {
       var r = V.svg.getBoundingClientRect();
       var c = function (v) { return Math.max(0, Math.min(1, Math.round(v * 10000) / 10000)); };
@@ -1623,6 +1645,32 @@ var PkgAdmin = (function () {
       }
       ln.pts = ln.pts || []; if (ln.pts.length >= 30) return toast('一條線最多 30 個轉折點', true);
       ln.pts.splice(best, 0, p);
+    };
+    // 拖轉折點：和前一點（必要時也和後一點）的連線吸到水平、鉛直、30°、45°、60°…
+    var snapBend = function (ln, i, p) {
+      var S = V.size(), a = byId(ln.a), b = byId(ln.b);
+      var pv = i === 0 ? [a.x, a.y] : ln.pts[i - 1], nx = i === ln.pts.length - 1 ? [b.x, b.y] : ln.pts[i + 1];
+      var px = function (q) { return [q[0] * S.W, q[1] * S.H]; }, P0 = px(pv), P1 = px(nx), M = px(p);
+      var dirs = Front.MAP_ANGLES.map(function (g) { return [Math.cos(g * Math.PI / 180), Math.sin(g * Math.PI / 180)]; });
+      // 兩邊都吸得到的交點（直角轉彎那種），離游標 25 以內就用它
+      var best = null;
+      dirs.forEach(function (u) { dirs.forEach(function (v) {
+        var det = u[0] * v[1] - u[1] * v[0]; if (Math.abs(det) < 1e-6) return;
+        var dx = P1[0] - P0[0], dy = P1[1] - P0[1], s1 = (dx * v[1] - dy * v[0]) / det;
+        if (s1 <= 0) return;
+        var c = [P0[0] + s1 * u[0], P0[1] + s1 * u[1]], d = Math.hypot(c[0] - M[0], c[1] - M[1]);
+        if (!best || d < best.d) best = { c: c, d: d };
+      }); });
+      var out;
+      if (best && best.d < 25) out = best.c;
+      else {
+        var dx = M[0] - P0[0], dy = M[1] - P0[1], L = Math.hypot(dx, dy), g = Math.atan2(dy, dx) * 180 / Math.PI;
+        var sn = Front.MAP_ANGLES.reduce(function (m, x) { var d = Math.abs(((g - x + 540) % 360) - 180); return d < m.d ? { x: x, d: d } : m; }, { x: 0, d: 999 }).x * Math.PI / 180;
+        var t = dx * Math.cos(sn) + dy * Math.sin(sn); if (t < 0) t = L;
+        out = [P0[0] + t * Math.cos(sn), P0[1] + t * Math.sin(sn)];
+      }
+      var c2 = function (v) { return Math.max(0, Math.min(1, Math.round(v * 10000) / 10000)); };
+      return [c2(out[0] / S.W), c2(out[1] / S.H)];
     };
     var props = h('div', { class: 'map-props row wrap', style: { gap: '8px', alignItems: 'flex-end' } });
     var drawProps = function (fresh) {
@@ -1686,6 +1734,12 @@ var PkgAdmin = (function () {
         var x = id && byId(id);
         e.preventDefault();
         if (bend) { var bp = bend.getAttribute('data-bend').split(':'); drag = { line: byId(bp[0]), i: Number(bp[1]) }; V.svg.setPointerCapture(e.pointerId); return; }
+        var add = e.target.closest('[data-add]');
+        if (add) {
+          var ap = add.getAttribute('data-add').split(':'), al = byId(ap[0]);
+          if (al) { al.pts = al.pts || []; if (al.pts.length >= 30) return toast('一條線最多 30 個轉折點', true); al.pts.splice(Number(ap[1]), 0, [Number(ap[2]), Number(ap[3])]); drag = { line: al, i: Number(ap[1]) }; V.redraw(selId); drawProps(); V.svg.setPointerCapture(e.pointerId); changed(); }
+          return;
+        }
         if (mode === 'del') { if (x) remove(id); return; }
         if (mode === 'line') {
           if (!x || x.t === 'line') return;
@@ -1711,7 +1765,7 @@ var PkgAdmin = (function () {
       V.svg.addEventListener('pointermove', function (e) {
         if (!drag) return;
         var p = pt(e);
-        if (drag.line) drag.line.pts[drag.i] = p;
+        if (drag.line) drag.line.pts[drag.i] = snapBend(drag.line, drag.i, p);
         else { drag.it.x = Math.max(0, Math.min(1, p[0] + drag.dx)); drag.it.y = Math.max(0, Math.min(1, p[1] + drag.dy)); drag.moved = true; }
         V.redraw(selId);
       });
