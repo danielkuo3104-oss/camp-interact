@@ -144,10 +144,12 @@ A.views.home = function (m) {
     if (top.length) { ev.appendChild(h('h2', null, '需要處理')); top.forEach(function (e) { ev.appendChild(A.eventRow(e, function () { A.route(); })); }); }
   }).then(null, fail);
   var links = h('div', { class: 'section' }, h('h2', null, '前台連結'));
-  var wl = A.frontBase() + 'app.html?c=' + encodeURIComponent(A.camp) + '&s=worker';
+  var wl = A.frontBase() + 'app.html?c=' + encodeURIComponent(A.camp) + '&s=worker', sl = A.frontBase() + 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student';
   links.appendChild(h('div', { class: 'card col' },
-    h('div', null, h('b', null, '學員端：'), '學員從報名系統的學員專區按「進入營隊互動」自動登入（需要在「營隊設定」完成串接）。'),
+    h('div', null, h('b', null, '學員端：'), '學員從報名系統的學員專區按「進入營隊互動」自動登入；營隊中也可以掃下面的 QR code 或打開連結，輸入姓名＋身分證字號直接登入（需要在「營隊設定」完成串接）。'),
+    h('div', null, h('b', null, '學員端直接登入：'), h('a', { href: sl, target: '_blank', rel: 'noopener' }, sl), '　', h('button', { class: 'btn sm', onclick: function () { navigator.clipboard.writeText(sl).then(function () { toast('已複製'); }); } }, '複製'), ' ', h('button', { class: 'btn sm', onclick: function () { A.showQr(sl, '學員端 QR code', '學員掃了打開學員端，輸入姓名＋身分證字號登入（不用先去學員專區）。可以印在手冊、海報或投影片。', '學員端QR.png'); } }, 'QR code')),
     h('div', null, h('b', null, '工作人員端：'), h('a', { href: wl, target: '_blank', rel: 'noopener' }, wl), '　', h('button', { class: 'btn sm', onclick: function () { navigator.clipboard.writeText(wl).then(function () { toast('已複製'); }); } }, '複製'),
+      ' ', h('button', { class: 'btn sm', onclick: function () { A.showQr(wl, '工作人員端 QR code', '工作人員掃了打開工作人員端，用姓名＋股別' + (I.passOff ? '' : '＋營隊通行碼') + '登入。', '工作人員端QR.png'); } }, 'QR code'),
       I.workerPassSet || I.passOff ? null : h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '還沒設定工作人員通行碼')),
     h('div', { class: 'row wrap' }, ['student', 'worker'].filter(A.canSide).map(function (side) {
       return [h('a', { class: 'btn sm', target: '_blank', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=pub' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（發布版）'),
@@ -159,6 +161,29 @@ A.views.home = function (m) {
     h('li', null, '「人員與分隊」建立工作人員、小隊與工作分配；「營期流程與活動」建立流程、活動與跑關。'),
     h('li', null, '「學員行程」整理學員看得到的行程；「緊急應變」填指揮中心電話與守夜人員。'),
     h('li', null, '到「學員端／工作人員端」按「開始編輯」調整頁面，處理完警示後發布。')))));
+};
+
+/** 前台網址的 QR code：可以下載成圖片（四周留白，掃描比較穩）；QR 程式用到才載入 */
+A.showQr = function (url, title, desc, file) {
+  var draw = function () {
+    var qb = h('div', { class: 'qr-box' }), dl = h('a', { class: 'btn primary', download: file || 'QR.png' }, '下載圖片');
+    new QRCode(qb, { text: url, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+    setTimeout(function () {
+      var c = qb.querySelector('canvas'), img = qb.querySelector('img');
+      if (!c) { dl.href = img ? img.src : '#'; return; }
+      var pad = 24, out = document.createElement('canvas');
+      out.width = c.width + pad * 2; out.height = c.height + pad * 2;
+      var g = out.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, out.width, out.height); g.drawImage(c, pad, pad);
+      dl.href = out.toDataURL('image/png');
+    }, 100);
+    modal({ title: title, body: h('div', { class: 'col', style: { alignItems: 'center', gap: '12px' } }, h('div', { class: 'small muted' }, desc), qb, h('div', { class: 'small muted', style: { wordBreak: 'break-all', textAlign: 'center' } }, url), dl) });
+  };
+  if (window.QRCode) { draw(); return; }
+  var sc = document.createElement('script');
+  sc.src = 'assets/qrcode.min.js';
+  sc.onload = draw;
+  sc.onerror = function () { toast('QR code 程式載入失敗，請重新整理再試', true); };
+  document.head.appendChild(sc);
 };
 
 /* ---------------- 警示與通知 ---------------- */
