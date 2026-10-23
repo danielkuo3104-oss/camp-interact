@@ -863,6 +863,12 @@ var PkgAdmin = (function () {
       };
       var acts = actsOf(D);
       D.assign.forEach(function (a) { if (a.data.activity && acts.indexOf(a.data.activity) < 0) acts.push(a.data.activity); });
+      // 同一組工作（同活動＋同工作別）排在一起：照第一次出現的順序，組內保持原本順序
+      var jobOrder = function (list) {
+        var key = function (a) { return String(a.data.activity || '').replace(/\s+/g, '') + '|' + String(a.data.role || '').replace(/\s+/g, ''); }, first = {};
+        list.forEach(function (a, i) { var k = key(a); if (!(k in first)) first[k] = i; });
+        return list.map(function (a, i) { return { a: a, i: i }; }).sort(function (x, y) { return first[key(x.a)] - first[key(y.a)] || x.i - y.i; }).map(function (x) { return x.a; });
+      };
       var groups = [''].concat(acts);   // 第一組：不屬於某個活動的一般工作事項（接待、守夜…）
       var wById = {};
       D.workers.forEach(function (w) { if (!w.data.inactive) wById[w.id] = w; });
@@ -885,7 +891,7 @@ var PkgAdmin = (function () {
           return h('span', { class: 'tag ' + (n < need ? 'bad' : n > need ? 'warn' : 'ok') }, n + '／' + need + (n < need ? ' 缺 ' + (need - n) : n > need ? ' 多 ' + (n - need) : ' ✓'));
         } }
       ], {
-        rows: D.assign.map(function (a) { return { id: a.id, ver: a.version, vals: { activity: a.data.activity, role: a.data.role, detail: a.data.detail || '', date: a.data.date || '', need: a.data.need === undefined ? '' : a.data.need, people: a.data.people || [] } }; }),
+        rows: jobOrder(D.assign).map(function (a) { return { id: a.id, ver: a.version, vals: { activity: a.data.activity, role: a.data.role, detail: a.data.detail || '', date: a.data.date || '', need: a.data.need === undefined ? '' : a.data.need, people: a.data.people || [] } }; }),
         workers: D.workers.filter(function (w) { return !w.data.inactive; }), saveOp: 'assign.save', delOp: 'assign.delete', parse: parseCell, flash: 'assign', addText: '＋ 這個活動加一個工作',
         groupOf: function (v) { return v.activity || ''; }, extraGroups: groups,
         groupOrder: function (keys) { return keys.sort(function (a, b) { var x = groups.indexOf(a), y = groups.indexOf(b); return (x < 0 ? 999 : x) - (y < 0 ? 999 : y); }); },
@@ -1131,9 +1137,15 @@ var PkgAdmin = (function () {
         // 選人時可以改成「依工作分配」：每個工作一組，這一列的活動排最前面
         workGroups: function (row) {
           var nm = String((row && row.ed && row.ed.name && row.ed.name.get ? row.ed.name.get() : row && row.vals.name) || '').trim();
-          var gs = (D.assign || []).filter(function (a) { return (a.data.people || []).length; }).map(function (a) {
-            var d = a.data; return { act: String(d.activity || '').trim(), name: (d.activity || '一般工作') + '｜' + (d.role || '') + (d.detail ? '　' + d.detail : '') + (d.date ? '　' + String(d.date).slice(5) : ''), values: d.people };
+          // 同活動＋同工作別（例如校園導覽的關主）合成一組，不分詳細工作（化學館、大草坪…）
+          var gs = [], byK = {};
+          (D.assign || []).forEach(function (a) {
+            var d = a.data; if (!(d.people || []).length) return;
+            var act = String(d.activity || '').trim(), role = String(d.role || '').trim(), k = act + '|' + role;
+            var g = byK[k] || (byK[k] = gs[gs.push({ act: act, role: role, values: [] }) - 1]);
+            d.people.forEach(function (p) { if (g.values.indexOf(p) < 0) g.values.push(p); });
           });
+          gs.forEach(function (g) { g.name = (g.act || '一般工作') + '｜' + (g.role || '') + '（' + g.values.length + ' 人）'; });
           return gs.filter(function (g) { return g.act === nm; }).concat(gs.filter(function (g) { return g.act !== nm; }));
         },
         workers: D.workers, saveOp: 'item.save', delOp: 'item.delete', parse: parseCell, flash: 'items', select: true, drag: true, addText: '＋ 這一天加一項',
