@@ -318,7 +318,9 @@ details.cs[open] .cs-chev { transform: rotate(90deg); }
 /* 10/22 晚上 7：背景上傳、標示色、期間內、開關 */
 .t.grid tr.g-up td { background-image: repeating-linear-gradient(-45deg, rgba(53, 99, 168, .10) 0 8px, transparent 8px 16px); pointer-events: none; opacity: .8; }
 .g-upmsg { color: var(--info); }
-.t.grid tr.g-tone-act td { background-color: #eef4fb; }
+.t.grid tr.g-tone-act td { background-color: var(--tone, #eef4fb); }
+.t.grid tr.g-tone-crit td { background-color: #c0392b; }
+.t.grid tr.g-tone-crit td .g-in, .t.grid tr.g-tone-crit td .g-calc { color: #fff; font-weight: 700; }
 .t.grid tr.g-tone-key td { background-color: #ffe3a3; }
 .t.grid tr.g-tone-key td .g-in { font-weight: 700; }
 .t.grid tr.g-child td[data-ci="6"] .g-in { margin-left: 18px; width: calc(100% - 18px); border-left: 3px solid var(--info); }
@@ -332,6 +334,9 @@ details.cs[open] .cs-chev { transform: rotate(90deg); }
 .sw-wrap input.sw:disabled + .sw-k { opacity: .5; }
 .sched .it.tone-act { background: #eef4fb; border-radius: 10px; }
 .sched .it.tone-key { background: #ffe3a3; border-radius: 10px; }
+.sched .it.tone-crit { background: #c0392b; color: #fff; border-radius: 10px; }
+.sched .it.tone-crit .tm, .sched .it.tone-crit .tm small, .sched .it.tone-crit .ppl, .sched .it.tone-crit .ppl-k, .sched .it.tone-crit .muted { color: #fff; }
+.sched .it.tone-crit .pill-place { background: rgba(255,255,255,.2); color: #fff; border-color: rgba(255,255,255,.5); }
 .sched .it.inner { margin-left: 22px; border-left: 3px solid var(--info); padding-left: 10px; }
 .card.g-up { background-image: repeating-linear-gradient(-45deg, rgba(53, 99, 168, .08) 0 8px, transparent 8px 16px); pointer-events: none; opacity: .85; }
 .card.g-bad { border: 2px solid var(--bad); }
@@ -347,3 +352,59 @@ details.cs[open] .cs-chev { transform: rotate(90deg); }
 .mp-grp { font-size: 11px; color: var(--text-3); padding: 6px 8px 2px; font-weight: 700; }
 .mp-new { display: block; width: 100%; text-align: left; border: 0; background: var(--brand-soft); color: var(--brand); font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
 .mp-foot { position: sticky; bottom: -4px; display: flex; justify-content: space-between; align-items: center; padding: 6px 6px 4px; background: var(--surface); border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* 時程：場地是圓角標籤；現在進行中的有左邊色條＋「現在」，過去的變淡 */
+.sched.flow .it, .sched .it[data-s] { padding: 10px 10px; border-radius: 10px; }
+.sched .tm small { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.sched .tm small::before { content: '–'; }
+.it-hd { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.it-hd .nm { font-size: 15px; }
+.pill-place { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line-strong); color: var(--text-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.ppl { font-size: 12.5px; color: var(--text-2); margin-top: 3px; }
+.ppl-k { display: inline-block; min-width: 34px; margin-right: 6px; padding: 0 6px; border-radius: 6px; background: var(--mute-soft); color: var(--text-3); font-size: 11.5px; text-align: center; }
+.sched .it.now { box-shadow: inset 4px 0 0 var(--accent); background: #fff6e8; position: relative; }
+.sched .it.now .nm::after, .sched .it.now .it-hd > b::after { content: '現在'; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+.sched .it.past { opacity: .5; }
+.sched .it.tone-crit.now { box-shadow: inset 5px 0 0 #fff3; }
+.go-det { margin-top: 6px; } .go-det > summary { cursor: pointer; color: var(--info); }
+/* 活動細流時間表 */
+table.dt { font-size: 13px; }
+table.dt td, table.dt th { border: 1px solid var(--line-strong); text-align: center; vertical-align: middle; padding: 5px 8px; }
+table.dt td.dt-tm { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-2); }
+table.dt td.dt-dur { color: var(--text-3); }
+table.dt td.dt-main { font-weight: 700; }
+table.dt tr.now td.dt-tm { background: var(--accent); color: #fff; font-weight: 700; }
+table.dt tr.past td.dt-tm, table.dt tr.past td.dt-dur { opacity: .5; }
+/* 我的工作 */
+details.job { border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+details.job > summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; }
+details.job > summary::-webkit-details-marker { display: none; }
+details.job[open] .cs-chev { transform: rotate(90deg); }
+.job-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.job-body > div { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.job-row { flex-direction: column; align-items: stretch !important; gap: 2px !important; padding: 6px 8px; border-radius: 8px; background: var(--surface); }
+.job-row.mine { box-shadow: inset 3px 0 0 var(--accent); }
+/* 地圖 */
+.map-wrap { position: relative; width: 100%; line-height: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.map-wrap img, .fb .map-wrap img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 0; max-width: none; }
+.map-wrap.map-noimg { background: repeating-linear-gradient(45deg, #f4f4f4 0 12px, #fafafa 12px 24px); }
+.map-wrap.map-noimg img { visibility: hidden; }
+.map-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map-svg text { font-family: inherit; }
+.map-svg .m-halo { paint-order: stroke; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; }
+.mp-grp { display: flex; align-items: center; gap: 6px; }
+.mp-all { border: 0; background: transparent; color: var(--brand); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; padding: 0 2px; }
+/* 地圖編輯 */
+.map-edit .map-svg { touch-action: none; }
+.map-edit [data-id] { cursor: move; }
+.map-edit.mode-line [data-id], .map-edit.mode-del [data-id] { cursor: pointer; }
+.map-edit.mode-pin .map-svg, .map-edit.mode-text .map-svg, .map-edit.mode-card .map-svg { cursor: crosshair; }
+.map-svg .sel { filter: drop-shadow(0 0 4px #1e88e5) drop-shadow(0 0 2px #1e88e5); }
+.map-svg .m-bend { fill: #fff; stroke: #1e88e5; stroke-width: 4; cursor: grab; }
+.map-props:empty { display: none; }
+.map-props textarea { font: inherit; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 8px; }
+textarea.dt-in { width: 100%; min-width: 70px; resize: none; overflow: hidden; }
+td.dt-merged { background: var(--surface-2, #f3f4f6); }
+td.dt-merged textarea { color: var(--text-3); text-align: center; }
+.map-ed .map-wrap { max-width: 760px; }
+.map-props select { width: auto; min-width: 80px; }
