@@ -127,7 +127,7 @@ table.t th { color: var(--text-2); font-weight: 500; background: var(--surface-2
 .board .r { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .board .rk { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--mute-soft); font-weight: 700; }
 .board .r.me { background: var(--brand-soft); border-radius: 12px; padding: 8px; }
-.board .r:first-child .rk { background: #f6d27a; color: #5a3a00; }
+.board > .r:first-child .rk { background: #f6d27a; color: #5a3a00; }
 .board .sc { font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
 .contact { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .contact:last-child { border-bottom: 0; }
@@ -465,8 +465,9 @@ td.dt-merged textarea { color: var(--text-3); text-align: center; }
 .t.grid tr.g-tone-crit td .g-in:focus, .t.grid tr.g-tone-crit td input.g-in:focus, .t.grid tr.g-tone-crit td textarea:focus, .t.grid tr.g-tone-crit td select:focus { color: var(--text); background: #fff; }
 .t.grid tr.g-tone-crit td .pp-in { color: #fff; }
 .t.grid tr.g-tone-crit td .pp-in:focus { color: var(--text); background: #fff; border-radius: 6px; }
-.refresh-btn { white-space: nowrap; }
-@media (max-width: 520px) { .refresh-btn { font-size: 0; padding: 6px 10px; } .refresh-btn::before { content: '⟳'; font-size: 18px; } }
+.refresh-btn { white-space: nowrap; gap: 4px; }
+.refresh-btn .rf-ic { font-size: 16px; line-height: 1; }
+@media (max-width: 520px) { .refresh-btn { padding: 6px 10px; } .refresh-btn .rf-tx { display: none; } .refresh-btn .rf-ic { font-size: 18px; } }
 .map-ed.map-zoom .map-wrap { max-width: none; }
 .map-lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .map-lib-it { display: flex; flex-direction: column; gap: 4px; }
@@ -506,3 +507,20 @@ table.dt tr.now-tr td span { position: absolute; left: 0; top: -11px; background
 .sign-pad.signed .sign-ph { display: none; }
 .sign-img { height: 40px; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
 .qr-box { background: #fff; padding: 16px; border-radius: 12px; }
+
+/* iPhone 的日期時間欄會撐出卡片：改成跟一般欄位一樣寬 */
+input[type=date].input, input[type=datetime-local].input, input[type=time].input { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; box-sizing: border-box; display: block; line-height: 36px; text-align: left; }
+input[type=date].input::-webkit-date-and-time-value, input[type=datetime-local].input::-webkit-date-and-time-value, input[type=time].input::-webkit-date-and-time-value { text-align: left; }
+.field { min-width: 0; }
+/* 加到主畫面 */
+.install-banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--brand-soft); margin-bottom: 10px; }
+.install-banner .brand-mark { width: 36px; height: 36px; font-size: 16px; flex: none; }
+.install-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.install-tip { align-self: center; }
+/* 團隊計分：點一隊看明細 */
+.board .r-wrap > summary { list-style: none; cursor: pointer; }
+.board .r-wrap > summary::-webkit-details-marker { display: none; }
+.board .r-wrap[open] .cs-chev { transform: rotate(90deg); }
+.board .r-parts { padding: 4px 0 10px 40px; }
+.board > .r-wrap:first-child .rk { background: #f6d27a; color: #5a3a00; }
+.sb-click { cursor: pointer; }
