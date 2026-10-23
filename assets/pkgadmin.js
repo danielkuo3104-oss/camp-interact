@@ -741,16 +741,17 @@ var PkgAdmin = (function () {
     box.appendChild(card);
   }
   function contactsEditor(list) {
-    var rows = list.map(function (c) { return { name: c.name || '', role: c.role || '', phone: c.phone || '' }; });
+    var rows = list.map(function (c) { return { name: c.name || '', role: c.role || '', phone: c.phone || '', side: c.side === 'worker' ? 'worker' : '' }; });
     var el = h('div', { class: 'col', style: { gap: '6px' } });
     var draw = function () {
       clear(el);
       rows.forEach(function (c, i) {
         var a = inp(c.name, { placeholder: '姓名', disabled: !R.canEdit }), b = inp(c.role, { placeholder: '職稱', disabled: !R.canEdit }), p = inp(c.phone, { placeholder: '電話', disabled: !R.canEdit });
-        a.oninput = function () { c.name = a.value; }; b.oninput = function () { c.role = b.value; }; p.oninput = function () { c.phone = p.value; };
-        el.appendChild(h('div', { class: 'row' }, a, b, p, R.canEdit ? h('button', { class: 'btn sm ghost', onclick: function () { rows.splice(i, 1); draw(); } }, '✕') : null));
+        var sd = sel([{ value: '', label: '學員和工作人員都看得到' }, { value: 'worker', label: '只有工作人員' }], c.side, { disabled: !R.canEdit });
+        a.oninput = function () { c.name = a.value; }; b.oninput = function () { c.role = b.value; }; p.oninput = function () { c.phone = p.value; }; sd.onchange = function () { c.side = sd.value; };
+        el.appendChild(h('div', { class: 'row' }, a, b, p, sd, R.canEdit ? h('button', { class: 'btn sm ghost', onclick: function () { rows.splice(i, 1); draw(); } }, '✕') : null));
       });
-      if (R.canEdit) el.appendChild(h('div', null, h('button', { class: 'btn sm', onclick: function () { rows.push({ name: '', role: '', phone: '' }); draw(); } }, '＋ 聯絡人')));
+      if (R.canEdit) el.appendChild(h('div', null, h('button', { class: 'btn sm', onclick: function () { rows.push({ name: '', role: '', phone: '', side: '' }); draw(); } }, '＋ 聯絡人')));
     };
     draw();
     return { el: el, get: function () { return rows.filter(function (c) { return c.name || c.phone; }); } };
@@ -1019,33 +1020,30 @@ var PkgAdmin = (function () {
       };
       // 匯出 Excel：全部流程、全部天，顏色和這裡一樣（活動淡色、重要黃、極重要紅底白字）
       var csv = function () {
-        var esc = function (x) { return String(x === undefined || x === null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); };
         var mm = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
         var hmx = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
         var heads = ['日期', '開始', '時長', '結束', '標示', '活動名稱', '場地', '負責人員', '關主／參與人員', '機動人員', '備註', '連結'].concat(cf);
+        var widths = [12, 8, 6, 8, 8, 22, 16, 20, 20, 16, 30, 24].concat(cf.map(function () { return 16; }));
         var toneName = { act: '活動', key: '重要', crit: '極重要' };
         var order = flows.slice().sort(function (x, y) { return (x.id === cur ? -1 : 0) - (y.id === cur ? -1 : 0) || (Number(x.data.order) || 0) - (Number(y.data.order) || 0); });
-        var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>td,th{border:1px solid #c9cfcc;padding:4px 8px;font-family:"Noto Sans TC",sans-serif;font-size:11pt;vertical-align:middle;mso-number-format:"\\@";}th{background:#2f5d57;color:#fff;}.day td{background:#e8ecea;font-weight:bold;}.flow td{background:#ffffff;font-size:14pt;font-weight:bold;border:0;}</style></head><body><table>';
-        order.forEach(function (f) {
+        var last = heads.length - 1;
+        var sheets = order.map(function (f) {
           var its = D.items.filter(function (it) { return (it.data.flow || 'main') === f.id; }).slice().sort(function (x, y) { return String(x.data.date || '9999').localeCompare(String(y.data.date || '9999')) || (mm(x.data.time) === null ? 9999 : mm(x.data.time)) - (mm(y.data.time) === null ? 9999 : mm(y.data.time)); });
-          html += '<tr class="flow"><td colspan="' + heads.length + '">' + esc(f.data.name) + '</td></tr><tr>' + heads.map(function (x) { return '<th>' + esc(x) + '</th>'; }).join('') + '</tr>';
+          var rows = [[{ v: (A.info.name || '') + '　' + f.data.name, bold: true, size: 14, border: false }]], merges = [[0, 0, 0, last]];
+          rows.push(heads.map(function (x) { return { v: x, bg: '#2f5d57', color: '#ffffff', bold: true, align: 'center' }; }));
           var day = null;
           its.forEach(function (it) {
             var d = it.data;
-            if (d.date !== day) { day = d.date; html += '<tr class="day"><td colspan="' + heads.length + '">' + esc(d.date ? dayNo(d.date) + dayLabel(d.date) : '（沒填日期）') + '</td></tr>'; }
-            var st = d.tone === 'crit' ? 'background:#b3261e;color:#ffffff;font-weight:bold;' : d.tone === 'key' ? 'background:#ffe3a3;font-weight:bold;' : d.tone === 'act' ? 'background:' + Front.actColor(d.name) + ';' : '';
+            if (d.date !== day) { day = d.date; merges.push([rows.length, 0, rows.length, last]); rows.push([{ v: d.date ? dayNo(d.date) + dayLabel(d.date) : '（沒填日期）', bg: '#e8ecea', bold: true }].concat(heads.slice(1).map(function () { return { v: '', bg: '#e8ecea' }; }))); }
+            var st = d.tone === 'crit' ? { bg: '#b3261e', color: '#ffffff', bold: true } : d.tone === 'key' ? { bg: '#ffe3a3', bold: true } : d.tone === 'act' ? { bg: Front.actColor(d.name) } : {};
             var s0 = mm(d.time), en = s0 !== null && d.dur ? hmx(s0 + Number(d.dur)) : '';
             var cells = [d.date || '', d.time || '', d.dur || '', en, toneName[d.tone] || '', d.name || '', d.place || '', nameOf(D.workers, d.owner), nameOf(D.workers, d.staff), nameOf(D.workers, d.backup), d.note || '', d.link || ''].concat(cf.map(function (k) { return (d.custom || {})[k] || ''; }));
-            html += '<tr>' + cells.map(function (c) { return '<td style="' + st + '">' + esc(c) + '</td>'; }).join('') + '</tr>';
+            rows.push(cells.map(function (c, ci) { return Object.assign({ v: c, align: ci < 5 ? 'center' : '' }, st); }));
           });
-          html += '<tr><td colspan="' + heads.length + '" style="border:0"></td></tr>';
+          return { name: f.data.name, cols: widths, rows: rows, merges: merges };
         });
-        html += '</table></body></html>';
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' }));
-        a.download = (A.info.name || '營隊') + '-營期流程.xls';
-        document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-        toast('已匯出全部流程、全部天（Excel 打開時如果問格式，按「是」）');
+        saveBlob(xlsxBlob(sheets), (A.info.name || '營隊') + '-營期流程.xlsx');
+        toast('已匯出全部流程、全部天（每份流程一個工作表）');
       };
       var items = D.items.filter(function (it) { return (it.data.flow || 'main') === cur; });
       // 一覽編輯（像 Excel）：依日期分組，直接改；同時段並行的項目用同色的左邊線標出來，同一人同時被排兩個會標紅
@@ -1415,7 +1413,7 @@ var PkgAdmin = (function () {
       var cardOf = function (r) {
         r = r || { id: '', data: { stations: [], places: [], slots: [], grid: {}, mode: 'table', len: '', turn: '' } };
         var d = JSON.parse(JSON.stringify(r.data)), ro = !R.canEdit;
-        d.grid = d.grid || {}; d.places = d.places || [];
+        d.grid = d.grid || {}; d.places = d.places || []; d.notes = d.notes || []; d.free = d.free || [];
         var act = sel(acts, d.activity || '', { disabled: ro }), name = inp(d.name, { placeholder: '例如：大地遊戲第一輪', disabled: ro });
         var stations = inp((d.stations || []).join(' '), { placeholder: '關卡名稱用空白分隔，例如：第一關 第二關 第三關', disabled: ro });
         var start = inp((d.slots || [])[0] || '', { placeholder: '09:00', style: { width: '90px' }, disabled: ro });
@@ -1486,18 +1484,62 @@ var PkgAdmin = (function () {
                   opp.textContent = mine === '' || mine === undefined ? '' : o2.length ? '對 ' + o2.map(function (q) { return q.name; }).join('、') : '（沒有對手）';
                   opp.classList.toggle('bad', mine !== '' && mine !== undefined && o2.length !== 1);
                 };
-                c.addEventListener('change', function () { row[i] = c.value === '' ? '' : Number(c.value); $all('.vs-opp', gridBox).forEach(function (x) { if (x._upd) x._upd(); }); });
+                c.addEventListener('change', function () { row[i] = c.value === '' ? '' : Number(c.value); $all('.vs-opp', gridBox).forEach(function (x) { if (x._upd) x._upd(); }); drawPreview(); });
                 opp._upd = upd; upd();
                 return h('td', null, c, opp);
               }));
-            })))));
+            }), h('tr', { class: 'rot-notes' }, h('td', { class: 'small muted' }, '備註'), sl.map(function (x, i) {
+              var ni = inp(d.notes[i] || '', { placeholder: '（可不填）', disabled: ro, style: { width: '100%' } });
+              ni.addEventListener('input', function () { d.notes[i] = ni.value; });
+              return h('td', null, ni);
+            }))))));
+          drawPreview();
+        };
+        // 自由列：負責人開關、移動、場復、結關、大亂鬥…（所有小隊一起，依時間排進流程）
+        var freeBox = h('div', { class: 'col', style: { gap: '6px' } }), freeRows = [];
+        var drawFree = function () {
+          clear(freeBox); freeRows = [];
+          freeBox.appendChild(h('div', { class: 'rot-free' }, h('span', { class: 'hd' }, '開始'), h('span', { class: 'hd' }, '結束'), h('span', { class: 'hd' }, '內容'), h('span', { class: 'hd fr-pl' }, '場地'), h('span', { class: 'hd fr-nt' }, '備註'), h('span')));
+          d.free.forEach(function (x, i) {
+            var a1 = inp(x.start || '', { placeholder: '16:00', inputmode: 'numeric', disabled: ro }), b1 = inp(x.end || '', { placeholder: '16:05', inputmode: 'numeric', disabled: ro });
+            var tx = inp(x.text || '', { placeholder: '例如：負責人開關、移動、結關', list: 'rotFreeList', disabled: ro }), pl = inp(x.place || '', { list: placeList, placeholder: '場地', class: 'input fr-pl', disabled: ro }), nt = inp(x.note || '', { placeholder: '備註', class: 'input fr-nt', disabled: ro });
+            [a1, b1].forEach(function (y) { y.addEventListener('change', function () { var n = normTime(y.value); if (n) y.value = n; }); });
+            var rd = function () { x.start = normTime(a1.value) || a1.value; x.end = normTime(b1.value) || b1.value; x.text = tx.value; x.place = pl.value; x.note = nt.value; };
+            [a1, b1, tx, pl, nt].forEach(function (y) { y.addEventListener('input', rd); y.addEventListener('change', function () { rd(); drawPreview(); }); });
+            freeBox.appendChild(h('div', { class: 'rot-free' }, a1, b1, tx, pl, nt, ro ? h('span') : h('button', { class: 'btn sm ghost', type: 'button', title: '拿掉', onclick: function () { d.free.splice(i, 1); drawFree(); drawPreview(); t.check(); } }, '✕')));
+          });
+          if (!d.free.length) freeBox.appendChild(h('div', { class: 'hint' }, '還沒有。可以按「自動加開關、移動、結關」，或自己加一列。'));
+          if (!ro) freeBox.appendChild(h('div', { class: 'row wrap' }, h('button', { class: 'btn sm', type: 'button', onclick: function () { var lst = d.free[d.free.length - 1]; d.free.push({ start: lst ? lst.end || '' : '', end: '', text: '', place: '', note: '' }); drawFree(); var ins = $all('.rot-free input', freeBox); if (ins.length) ins[ins.length - 5].focus(); t.check(); } }, '＋ 加一列'),
+            h('button', { class: 'btn sm', type: 'button', title: '第一個時段前加「負責人開關」，時段之間的空檔加「移動與場復」，最後加「負責人結關」', onclick: autoFree }, '自動加開關、移動、結關')));
+        };
+        var autoFree = function () {
+          var sl = split(slots.value).map(function (x) { return normTime(x) || x; }), L = Number(len.value) || 0, T = Number(turn.value) || 0;
+          if (!sl.length || !L) { toast('先填時段和每關幾分鐘', true); return; }
+          var has = function (a) { return d.free.some(function (x) { return x.start === a; }); }, add = function (a, b, txt) { if (a && !has(a)) d.free.push({ start: a, end: b, text: txt, place: '', note: '' }); };
+          var s0 = toMin(sl[0]);
+          if (s0 !== null) add(toHm(s0 - (T || 5)), sl[0], '負責人開關');
+          sl.forEach(function (x, i) { var a = toMin(x), nx = toMin(sl[i + 1]); if (a !== null && nx !== null && nx > a + L) add(toHm(a + L), sl[i + 1], '移動與場復'); });
+          var e0 = toMin(sl[sl.length - 1]);
+          if (e0 !== null) add(toHm(e0 + L), toHm(e0 + L + (T || 5)), '負責人結關');
+          d.free.sort(function (x, y) { return String(x.start).localeCompare(String(y.start)); });
+          drawFree(); drawPreview(); t.check();
+        };
+        // 工作人員看到的樣子（跟前台一樣：一列一個時段，自由列整列橫跨）
+        var prevBox = h('div');
+        var drawPreview = function () {
+          if (!prevBox || !get) return;
+          clear(prevBox);
+          var v = get(), st = v.stations;
+          if (!v.slots.length || !D.squads.length) return;
+          prevBox.appendChild(Front.rotTable({ slots: v.slots, stations: st, places: v.places, len: Number(v.len) || 0, vs: v.vs, notes: v.notes, free: v.free.filter(function (x) { return x.start && x.text; }),
+            rows: D.squads.map(function (q) { var row = v.grid[String(q.no)] || []; return { squad: q.name, cells: v.slots.map(function (x, i) { var k = row[i]; return k === '' || k === undefined || k === null ? '' : st[k] || ''; }) }; }) }));
         };
         start.addEventListener('change', function () { var n = normTime(start.value); if (n) start.value = n; });
         stations.addEventListener('change', function () { drawPlaces(); drawGrid(); });
         slots.addEventListener('change', drawGrid);
         len.addEventListener('change', drawGrid);
-        drawPlaces(); drawGrid();
-        var get = function () { return { id: r.id, kind: 'rot', activity: act.value, name: name.value, stations: split(stations.value), places: placeIn.map(function (x) { return x.value; }), slots: split(slots.value).map(function (x) { var n = normTime(x); return n === null ? x : n; }), len: len.value, turn: turn.value, grid: d.grid, mode: 'table', image: '', map: ME.get(), vs: vs.value }; };
+        drawPlaces(); drawFree(); drawGrid();
+        var get = function () { return { id: r.id, kind: 'rot', notes: split(slots.value).map(function (x, i) { return d.notes[i] || ''; }), free: d.free.map(function (x) { return { start: normTime(x.start) || x.start || '', end: normTime(x.end) || x.end || '', text: x.text || '', place: x.place || '', note: x.note || '' }; }), activity: act.value, name: name.value, stations: split(stations.value), places: placeIn.map(function (x) { return x.value; }), slots: split(slots.value).map(function (x) { var n = normTime(x); return n === null ? x : n; }), len: len.value, turn: turn.value, grid: d.grid, mode: 'table', image: '', map: ME.get(), vs: vs.value }; };
         var save = h('button', { class: 'btn', onclick: function () {
           var v = get();
           if (!v.stations.length) { toast('先填關卡', true); return; }
@@ -1517,6 +1559,8 @@ var PkgAdmin = (function () {
           field('時段（用空白分隔）', slots),
           h('div', { class: 'row wrap' }, h('b', { class: 'grow' }, '排序表（小隊 × 時段 → 關卡）'), ro ? null : h('button', { class: 'btn sm', type: 'button', onclick: autoFill }, '自動輪流排')),
           gridBox,
+          h('div', { class: 'field' }, h('span', null, '其他流程（負責人開關、移動、場復、結關、大亂鬥…所有小隊一起）'), freeBox, h('datalist', { id: 'rotFreeList' }, ['負責人開關', '移動', '移動與場復', '負責人結關', '返回會場', '集合', '大亂鬥'].map(function (x) { return h('option', { value: x }); }))),
+          h('div', { class: 'field' }, h('span', null, '工作人員看到的樣子'), prevBox),
           spanWarn(r),
           h('div', { class: 'field' }, h('span', null, '地圖（上傳底圖，再加標點、文字、連線）'), ME.el),
           ro ? null : h('div', { class: 'row' }, save, h('button', { class: 'btn ghost', type: 'button', onclick: function () {
@@ -1526,13 +1570,16 @@ var PkgAdmin = (function () {
         var t = track(el, function () { var v = get(); delete v.id; return v; }, save);   // 存好後才拿到的 ID 不算改動
         if (!ro) save.parentNode.appendChild(t.status);
         el._t = t;
+        drawPreview();
         return el;
       };
       // 換模式（跑關 ↔ 時間表）：活動、名稱、地圖保留，時間帶過去；按儲存才會生效
       var toTable = function (v, r) {
         var L = Number(v.len) || 0;
         return { id: r.id, version: r.version, data: { kind: 'table', activity: v.activity, name: v.name, map: v.map, cols: ['各小隊', '關主', '備註'],
-          rows: (v.slots || []).map(function (x) { var a = toMin(x); return { start: x, end: a !== null && L ? toHm(a + L) : '', place: '', color: '', cells: [] }; }) } };
+          rows: (v.slots || []).map(function (x, i) { var a = toMin(x); return { start: x, end: a !== null && L ? toHm(a + L) : '', place: '', color: '', cells: ['', '', (v.notes || [])[i] || ''] }; })
+            .concat((v.free || []).filter(function (x) { return x.start && x.text; }).map(function (x) { return { start: x.start, end: x.end, place: x.place || '', color: '', cells: [x.text, '<', x.note || ''] }; }))
+            .sort(function (a, b) { return String(a.start).localeCompare(String(b.start)); }) } };
       };
       var toRot = function (v, r) {
         var st = (v.rows || []).map(function (w) { return w.start; }).filter(Boolean), w0 = (v.rows || [])[0], L = w0 && toMin(w0.start) !== null && toMin(w0.end) !== null ? ((toMin(w0.end) - toMin(w0.start)) % 1440 + 1440) % 1440 : '';
@@ -1731,10 +1778,11 @@ var PkgAdmin = (function () {
       box.appendChild(wrap);
     },
     submissions: function (box, D) {
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '學員在學員端送出的自我評估切結書（固定格式）。送出時有編輯工作人員端權限的人會收到通知。'));
-      box.appendChild(table(['送出時間', '學員', '小隊', '事件時間', '身體狀況', '自我評估', '需要的協助'], D.submissions.map(function (s) {
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '學員在學員端送出的，或工作人員在工作人員端幫學員填、學員簽名的自我評估切結書（固定格式）。送出時有編輯工作人員端權限的人會收到通知。'));
+      box.appendChild(table(['送出時間', '學員', '小隊', '事件時間', '身體狀況', '自我評估', '需要的協助', '評估人員', '學員簽名'], D.submissions.map(function (s) {
         var a = s.data.answers || {};
-        return h('tr', null, h('td', null, fmt(s.data.at)), h('td', null, s.data.name), h('td', null, s.data.squad), h('td', { class: 'small' }, String(a.eventTime || '').replace('T', ' ')), h('td', { class: 'small' }, a.condition), h('td', null, a.canContinue), h('td', null, a.needs));
+        return h('tr', null, h('td', null, fmt(s.data.at)), h('td', null, s.data.name), h('td', null, s.data.squad), h('td', { class: 'small' }, String(a.eventTime || '').replace('T', ' ')), h('td', { class: 'small' }, a.condition), h('td', null, a.canContinue), h('td', null, a.needs),
+          h('td', null, s.data.assessor || (s.data.by ? '' : '（學員自己填）')), h('td', null, /^data:image\//.test(s.data.sign || '') ? h('img', { src: s.data.sign, alt: '簽名', class: 'sign-img' }) : ''));
       }), '還沒有人送出'));
     },
     form: function (box, D) {
