@@ -78,15 +78,20 @@ var Front = (function () {
     if (d.pkg !== 'studentflow') {
       if (data === undefined) return h('div', { class: 'fb muted small' }, '載入中…');
       if (data && data.maintenance === true) return h('div', { class: 'maint' }, '這個功能維護中，稍後再回來看看');
-      if (data && data.error) return h('div', { class: 'maint' }, '這個區塊暫時無法顯示');
+      if (data && data.error) return blockErr(env, d, data.detail || data.error);
     }
     try {
       var node = view(data || {}, b, env, meta && meta.data);
       if (node && data && data.maintenance && data.maintenance !== true) return h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'small muted', style: { padding: '0 6px' } }, '這個功能維護中，內容可能不是最新的'), node);
       return node;
     } catch (e) {
-      return h('div', { class: 'maint' }, '這個區塊暫時無法顯示');
+      return blockErr(env, d, '畫面：' + (e && e.message || e));
     }
+  }
+  /** 區塊出錯：學員只看到一句話；工作人員端與預覽另外顯示原因，方便回報 */
+  function blockErr(env, d, why) {
+    var show = env.preview || env.side === 'worker';
+    return h('div', { class: 'maint' }, '這個區塊暫時無法顯示', show && why ? h('div', { class: 'small muted', style: { marginTop: '4px', wordBreak: 'break-all' } }, '原因（' + d.pkg + '／' + d.view + '）：' + String(why).slice(0, 200)) : null);
   }
 
   /** 照片：依 pos（x、y 百分比、z 放大）裁切，套 frame 外框（circle 圓形、ring 圓形外圈、rounded 圓角、square 方形、hex 六角形、wide 橫幅） */

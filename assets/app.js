@@ -55,7 +55,15 @@
 
   /** 學員：營隊中掃 QR code 進來，輸入姓名＋身分證字號（或報名時的 Email）直接登入，不用先去學員專區 */
   function studentLogin() {
-    var name = inp('', { autocomplete: 'name' }), idk = inp('', { autocomplete: 'off', placeholder: '例如：A123456789' });
+    var name = inp('', { autocomplete: 'name', maxlength: 40 }), idk = inp('', { autocomplete: 'off', placeholder: '例如：A123456789', maxlength: 80 });
+    // 身分證：看起來是身分證（字母＋數字）才轉大寫、最多 10 碼；Email 也放在這格，打字中不動它
+    function idNorm(v) { return v.indexOf('@') >= 0 ? v.trim() : v.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+    idk.addEventListener('blur', function () { var v = idNorm(idk.value); if (v !== idk.value) idk.value = v; });
+    idk.addEventListener('input', function () {
+      if (!/^[A-Za-z][A-Za-z]?[0-9][0-9\s]*$/.test(idk.value.trim())) return;
+      var v = idNorm(idk.value).slice(0, 10);
+      if (v !== idk.value) idk.value = v;
+    });
     var err = h('div', { class: 'err' }), title = h('h1', null, '學員登入'), btn = h('button', { class: 'btn primary' }, '進入');
     var note = h('p', { class: 'small muted', style: { margin: 0 } }, '用報名時填的姓名和身分證字號登入（沒有填身分證的營隊，請改填報名時的 Email）。也可以從報名系統的「學員專區」按「進入營隊互動」。');
     api('campPublicInfo', camp).then(function (c) {
@@ -65,6 +73,8 @@
     var go = function () {
       err.textContent = '';
       if (!name.value.trim() || !idk.value.trim()) { err.textContent = '請填姓名與身分證字號'; return; }
+      idk.value = idNorm(idk.value);
+      if (idk.value.indexOf('@') < 0 && !/^[A-Z][A-Z0-9][0-9]{8}$/.test(idk.value)) { err.textContent = '身分證字號是 10 碼：英文字母開頭，例如 A123456789'; return; }
       busy(btn, function () { return api('studentLogin', camp, name.value, idk.value); }).then(function (r) {
         loggedIn(btn, [name, idk]);
         store(TK, r.token, true);
