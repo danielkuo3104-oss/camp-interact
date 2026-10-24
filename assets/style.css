@@ -563,3 +563,38 @@ tr.job-dup td[data-ci="5"] { background: #fdecea; }
 .diff.ext { color: #b4610f; background: #fdf0e1; }
 .ext-min { max-width: 110px; }
 .app-shell.night .sched .it.ext-chg { background: #3a2a14; } .app-shell.night .sched .it.ext-chg .tm { color: #f2b56b; }
+
+/* 營期流程（工作人員端）：一項一張小卡、時間欄對齊；備註直接顯示（最多兩行，點開看全部） */
+.sched.flow { gap: 6px; }
+.sched.flow .it { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; gap: 12px; background: var(--surface); }
+.sched.flow .it:last-child { border-bottom: 1px solid var(--line); }
+.sched.flow .tm { min-width: 50px; font-size: 15px; line-height: 1.25; }
+.sched.flow .tm small { font-size: 12px; margin-top: 2px; }
+.sched.flow .it.tone-act, .sched.flow .it.tone-key { border-color: transparent; }
+.sched.flow .it.tone-crit { border-color: transparent; }
+.sched.flow .it.now { border-color: var(--accent); }
+.sched.flow .it.past { opacity: .55; }
+.sched.flow .it.par { border-bottom: 1px solid var(--line); }
+.sched.flow .now-line { margin: 8px 0; }
+.it-note { font-size: 12.5px; color: var(--text-2); margin-top: 4px; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sched .it.tone-crit .it-note { color: #fff; opacity: .9; }
+.sched .it.open .it-note { -webkit-line-clamp: unset; display: block; }
+.note-clamp { white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.app-shell.night .sched.flow .it { border-color: var(--line); }
+
+/* 活動細流整頁：表格不要自己卡住捲動（整頁往下滑），可以縮放 */
+.modal.full .tbl-wrap { flex: none; overflow-y: visible; }
+.zm-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.zm-bar .btn.sm { min-width: 34px; }
+.zm-lab { font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 42px; text-align: center; color: var(--text-2); }
+table.dt th.dt-main, table.dt td.dt-main { min-width: 7.5em; }
+table.dt td:not(.dt-tm):not(.dt-dur):not(.dt-pl):not(.dt-main) { min-width: 8.5em; text-align: left; }
+table.dt td.dt-tm b { color: var(--text); }
+table.dt td.dt-pl, table.dt th.dt-pl { white-space: normal; min-width: 4.5em; max-width: 8em; font-size: 12px; text-align: left; }
+table.dt td.dt-pl .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+table.dt td.dt-pl .clamp.open { -webkit-line-clamp: unset; display: block; }
+.fc-hd { gap: 8px; align-items: center; }
+
+/* 可換行的文字（Shift+Enter）：編輯格自動長高，前台保留換行 */
+textarea.g-ta { resize: none; overflow: hidden; min-height: 32px; line-height: 1.4; display: block; }
+table.rt td.rt-note, .sched .it .small.muted, .contact .who small, .job-body { white-space: pre-line; }
