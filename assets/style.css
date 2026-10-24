@@ -550,6 +550,10 @@ tr.job-dup td[data-ci="5"] { background: #fdecea; }
 
 /* 快速展延：改過的時間橘色＋原定時間；被吸收的緩衝劃掉 */
 .ext-bar { gap: 8px; margin: 2px 0 8px; }
+.btn.ext-go { background: transparent; border-color: var(--line-strong); color: var(--text-2); font-weight: 500; }
+.btn.ext-go:hover { border-color: var(--accent); color: var(--accent); background: transparent; }
+.btn.ext-go svg { flex: none; }
+.app-shell.night .btn.ext-go { color: var(--text-2); border-color: var(--line-strong); }
 .ext-log { color: var(--accent); margin: 0 0 6px; }
 .sched .it.ext-chg { background: #fdf0e1; border-radius: 10px; }
 .sched .it.ext-chg .tm, .sched .it.ext-chg .tm small:not(.ext-orig) { color: #b4610f; font-weight: 700; }
