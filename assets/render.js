@@ -409,6 +409,7 @@ var Front = (function () {
   }
 
   /* ---------------- Package 畫面 ---------------- */
+  var FLOW_SEL = {};   // 營期流程區塊目前看的流程（展延後重畫不要跳回第一份）
   var VIEWS = {
     schedule: {
       theme: function (d, b, env) {
@@ -427,9 +428,9 @@ var Front = (function () {
           return row;
         })) : h('div', { class: 'muted small' }, env.side === 'student' ? '活動公開後會出現在這裡' : '還沒有活動'));
       },
-      flow: function (d) {
+      flow: function (d, b, env) {
         var flows = d.flows || [], cf = d.customFields || [];
-        var wrap = h('div', { class: 'col' }), cur = { f: null, day: '' };
+        var wrap = h('div', { class: 'col' }), cur = { f: null, day: '' }, extBar = h('div');
         var tabs = h('div', { class: 'chips' }), dayTabs = h('div', { class: 'chips day-tabs' }), body = h('div');
         var mins = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
         var hm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
@@ -444,7 +445,7 @@ var Front = (function () {
             return { it: it, s: s0, e: s0 === null ? null : s0 + d0, d: d0, ld: ld, k: k, late: ld !== it.date };
           });
           its.sort(function (a, b) { return a.ld.localeCompare(b.ld) || a.k - b.k || b.d - a.d; });
-          its.forEach(function (x) { x.inner = x.s !== null && x.d > 0 && its.some(function (y) { return y !== x && y.it.date === x.it.date && y.s !== null && y.d > x.d && y.s <= x.s && x.e <= y.e; }); });
+          its.forEach(function (x) { x.inner = x.s !== null && x.d > 0 && !x.it.gone && its.some(function (y) { return y !== x && !y.it.gone && y.it.date === x.it.date && y.s !== null && y.d > x.d && y.s <= x.s && x.e <= y.e; }); });
           return its;
         };
         var todayKey = function () { var t = taipei(nowDate()); return Number(t.hm.slice(0, 2)) < 5 ? addDay(t.ymd, -1) : t.ymd; };
@@ -460,6 +461,7 @@ var Front = (function () {
             it.note ? h('div', { class: 'small', style: { whiteSpace: 'pre-wrap' } }, it.note) : null,
             okUrl(it.link) ? h('a', { class: 'small', href: it.link, target: '_blank', rel: 'noopener' }, '相關連結') : null,
             goLink(it.go, it.date, function () { m.close(); }),
+            it.ext ? h('div', { class: 'diff ext' }, it.gone ? '這段緩衝已被快速展延吸收' : '快速展延改過：原定 ' + it.ext.time + (Number(it.ext.dur) ? '–' + hm(mins(it.ext.time) + Number(it.ext.dur)) : '')) : null,
             it.diff ? h('div', { class: 'diff' }, '與既定行程不同：原訂 ' + it.diff.planned.date.slice(5) + ' ' + it.diff.planned.time + (it.diff.planned.place ? ' ' + it.diff.planned.place : '') + (it.diff.by ? '（' + it.diff.by + ' ' + fmt(it.diff.at) + ' 調整）' : '')) : null) });
         };
         var show = function (f, user, day) {
@@ -481,15 +483,18 @@ var Front = (function () {
           dayIts.forEach(function (x) {
             var it = x.it;
             // 卡片只放時間、名稱、負責（手機寬度有限）；其他點開看
-            var row = h('div', { class: 'it has-more' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('small', null, hm(x.e)) : null, x.late ? h('small', { class: 'late' }, '隔天') : null), h('div', { class: 'grow it-main' },
-              h('div', { class: 'it-hd' }, h('b', { class: 'nm', title: it.name }, it.name),
+            // 快速展延改過的：橘色＋原定時間；整段被吸收的緩衝：劃掉
+            var ex = it.ext, exS = ex ? mins(ex.time) : null;
+            var row = h('div', { class: 'it has-more' + (it.tone ? ' tone-' + it.tone : '') + (x.inner ? ' inner' : '') + (it.gone ? ' ext-gone' : ex ? ' ext-chg' : '') }, h('span', { class: 'tm' }, it.time, x.d ? h('small', null, hm(x.e)) : null, x.late ? h('small', { class: 'late' }, '隔天') : null,
+                ex && !it.gone && exS !== null ? h('small', { class: 'ext-orig' }, '原 ' + ex.time + (Number(ex.dur) ? '–' + hm(exS + Number(ex.dur)) : '')) : null), h('div', { class: 'grow it-main' },
+              h('div', { class: 'it-hd' }, h('b', { class: 'nm', title: it.name }, it.name), it.gone ? h('span', { class: 'tag' }, '已被展延吸收') : null,
                 it.activity && it.public === false ? h('span', { class: 'tag warn' }, '學員未公開') : null),
               (it.owner || []).length ? h('div', { class: 'it-sub' }, h('span', { class: 'own', title: it.owner.join('、') }, h('span', { class: 'ppl-k' }, '負責'), it.owner.join('、'))) : null),
               h('span', { class: 'it-chev', 'aria-hidden': 'true' }, '›'));
             row.addEventListener('click', function () { detail(x); });
             if (it.tone === 'act') row.style.background = actColor(it.activity || it.name);
             var s0 = tms(it.date, it.time);
-            if (s0) { row.dataset.s = s0; row.dataset.e = s0 + (x.d || 60) * 60000; }
+            if (s0 && !it.gone) { row.dataset.s = s0; row.dataset.e = s0 + (x.d || 60) * 60000; }
             if (!x.inner && parN[x.k] > 1) {
               var pi = parSeen[x.k] = (parSeen[x.k] || 0) + 1;
               row.classList.add('par', pi === 1 ? 'par-first' : pi === parN[x.k] ? 'par-last' : 'par-mid');
@@ -498,10 +503,52 @@ var Front = (function () {
             list.appendChild(row);
           });
           if (!f.items.length) list.appendChild(h('div', { class: 'muted small' }, '這份流程還沒有項目'));
+          extTools(f, day);
           body.appendChild(schedWin(list, list.children.length > 4));
           markNow(body);
           if (user) setTimeout(function () { centerNow(body, true); }, 0);
         };
+        // 快速展延（工作人員端、人員與分隊勾了「可快速展延」的人）：只對今天、以伺服器的現在時間為準
+        function extTools(f, day) {
+          clear(extBar);
+          var exs = (d.extends || []).filter(function (x) { return x.flow === f.id; });
+          var today = taipei(nowDate()).ymd, can = d.canExtend && env && env.action && !env.preview && day === today;
+          if (!can && !exs.length) return;
+          var run = function (btn, name, data, msg) {
+            return busy(btn, function () { return env.action('schedule', name, Object.assign({ flow: f.id }, data || {})); }).then(function (r) {
+              FLOW_SEL[b.id] = f.id;
+              toast(msg(r || {}));
+              if (env.reload) env.reload();
+            }).catch(function () {});
+          };
+          var ask = function (btn) {
+            var n = h('input', { type: 'number', min: 1, max: 240, step: 1, inputmode: 'numeric', class: 'input ext-min', value: '10' });
+            var quick = h('div', { class: 'chips' }, [5, 10, 15, 20, 30].map(function (k) { var c = h('span', { class: 'chip' }, k + ' 分'); c.addEventListener('click', function () { n.value = k; }); return c; }));
+            modal({ title: '快速展延', body: h('div', { class: 'col', style: { gap: '10px' } },
+              h('div', { class: 'small muted' }, '現在進行中的活動延長，後面的時間往後推；遇到緩衝時間或空檔會先吸收。'), quick, h('label', { class: 'row', style: { gap: '8px', alignItems: 'center' } }, n, '分鐘')),
+              actions: [{ text: '取消' }, { text: '展延', cls: 'primary', onClick: function (close) {
+                var v = Math.floor(Number(n.value));
+                if (!(v >= 1 && v <= 240)) { toast('請輸入 1～240 分鐘', true); return false; }
+                close();
+                run(btn, 'extend', { minutes: v }, function (r) { return '「' + (r.target || '') + '」延長 ' + v + ' 分，' + (r.changed || 0) + ' 項時間改變'; });
+                return false;
+              } }] });
+            setTimeout(function () { n.focus(); n.select(); }, 30);
+          };
+          if (can) {
+            var go = h('button', { class: 'btn primary sm ext-go', type: 'button' }, '⏩ 快速展延');
+            go.addEventListener('click', function () { ask(go); });
+            var bar = h('div', { class: 'row wrap ext-bar' }, go);
+            if (exs.length) {
+              var un = h('button', { class: 'btn sm', type: 'button' }, '取消上一次'), rs = h('button', { class: 'btn sm', type: 'button' }, '恢復原定時間');
+              un.addEventListener('click', function () { run(un, 'extend.undo', {}, function () { return '已取消上一次展延'; }); });
+              rs.addEventListener('click', function () { confirmBox('恢復原定時間', '今天這份流程的 ' + exs.length + ' 次展延全部取消，時間回到原定。', '恢復').then(function (ok) { if (ok) run(rs, 'extend.restore', {}, function () { return '已恢復原定時間'; }); }); });
+              bar.appendChild(un); bar.appendChild(rs);
+            }
+            extBar.appendChild(bar);
+          }
+          if (exs.length && day === today) extBar.appendChild(h('div', { class: 'ext-log small' }, '今日展延：' + exs.map(function (x) { return x.at + '「' + x.target + '」+' + x.minutes + ' 分（' + x.by + '）'; }).join('；')));
+        }
         // 連到別的流程：切過去；連到活動細流：另外開一個畫面看（時間表、跑關順序、地圖）
         function goLink(go, date, done) {
           var m = String(go || '').match(/^(flow|rot):(.+)$/);
@@ -525,8 +572,10 @@ var Front = (function () {
         flows.forEach(function (f) { var c = h('span', { class: 'chip', 'data-id': f.id }, f.name); c.addEventListener('click', function () { show(f, true); }); tabs.appendChild(c); });
         wrap.appendChild(flows.length > 1 ? tabs : h('div'));
         wrap.appendChild(dayTabs);
+        wrap.appendChild(extBar);
         wrap.appendChild(body);
-        if (flows.length) show(flows[0]); else body.appendChild(h('div', { class: 'muted small' }, '還沒有流程'));
+        var keep = flows.filter(function (f) { return f.id === FLOW_SEL[b.id]; })[0];
+        if (flows.length) show(keep || flows[0]); else body.appendChild(h('div', { class: 'muted small' }, '還沒有流程'));
         return card('營期流程', wrap);
       }
     },

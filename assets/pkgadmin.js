@@ -767,9 +767,9 @@ var PkgAdmin = (function () {
       D.workers.forEach(function (w) { if (w.data.dept && depts.indexOf(w.data.dept) < 0) depts.push(w.data.dept); });
       var q = inp('', { placeholder: '搜尋姓名、電話、備註', style: { maxWidth: '220px' } }), dsel = sel([{ value: '', label: '全部股別' }].concat(depts.map(function (d) { return { value: d, label: d }; })), '', { style: { maxWidth: '160px' } });
       var count = h('span', { class: 'small muted' });
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '直接在表格裡改，改過的列會有橘色框，最後按「儲存變更」一次存。可以從 Excel 複製「姓名、股別、小隊、電話、備註」整塊貼到姓名欄。工作人員用「姓名＋股別＋營隊通行碼」登入，同名同股別會無法登入；報名後台的專輔、隨輔會自動加進來（股別「輔導」）。股別清單在「股別與活動」設定。'));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '直接在表格裡改，改過的列會有橘色框，最後按「儲存變更」一次存。可以從 Excel 複製「姓名、股別、小隊、電話、備註」整塊貼到姓名欄。工作人員用「姓名＋股別＋營隊通行碼」登入，同名同股別會無法登入；報名後台的專輔、隨輔會自動加進來（股別「輔導」）。股別清單在「股別與活動」設定。勾「可展延」的人，在工作人員端的營期流程可以按「快速展延」。'));
       var rows = D.workers.slice().sort(function (a, b) { return (depts.indexOf(a.data.dept) - depts.indexOf(b.data.dept)) || String(a.data.name).localeCompare(String(b.data.name), 'zh-Hant'); })
-        .map(function (w) { return { id: w.id, ver: w.version, vals: { name: w.data.name, dept: w.data.dept || '', squad: w.data.squad === undefined ? '' : w.data.squad, phone: w.data.phone || '', note: w.data.note || '', inactive: !!w.data.inactive }, w: w }; });
+        .map(function (w) { return { id: w.id, ver: w.version, vals: { name: w.data.name, dept: w.data.dept || '', squad: w.data.squad === undefined ? '' : w.data.squad, phone: w.data.phone || '', note: w.data.note || '', extend: !!w.data.extend, inactive: !!w.data.inactive }, w: w }; });
       var byId = {};
       D.workers.forEach(function (w) { byId[w.id] = w; });
       var G = grid(box, [
@@ -779,12 +779,13 @@ var PkgAdmin = (function () {
         { k: 'reg', label: '報名後台', type: 'calc', w: '120px', fn: function (v, r) { var w = r.id && byId[r.id]; if (!w || !w.data.reg) return null; return h('span', { class: 'small muted', title: '從報名後台同步' }, (w.data.title || '專輔／隨輔') + ((w.data.regSquads || []).length ? ' · ' + w.data.regSquads.join('、') + ' 隊' : '')); } },
         { k: 'phone', label: '電話', w: '130px' },
         { k: 'note', label: '備註' },
+        { k: 'extend', label: '可展延', type: 'check', w: '60px', title: '工作人員端「營期流程」可以按快速展延' },
         { k: 'inactive', label: '停用', type: 'check', w: '50px' }
       ], {
         rows: rows, saveOp: 'worker.save', delOp: 'worker.delete', parse: parseCell, flash: 'workers', addText: '＋ 新增工作人員',
-        blank: function () { return { name: '', dept: dsel.value || '', squad: '', phone: '', note: '', inactive: false }; },
+        blank: function () { return { name: '', dept: dsel.value || '', squad: '', phone: '', note: '', extend: false, inactive: false }; },
         isEmpty: function (v) { return !String(v.name || '').trim(); },
-        toData: function (v, r) { return { id: r.id, name: v.name, dept: v.dept, squad: v.squad, phone: v.phone, note: v.note, inactive: v.inactive }; },
+        toData: function (v, r) { return { id: r.id, name: v.name, dept: v.dept, squad: v.squad, phone: v.phone, note: v.note, extend: v.extend, inactive: v.inactive }; },
         rowHook: function (r, G) {
           var v = r.read(), k = String(v.name).trim() + '|' + String(v.dept).trim();
           var dup = String(v.name).trim() && G.rows.some(function (x) { return x !== r && !x.del && String(x.read().name).trim() + '|' + String(x.read().dept).trim() === k; });

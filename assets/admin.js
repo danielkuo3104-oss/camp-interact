@@ -125,6 +125,7 @@ A.views.home = function (m) {
   var ROLE = { root: '系統終端', admin: '專案管理員', manager: '協作管理員', collab: '協作者', pkg: '活動協作' };
   A.title(m, I.name, (I.start || '未設定日期') + (I.end ? ' ～ ' + I.end : '') + '　·　你的身分：' + (ROLE[I.role] || I.role));
   if (I.status === 'ended') m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '14px' } }, '營隊已結束（回憶模式）：前台保留內容，資料不能再修改。需要時專案管理員可以在「營隊設定」重新開啟。'));
+  if (I.periodLocked) m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '14px' } }, '營期中（' + I.start + ' ～ ' + I.end + '）：你沒有「營期中修改」權限，暫時不能進編輯頁、不能發布。Package 資料（計分、營期流程…）照樣可以改；需要時請專案管理員在「成員」幫你勾「營期中修改」。'));
   var stats = h('div', { class: 'stat' });
   m.appendChild(stats);
   var ev = h('div', { class: 'section' });

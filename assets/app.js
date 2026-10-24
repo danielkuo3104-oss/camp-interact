@@ -204,7 +204,8 @@
     if (!preview && !Object.keys(S.live).length) { var cl = jget(LK, null); if (cl) Object.keys(cl).forEach(function (k) { S.live[k] = cl[k]; }); }
     var snap = b.snapshot;
     S.env = { pages: snap.pages, blocks: snap.blocks.slice(), packages: snap.packages || {}, live: S.live, side: side, me: b.me, preview: !!preview, nav: nav,
-      action: function (pkg, name, data) { return op('front.action', { camp: camp, target: { pkg: pkg, action: name, side: side }, data: data }); } };
+      action: function (pkg, name, data) { return op('front.action', { camp: camp, target: { pkg: pkg, action: name, side: side }, data: data }); },
+      reload: function () { loadLive(); } };
     var em = b.ext && b.ext.emergency;
     S.nightCfg = em || null;
     S.night = em && em.nightStart ? nightNow() : !!(em && em.night);
