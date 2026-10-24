@@ -293,6 +293,26 @@ var Front = (function () {
     return { el: wrap, svg: svg, redraw: function (sel) { o.sel = sel; draw(); }, size: function () { return { W: W, H: H }; } };
   }
 
+  /** 活動細流整頁：時間表或跑關表＋地圖；表格可以縮放（按鈕或兩指） */
+  function rotPage(r, date) {
+    var mapEl = r.map && okUrl(r.map.img) ? mapView(r.map).el : null;
+    var el = r.kind === 'table' ? detailTable(r, date) : rotTable(r, date);
+    modal({ title: '活動細流：' + r.name, full: true, body: h('div', { class: 'col', style: { gap: '12px' } },
+      r.kind !== 'table' && r.len ? h('div', { class: 'small muted' }, '每關 ' + r.len + ' 分' + (r.turn ? '、換關 ' + r.turn + ' 分' : '')) : null, zoomBox(el), mapEl) });
+    markNow(document.querySelector('.modal.full'));
+  }
+  function zoomBox(el) {
+    var z = 1, lab = h('span', { class: 'zm-lab' }, '100%');
+    var set = function (v) { z = Math.max(0.5, Math.min(2.5, Math.round(v * 100) / 100)); el.style.zoom = z; lab.textContent = Math.round(z * 100) + '%'; };
+    var d0 = 0, z0 = 1, dist = function (e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); };
+    el.addEventListener('touchstart', function (e) { if (e.touches.length === 2) { d0 = dist(e); z0 = z; } }, { passive: true });
+    el.addEventListener('touchmove', function (e) { if (e.touches.length === 2 && d0) { e.preventDefault(); set(z0 * dist(e) / d0); } }, { passive: false });
+    el.addEventListener('touchend', function (e) { if (e.touches.length < 2) d0 = 0; });
+    return h('div', { class: 'col zm', style: { gap: '6px' } }, h('div', { class: 'zm-bar' },
+      h('button', { class: 'btn sm', type: 'button', 'aria-label': '縮小', onclick: function () { set(z - 0.15); } }, '－'), lab,
+      h('button', { class: 'btn sm', type: 'button', 'aria-label': '放大', onclick: function () { set(z + 0.15); } }, '＋'),
+      h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { set(1); } }, '還原'), h('span', { class: 'small muted' }, '也可以兩指縮放')), el);
+  }
   /** 時間表型的活動細流（賭場、晚會）：格子 < 併到左邊、^ 併到上面；第一欄的顏色跟著列的顏色 */
   function detailTable(r, date) {
     var cols = r.cols || [], rows = r.rows || [], n = cols.length;
@@ -313,9 +333,9 @@ var Front = (function () {
     rows.forEach(function (row, i) {
       var a = mm(row.start), b = mm(row.end), tr = h('tr');
       if (date && row.start) { var s0 = tms(date, row.start); tr.dataset.s = s0; tr.dataset.e = row.end ? tms(date, row.end) : s0 + 600000; }
-      tr.appendChild(h('td', { class: 'dt-tm' }, row.start + (row.end ? '–' + row.end : '')));
+      tr.appendChild(h('td', { class: 'dt-tm' }, h('b', null, row.start), row.end ? h('div', { class: 'small' }, '–' + row.end) : null));
       tr.appendChild(h('td', { class: 'dt-dur' }, a !== null && b !== null && b > a ? String(b - a) : ''));
-      if (hasPlace) tr.appendChild(h('td', { class: 'dt-pl' }, row.place || ''));
+      if (hasPlace) tr.appendChild(h('td', { class: 'dt-pl' }, row.place ? h('span', { class: 'clamp', title: row.place, onclick: function (e) { e.currentTarget.classList.toggle('open'); } }, row.place) : ''));
       for (var j = 0; j < n; j++) {
         var c = span[i][j];
         if (!c || c.skip) continue;
@@ -326,7 +346,7 @@ var Front = (function () {
       }
       tb.appendChild(tr);
     });
-    return h('div', { class: 'tbl-wrap' }, h('table', { class: 't dt' }, h('thead', null, h('tr', null, h('th', null, '時間'), h('th', null, '分'), hasPlace ? h('th', null, '場地') : null, cols.map(function (c) { return h('th', null, c); }))), tb));
+    return h('div', { class: 'tbl-wrap' }, h('table', { class: 't dt' }, h('thead', null, h('tr', null, h('th', null, '時間'), h('th', null, '分'), hasPlace ? h('th', { class: 'dt-pl' }, '場地') : null, cols.map(function (c, j) { return h('th', { class: j === 0 ? 'dt-main' : '' }, c); }))), tb));
   }
   /** 跑關／對抗：一列一個時段（像 Excel 那種），自由列（開關、移動、結關）整列橫跨所有小隊；最右邊是備註 */
   function rotTable(r, date) {
@@ -414,8 +434,8 @@ var Front = (function () {
     schedule: {
       theme: function (d, b, env) {
         if (d.mode === 'none' || !d.mode) return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在'), h('h2', null, '自由時間'), h('div', { style: { opacity: 0.85 } }, '有需要請找隊輔'));
-        return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在主題 · ' + (d.time || '')), h('h2', null, d.name || ''),
-          d.place ? h('div', { style: { opacity: 0.9 } }, '📍 ' + d.place) : null, d.summary ? h('div', { style: { opacity: 0.9, marginTop: '4px' } }, d.summary) : null,
+        return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在主題 · ' + (d.time || '') + (d.end ? '–' + d.end : '')), h('h2', null, d.name || ''),
+          d.place ? h('div', { style: { opacity: 0.9 } }, '📍 ' + d.place) : null, d.summary ? h('div', { style: { opacity: 0.9, marginTop: '4px', whiteSpace: 'pre-line' } }, d.summary) : null,
           d.page ? h('button', { class: 'btn', onclick: function () { env.nav(d.page); } }, '查看活動') : null);
       },
       activities: function (d, b, env) {
@@ -489,7 +509,8 @@ var Front = (function () {
                 ex && !it.gone && exS !== null ? h('small', { class: 'ext-orig' }, '原 ' + ex.time + (Number(ex.dur) ? '–' + hm(exS + Number(ex.dur)) : '')) : null), h('div', { class: 'grow it-main' },
               h('div', { class: 'it-hd' }, h('b', { class: 'nm', title: it.name }, it.name), it.gone ? h('span', { class: 'tag' }, '已被展延吸收') : null,
                 it.activity && it.public === false ? h('span', { class: 'tag warn' }, '學員未公開') : null),
-              (it.owner || []).length ? h('div', { class: 'it-sub' }, h('span', { class: 'own', title: it.owner.join('、') }, h('span', { class: 'ppl-k' }, '負責'), it.owner.join('、'))) : null),
+              (it.owner || []).length ? h('div', { class: 'it-sub' }, h('span', { class: 'own', title: it.owner.join('、') }, h('span', { class: 'ppl-k' }, '負責'), it.owner.join('、'))) : null,
+              it.note ? h('div', { class: 'it-note' }, it.note) : null),
               h('span', { class: 'it-chev', 'aria-hidden': 'true' }, '›'));
             row.addEventListener('click', function () { detail(x); });
             if (it.tone === 'act') row.style.background = actColor(it.activity || it.name);
@@ -564,14 +585,6 @@ var Front = (function () {
           if (!r) return null;
           return h('button', { class: 'btn sm go-btn', type: 'button', onclick: function () { rotPage(r, date); } }, '→ 活動細流：' + r.name);
         }
-        function rotPage(r, date) {
-          var mapEl = r.map && okUrl(r.map.img) ? mapView(r.map).el : null, el;
-          if (r.kind === 'table') el = detailTable(r, date);
-          else el = rotTable(r, date);
-          modal({ title: '活動細流：' + r.name, full: true, body: h('div', { class: 'col', style: { gap: '12px' } },
-            r.kind !== 'table' && r.len ? h('div', { class: 'small muted' }, '每關 ' + r.len + ' 分' + (r.turn ? '、換關 ' + r.turn + ' 分' : '')) : null, el, mapEl) });
-          markNow(document.querySelector('.modal.full'));
-        }
         flows.forEach(function (f) { var c = h('span', { class: 'chip', 'data-id': f.id }, f.name); c.addEventListener('click', function () { show(f, true); }); tabs.appendChild(c); });
         wrap.appendChild(flows.length > 1 ? tabs : h('div'));
         wrap.appendChild(dayTabs);
@@ -620,15 +633,45 @@ var Front = (function () {
         box.appendChild(card('你好，' + (d.name || ''), h('div', { class: 'kv' }, h('span', null, '股別'), h('span', null, d.dept || (d.preview ? '（預覽）' : '')), h('span', null, '帶隊'), h('span', null, d.squadName || '—'))));
         var whenTxt = function (w) { return (w.date ? dayLabel(w.date) + ' ' : '') + (w.time || '') + (w.dur && w.time ? '–' + hmOf(w.time, w.dur) : ''); };
         var placeTags = function (pl) { return String(pl || '').split(/[、,，]/).map(function (y) { return y.trim(); }).filter(String).map(function (y) { return h('span', { class: 'pill-place' }, y); }); };
+        // 一隊的跑關順序（第幾站、關卡、場地、對手、備註）
+        var stepList = function (steps, date, turn) {
+          var list = h('div', { class: 'sched' }, steps.map(function (s, i) {
+            var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('small', null, s.end) : null), h('div', { class: 'grow' }, h('div', { class: 'it-hd' }, s.free ? null : h('span', { class: 'muted small' }, '第 ' + (steps.slice(0, i + 1).filter(function (y) { return !y.free; }).length) + ' 站'), h('b', null, s.station || '休息'), placeTags(s.place)), s.vs && s.vs.length ? h('div', { class: 'small vs-line' }, '對手：' + s.vs.join('、')) : null, s.note ? h('div', { class: 'small muted' }, s.note) : null));
+            if (s.free) row.classList.add('rt-free');
+            var s0 = tms(date, s.time); if (s0) { row.dataset.s = s0; row.dataset.e = s.end ? tms(date, s.end) : s0 + 1800000; }
+            return row;
+          }), turn ? h('div', { class: 'small muted' }, '每站之間換關 ' + turn + ' 分鐘') : null);
+          markNow(list);
+          return list;
+        };
+        if (d.focus) {
+          // 正在進行或接下來、有活動細流的活動（結束了就換下一個）；點按鈕看完整細流
+          d.focus.forEach(function (f) {
+            var r = f.rot || {}, when = (f.date ? dayLabel(f.date) + ' ' : '') + f.time + (f.end ? '–' + f.end : '');
+            var body = h('div', { class: 'col', style: { gap: '10px' } }, h('div', { class: 'row wrap fc-hd' }, h('span', { class: 'tag ' + (f.state === 'now' ? 'warn' : 'info') }, f.state === 'now' ? '進行中' : '接下來'), h('span', { class: 'small muted' }, when), placeTags(f.place)));
+            if (f.mine) {
+              if (r.map && okUrl(r.map.img)) body.appendChild(mapView(r.map).el);
+              body.appendChild(stepList(f.mine, f.date, r.turn));
+            } else if (r.kind === 'table') {
+              // 時間表：只列現在和接下來幾列
+              var t = nowDate().getTime(), rows = (r.rows || []).filter(function (x) { return x.start; }), cols = r.cols || [];
+              var from = rows.filter(function (x) { var e0 = x.end ? tms(f.date, x.end) : tms(f.date, x.start) + 600000; return e0 > t; });
+              var pick = (from.length ? from : rows).slice(0, 4);
+              body.appendChild(h('div', { class: 'sched' }, pick.map(function (x) {
+                var main = String((x.cells || [])[0] || '').replace(/^[<^]$/, ''), rest = (x.cells || []).slice(1).filter(function (c) { return c && !/^[<^]$/.test(c); }).join('　');
+                var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, x.start, x.end ? h('small', null, x.end) : null), h('div', { class: 'grow' }, h('b', null, main || (cols[0] || '')), x.place ? h('span', { class: 'pill-place' }, x.place) : null, rest ? h('div', { class: 'small muted note-clamp' }, rest) : null));
+                var s0 = tms(f.date, x.start); if (s0) { row.dataset.s = s0; row.dataset.e = x.end ? tms(f.date, x.end) : s0 + 600000; }
+                return row;
+              })));
+              markNow(body);
+            }
+            body.appendChild(h('button', { class: 'btn sm', type: 'button', onclick: function () { rotPage(r, f.date); } }, '查看完整細流'));
+            box.appendChild(card((f.mine ? r.name + '：' + d.squadName + '的順序' : '活動細流：' + (r.name || f.name)), body));
+          });
+        }
         if (d.route) {
-          (d.route.rotations || []).forEach(function (r) {
-            var list = h('div', { class: 'sched' }, r.steps.map(function (s, i) {
-              var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('small', null, s.end) : null), h('div', { class: 'grow' }, h('div', { class: 'it-hd' }, s.free ? null : h('span', { class: 'muted small' }, '第 ' + (r.steps.slice(0, i + 1).filter(function (y) { return !y.free; }).length) + ' 站'), h('b', null, s.station || '休息'), placeTags(s.place)), s.vs && s.vs.length ? h('div', { class: 'small vs-line' }, '對手：' + s.vs.join('、')) : null, s.note ? h('div', { class: 'small muted' }, s.note) : null));
-              if (s.free) row.classList.add('rt-free');
-              var s0 = tms(r.date, s.time); if (s0) { row.dataset.s = s0; row.dataset.e = s.end ? tms(r.date, s.end) : s0 + 1800000; }
-              return row;
-            }), r.turn ? h('div', { class: 'small muted' }, '每站之間換關 ' + r.turn + ' 分鐘') : null);
-            markNow(list);
+          if (!d.focus) (d.route.rotations || []).forEach(function (r) {
+            var list = stepList(r.steps, r.date, r.turn);
             box.appendChild(card(r.activity + '：' + d.squadName + '的順序', h('div', { class: 'col' }, r.map && okUrl(r.map.img) ? mapView(r.map).el : r.mode === 'map' && okUrl(r.image) ? h('img', { src: r.image, alt: '跑關地圖' }) : null, list)));
           });
           if ((d.route.items || []).length) box.appendChild(card('我的帶隊流程', schedList(d.route.items.map(function (x) { return { date: x.date, time: x.time, title: x.name, note: x.place, showDay: true }; }))));
