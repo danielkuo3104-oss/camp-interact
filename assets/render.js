@@ -299,12 +299,32 @@ var Front = (function () {
   }
 
   /** 活動細流整頁：時間表或跑關表＋地圖；表格可以縮放（按鈕或兩指） */
-  function rotPage(r, date) {
-    var mapEl = r.map && okUrl(r.map.img) ? mapView(r.map).el : null;
-    var el = r.kind === 'table' ? detailTable(r, date) : rotTable(r, date);
-    modal({ title: '活動細流：' + r.name, full: true, body: h('div', { class: 'col', style: { gap: '12px' } },
-      r.kind !== 'table' && r.len ? h('div', { class: 'small muted' }, '每關 ' + r.len + ' 分' + (r.turn ? '、換關 ' + r.turn + ' 分' : '')) : null, zoomBox(el), mapEl) });
-    markNow(document.querySelector('.modal.full'));
+  /** 活動細流全頁；list（[{id, date, rot}]，id 是目前這個）有兩個以上時，上面可以切換看其他活動的細流 */
+  function rotPage(r, date, list, id) {
+    var holder = h('div', { class: 'col', style: { gap: '12px' } });
+    var tabs = list && list.length > 1 ? h('div', { class: 'chips rot-tabs' }) : null;
+    var draw = function (r2, date2) {
+      var mapEl = r2.map && okUrl(r2.map.img) ? mapView(r2.map).el : null;
+      var el = r2.kind === 'table' ? detailTable(r2, date2) : rotTable(r2, date2);
+      clear(holder).appendChild(h('div', { class: 'col', style: { gap: '12px' } },
+        r2.kind !== 'table' && r2.len ? h('div', { class: 'small muted' }, '每關 ' + r2.len + ' 分' + (r2.turn ? '、換關 ' + r2.turn + ' 分' : '')) : null, zoomBox(el), mapEl));
+      var t = document.querySelector('.modal.full .modal-head h2'); if (t) t.textContent = '活動細流：' + r2.name;
+      if (tabs) [].forEach.call(tabs.children, function (c) { c.classList.toggle('on', c._rot === r2); });
+      markNow(holder);
+    };
+    if (tabs) {
+      // 目前這個活動用傳進來的那份（有最新的日期）；其他照清單
+      list.forEach(function (x) {
+        var same = id ? x.id === id : x.rot.name === r.name;
+        var rr = same ? r : x.rot, dd = same ? date : x.date;
+        var c = h('span', { class: 'chip' }, (x.date ? dayLabel(x.date).replace(/（.）/, '') + ' ' : '') + x.rot.name);
+        c._rot = rr;
+        c.addEventListener('click', function () { draw(rr, dd); });
+        tabs.appendChild(c);
+      });
+    }
+    modal({ title: '活動細流：' + r.name, full: true, body: h('div', { class: 'col', style: { gap: '12px' } }, tabs, holder) });
+    draw(r, date);
   }
   function zoomBox(el) {
     var z = 1, lab = h('span', { class: 'zm-lab' }, '100%');
@@ -670,7 +690,7 @@ var Front = (function () {
               })));
               markNow(body);
             }
-            body.appendChild(h('button', { class: 'btn sm', type: 'button', onclick: function () { rotPage(r, f.date); } }, '查看完整細流'));
+            body.appendChild(h('button', { class: 'btn sm', type: 'button', onclick: function () { rotPage(r, f.date, d.allRots, f.id); } }, '查看完整細流'));
             box.appendChild(card((f.mine ? r.name + '：' + d.squadName + '的順序' : '活動細流：' + (r.name || f.name)), body));
           });
         }
