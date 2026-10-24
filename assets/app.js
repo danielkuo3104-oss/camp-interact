@@ -215,8 +215,10 @@
     S.cur = start && Front.pageById(S.env, start) ? start : (home ? home.id : '');
     window.onhashchange = function () { var p = (location.hash.match(/#p=([\w]+)/) || [])[1]; if (p && p !== S.cur && Front.pageById(S.env, p)) { S.cur = p; render(); } else if (!p && home) { S.cur = home.id; render(); } };
     render();
-    clearInterval(S.timer);
-    S.timer = setInterval(tick, 60000);
+    // 大約每分鐘更新一次，每個人隨機錯開（50～70 秒），不會所有手機在同一秒一起問伺服器
+    clearTimeout(S.timer);
+    var loop = function () { tick(); S.timer = setTimeout(loop, 50000 + Math.random() * 20000); };
+    S.timer = setTimeout(loop, 50000 + Math.random() * 20000);
   }
 
   function nav(pid) {
@@ -240,7 +242,7 @@
     if (n !== S.night) { S.night = n; S.env.night = n; render(); return; }
     loadLive();
   }
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.env) loadLive(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.env) setTimeout(loadLive, Math.random() * 2000); });   // 很多人一起打開手機時錯開一點
 
   /** 夜間模式：學員首頁最上面放緊急聯絡與明日行程（夜間不是鎖死其他資訊） */
   function nightBlocks(pid) {

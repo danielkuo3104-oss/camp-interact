@@ -21,7 +21,9 @@ var NO_TOKEN_ = { login: 1, registerWithInvite: 1, workerLogin: 1, studentEnter:
  * 呼叫 Apps Script 後端（text/plain 避免 CORS 預檢）。錯誤帶 code：AUTH／LOCK／CONFLICT／NET
  * Apps Script 偶爾會回 404、回到健康檢查（沒有 result）或連不上：自動重試 3 次（操作有 op_id，重送不會重複執行）。
  * 同時最多送 3 個請求，其他的排隊，避免一次打太多讓 Apps Script 忙不過來。
+ * 很多人同時用時，Apps Script 會回「忙碌」（同時執行數上限、寫入排隊太久）：隨機等一下再重送（最多 4 次），大家錯開不會又擠在一起。
  */
+var BUSY_RE_ = /系統忙碌中|too many|simultaneous|invoked too many|Service .*(timed out|unavailable|error)|Exceeded maximum|請稍後再試/i;
 var API_Q_ = { busy: 0, wait: [] };
 function apiSlot_() { return new Promise(function (ok) { if (API_Q_.busy < 3) { API_Q_.busy++; netState_(); ok(); } else API_Q_.wait.push(ok); }); }
 function apiFree_() { var n = API_Q_.wait.shift(); if (n) n(); else API_Q_.busy--; netState_(); }
@@ -42,6 +44,7 @@ function apiOnce_(url, body) {
     throw Object.assign(new Error('無法連線到伺服器，請檢查網路'), { code: 'NET', retry: true });
   }).then(function (j) {
     if (j && j.ok && !('result' in j)) throw Object.assign(new Error('伺服器暫時沒有正確回應，請稍後再試'), { code: 'NET', retry: true });
+    if (j && !j.ok && BUSY_RE_.test(String(j.error || ''))) throw Object.assign(new Error('現在使用的人很多，請稍後再試'), { code: 'NET', retry: true, busy: true });
     return j;
   });
 }
@@ -53,13 +56,14 @@ function api(name) {
   var body = JSON.stringify({ fn: name, args: args }), tries = 0;
   function go() {
     return apiOnce_(url, body).catch(function (e) {
-      if (!e.retry || tries >= 3) throw e;
+      if (!e.retry || tries >= (e.busy ? 4 : 3)) throw e;
       tries++;
       var off = navigator.onLine === false;
-      var el = document.getElementById('netBusy'); if (el) { el.classList.add('on', 'retry'); el.querySelector('.tx').textContent = off ? '網路斷線，等網路恢復…' : '連線不穩，重試第 ' + tries + ' 次…'; }
+      var el = document.getElementById('netBusy'); if (el) { el.classList.add('on', 'retry'); el.querySelector('.tx').textContent = off ? '網路斷線，等網路恢復…' : e.busy ? '使用的人很多，稍等一下（第 ' + tries + ' 次）…' : '連線不穩，重試第 ' + tries + ' 次…'; }
       // 斷網時不要一直重送：等網路回來（最多 30 秒）再試
       return new Promise(function (ok) {
-        if (!off) { setTimeout(ok, 700 * Math.pow(2, tries - 1)); return; }
+        // 隨機 0.5～1.5 倍：很多人同時失敗時不要又在同一刻一起重送
+        if (!off) { setTimeout(ok, (e.busy ? 1500 : 700) * Math.pow(2, tries - 1) * (0.5 + Math.random())); return; }
         var t = setTimeout(done, 30000);
         function done() { clearTimeout(t); window.removeEventListener('online', done); ok(); }
         window.addEventListener('online', done);
