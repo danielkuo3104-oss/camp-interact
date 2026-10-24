@@ -168,10 +168,16 @@
     var ver = '';
     if (preview === 'draft') ver = 'draft';
     else if (!preview) { try { ver = sessionStorage.getItem(VK) || ''; } catch (e) {} }
-    api('frontBoot', camp, side, ver, simNow()).then(function (b) {
+    // live：打開時順便把所有動態區塊的資料一起拿回來（少一次請求，很多人同時打開時不用排那麼久）
+    api('frontBoot', camp, side, ver, simNow(), { live: true }).then(function (b) {
       S.offline = false;
       if (!b.snapshot) { msgScreen(b.camp.name, side === 'student' ? '學員端還沒有發布內容，晚點再來看看。' : '工作人員端還沒有發布內容。', logoutBtn()); return; }
-      if (!preview) { try { sessionStorage.setItem(VK, b.snapshot.ver); } catch (e) {} jset(BK, b); }
+      if (b.live) {
+        Object.keys(b.live).forEach(function (k) { S.live[k] = b.live[k]; });
+        S.freshAt = Date.now(); S.prefetched = true;
+        if (!preview) jset(LK, S.live);
+      }
+      if (!preview) { try { sessionStorage.setItem(VK, b.snapshot.ver); } catch (e) {} jset(BK, Object.assign({}, b, { live: null })); }
       show(b);
     }, function (e) {
       var cached = !preview && jget(BK, null);
@@ -340,6 +346,8 @@
   function loadLive() {
     if (S.offline || !S.env) return;
     var list = Front.liveBlocks(S.env, S.cur);
+    // 剛打開時已經一起拿到了：20 秒內只補還沒有的（例如夜間模式加的區塊）
+    if (S.freshAt && Date.now() - S.freshAt < 20000) list = list.filter(function (b) { return S.live[b.id] === undefined; });
     if (!list.length) { afterDraw(); prefetch(); return; }
     api('frontLive', camp, side, list, simNow()).then(function (r) {
       applyLive(r);
