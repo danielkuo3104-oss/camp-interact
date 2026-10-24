@@ -547,3 +547,14 @@ tr.job-cont > td { border-top-color: transparent !important; }
 tr.job-cont td[data-ci="1"] input { color: var(--text-3); }
 .job-n { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; font-size: 11px; color: var(--job-c, var(--text-3)); font-weight: 600; }
 tr.job-dup td[data-ci="5"] { background: #fdecea; }
+
+/* 快速展延：改過的時間橘色＋原定時間；被吸收的緩衝劃掉 */
+.ext-bar { gap: 8px; margin: 2px 0 8px; }
+.ext-log { color: var(--accent); margin: 0 0 6px; }
+.sched .it.ext-chg { background: #fdf0e1; border-radius: 10px; }
+.sched .it.ext-chg .tm, .sched .it.ext-chg .tm small:not(.ext-orig) { color: #b4610f; font-weight: 700; }
+.sched .tm small.ext-orig { color: var(--text-3); text-decoration: line-through; font-weight: 400; }
+.sched .it.ext-gone { opacity: .55; } .sched .it.ext-gone .nm, .sched .it.ext-gone .tm { text-decoration: line-through; }
+.diff.ext { color: #b4610f; background: #fdf0e1; }
+.ext-min { max-width: 110px; }
+.app-shell.night .sched .it.ext-chg { background: #3a2a14; } .app-shell.night .sched .it.ext-chg .tm { color: #f2b56b; }
