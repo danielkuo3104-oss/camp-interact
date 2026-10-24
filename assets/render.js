@@ -537,7 +537,8 @@ var Front = (function () {
             setTimeout(function () { n.focus(); n.select(); }, 30);
           };
           if (can) {
-            var go = h('button', { class: 'btn primary sm ext-go', type: 'button' }, '⏩ 快速展延');
+            var go = h('button', { class: 'btn sm ext-go', type: 'button' }, '快速展延');
+            go.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>');
             go.addEventListener('click', function () { ask(go); });
             var bar = h('div', { class: 'row wrap ext-bar' }, go);
             if (exs.length) {
