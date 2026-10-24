@@ -641,7 +641,7 @@ var Front = (function () {
         // 一隊的跑關順序（第幾站、關卡、場地、對手、備註）
         var stepList = function (steps, date, turn) {
           var list = h('div', { class: 'sched' }, steps.map(function (s, i) {
-            var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('small', null, s.end) : null), h('div', { class: 'grow' }, h('div', { class: 'it-hd' }, s.free ? null : h('span', { class: 'muted small' }, '第 ' + (steps.slice(0, i + 1).filter(function (y) { return !y.free; }).length) + ' 站'), h('b', null, s.station || '休息'), placeTags(s.place)), s.vs && s.vs.length ? h('div', { class: 'small vs-line' }, '對手：' + s.vs.join('、')) : null, s.note ? h('div', { class: 'small muted' }, s.note) : null));
+            var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, s.time, s.end ? h('small', null, s.end) : null), h('div', { class: 'grow' }, h('div', { class: 'it-hd wrap' }, s.free ? null : h('span', { class: 'muted small' }, '第 ' + (steps.slice(0, i + 1).filter(function (y) { return !y.free; }).length) + ' 站'), h('b', null, s.station || '休息'), placeTags(s.place)), s.vs && s.vs.length ? h('div', { class: 'small vs-line' }, '對手：' + s.vs.join('、')) : null, s.note ? h('div', { class: 'small muted' }, s.note) : null));
             if (s.free) row.classList.add('rt-free');
             var s0 = tms(date, s.time); if (s0) { row.dataset.s = s0; row.dataset.e = s.end ? tms(date, s.end) : s0 + 1800000; }
             return row;
@@ -664,7 +664,7 @@ var Front = (function () {
               var pick = (from.length ? from : rows).slice(0, 4);
               body.appendChild(h('div', { class: 'sched' }, pick.map(function (x) {
                 var main = String((x.cells || [])[0] || '').replace(/^[<^]$/, ''), rest = (x.cells || []).slice(1).filter(function (c) { return c && !/^[<^]$/.test(c); }).join('　');
-                var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, x.start, x.end ? h('small', null, x.end) : null), h('div', { class: 'grow' }, h('b', null, main || (cols[0] || '')), x.place ? h('span', { class: 'pill-place' }, x.place) : null, rest ? h('div', { class: 'small muted note-clamp' }, rest) : null));
+                var row = h('div', { class: 'it' }, h('span', { class: 'tm' }, x.start, x.end ? h('small', null, x.end) : null), h('div', { class: 'grow' }, h('div', { class: 'it-hd wrap' }, h('b', null, main || (cols[0] || '')), placeTags(x.place)), rest ? h('div', { class: 'small muted note-clamp' }, rest) : null));
                 var s0 = tms(f.date, x.start); if (s0) { row.dataset.s = s0; row.dataset.e = x.end ? tms(f.date, x.end) : s0 + 600000; }
                 return row;
               })));
