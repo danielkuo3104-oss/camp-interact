@@ -555,6 +555,7 @@ tr.job-dup td[data-ci="5"] { background: #fdecea; }
 .btn.ext-go svg { flex: none; }
 .app-shell.night .btn.ext-go { color: var(--text-2); border-color: var(--line-strong); }
 .ext-log { color: var(--accent); margin: 0 0 6px; }
+.rh-note { font-size: 12.5px; color: var(--text-2); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
 .sched .it.ext-chg { background: #fdf0e1; border-radius: 10px; }
 .sched .it.ext-chg .tm, .sched .it.ext-chg .tm small:not(.ext-orig) { color: #b4610f; font-weight: 700; }
 .sched .tm small.ext-orig { color: var(--text-3); text-decoration: line-through; font-weight: 400; }

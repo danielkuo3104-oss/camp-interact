@@ -511,6 +511,7 @@ var Front = (function () {
         // 快速展延（工作人員端、人員與分隊勾了「可快速展延」的人）：只對今天、以伺服器的現在時間為準
         function extTools(f, day) {
           clear(extBar);
+          if (f.kind === 'rehearsal') extBar.appendChild(h('div', { class: 'rh-note' }, h('span', { class: 'tag info' }, '驗收中'), ' 使用「' + f.name + '」'));
           var exs = (d.extends || []).filter(function (x) { return x.flow === f.id; });
           var today = taipei(nowDate()).ymd, can = d.canExtend && env && env.action && day === today;
           if (!can && !exs.length) return;

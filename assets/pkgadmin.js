@@ -444,7 +444,7 @@ var PkgAdmin = (function () {
       else if (t === 'calc') { var sp = h('span', { class: 'g-calc' }); e = { el: sp, get: function () { return undefined; }, set: function () {}, calc: true }; }
       else if (t === 'hidden') { var hv = v; e = { el: h('span'), get: function () { return hv; }, set: function (x) { hv = x; } }; }
       else {
-        var i = h('input', { class: 'g-in', type: t === 'number' ? 'number' : t === 'date' ? 'date' : t === 'datetime' ? 'datetime-local' : 'text', value: v === undefined || v === null ? '' : v, placeholder: c.ph || '', list: colList[c.k] || null, disabled: ro, min: t === 'number' ? 0 : null });
+        var i = h('input', { class: 'g-in', type: t === 'number' ? 'number' : t === 'date' ? 'date' : t === 'datetime' ? 'datetime-local' : 'text', value: v === undefined || v === null ? '' : v, placeholder: c.ph || '', list: colList[c.k] || null, disabled: ro, min: t === 'number' ? 0 : c.min || null, max: c.max || null });
         e = { el: i, get: function () { return t === 'number' ? (i.value === '' ? '' : Number(i.value)) : i.value; }, set: function (x) { i.value = x === undefined || x === null ? '' : x; }, input: i };
       }
       return e;
@@ -1098,8 +1098,11 @@ var PkgAdmin = (function () {
       var toMin = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
       var toHm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
       var days = [];
-      if (A.info.start && A.info.end) for (var dd = new Date(A.info.start + 'T12:00:00+08:00'); taipei(dd).ymd <= A.info.end; dd = new Date(dd.getTime() + 86400000)) days.push(taipei(dd).ymd);
-      var dayNo = function (k) { var i = days.indexOf(k); return i >= 0 ? '第' + '一二三四五六七八九十'.charAt(i) + '天｜' : ''; };
+      // 驗收流程：分組的日子用那次驗收的日期（天數壓縮）
+      var curF = flows.filter(function (f) { return f.id === cur; })[0], curRh = curF && curF.data.kind === 'rehearsal' ? (A.info.rehearsals || []).filter(function (r) { return r.id === curF.data.rh; })[0] : null;
+      var dS = curRh ? curRh.start : A.info.start, dE = curRh ? curRh.end : A.info.end;
+      if (dS && dE) for (var dd = new Date(dS + 'T12:00:00+08:00'); taipei(dd).ymd <= dE; dd = new Date(dd.getTime() + 86400000)) days.push(taipei(dd).ymd);
+      var dayNo = function (k) { var i = days.indexOf(k); return i >= 0 ? (curRh ? curRh.name : '') + '第' + '一二三四五六七八九十'.charAt(i) + '天｜' : ''; };
       var wn = {};
       D.workers.forEach(function (w) { wn[w.id] = w.data.name; });
       var OVC = ['#c8803a', '#3563a8', '#8a4fb0', '#2e7d4f', '#c0392b'];
@@ -1259,7 +1262,26 @@ var PkgAdmin = (function () {
             } }, '鎖定既定行程') : null, selBar];
         }
       });
-      box.insertBefore(h('div', { class: 'chips', style: { marginBottom: '10px' } }, flows.map(function (f) { return h('a', { class: 'chip' + (f.id === cur ? ' on' : ''), href: '#data/schedule/items?flow=' + f.id, style: { textDecoration: 'none' }, title: f.data.hidden ? '工作人員端還看不到（到「流程清單」打開）' : null }, f.data.name, f.data.hidden ? h('span', { class: 'small muted' }, '（未顯示）') : null); }), h('a', { class: 'chip', href: '#data/schedule/flows', style: { textDecoration: 'none' } }, '＋ 管理流程（複製、顯示）')), G.bar);
+      if (curF && curF.data.kind === 'rehearsal') {
+        // 驗收流程：說明＋從別的流程複製一天過來（例如正式第一天 → 一驗）
+        var copyDay = function () {
+          var others = flows.filter(function (f) { return f.id !== cur; });
+          if (!others.length) { toast('沒有其他流程可以複製', true); return; }
+          var from = sel(others.map(function (f) { return { value: f.id, label: f.data.name }; }), (others.filter(function (f) { return f.data.kind === 'main'; })[0] || others[0]).id);
+          var srcDays = function () { var ds = []; D.items.forEach(function (it) { if (it.data.flow === from.value && it.data.date && ds.indexOf(it.data.date) < 0) ds.push(it.data.date); }); return ds.sort(); };
+          var fromDate = sel([], ''), fill = function () { var ds = srcDays(); clear(fromDate); (ds.length ? ds : ['']).forEach(function (x) { fromDate.appendChild(h('option', { value: x }, x ? dayLabel(x) + '（' + D.items.filter(function (it) { return it.data.flow === from.value && it.data.date === x; }).length + ' 項）' : '這份流程沒有項目')); }); };
+          from.addEventListener('change', fill); fill();
+          var toD = sel(days.map(function (x, i) { return { value: x, label: curRh.name + '第' + '一二三四五六七八九十'.charAt(i) + '天（' + dayLabel(x) + '）' }; }), days[0] || '');
+          form('從其他流程複製一天', [field('從哪份流程', from), field('哪一天', fromDate), field('複製到' + curF.data.name + '的', toD), h('div', { class: 'hint' }, '時間、時長、場地、人員都會帶過來，日期換成驗收那天；原本的不會被刪，可以複製好再改。')], function () {
+            if (!fromDate.value || !toD.value) { toast('請選日期', true); return false; }
+            return run('flow.copyDay', { from: from.value, to: cur, date: fromDate.value, toDate: toD.value }, { action: 'create', msg: '已複製到' + dayLabel(toD.value) });
+          });
+        };
+        box.insertBefore(h('div', { class: 'recall-banner row wrap', style: { marginBottom: '10px' } },
+          h('span', { class: 'grow' }, curRh ? '這是「' + curRh.name + '」（' + curRh.start.slice(5) + (curRh.end !== curRh.start ? '～' + curRh.end.slice(5) : '') + '）自己的流程。驗收期間工作人員端、快速展延、學員首頁的現在主題都改用這一份，正式流程不會被動到；驗收以外看不到。' : '這份驗收流程的驗收日程已經刪掉了，工作人員端不會再用到它，可以到「流程清單」刪除。'),
+          curRh && R.canEdit ? h('button', { class: 'btn sm', type: 'button', onclick: copyDay }, '從其他流程複製一天') : null), G.bar);
+      }
+      box.insertBefore(h('div', { class: 'chips', style: { marginBottom: '10px' } }, flows.map(function (f) { return h('a', { class: 'chip' + (f.id === cur ? ' on' : ''), href: '#data/schedule/items?flow=' + f.id, style: { textDecoration: 'none' }, title: f.data.kind === 'rehearsal' ? '驗收流程：驗收期間自動使用' : f.data.hidden ? '工作人員端還看不到（到「流程清單」打開）' : null }, f.data.name, f.data.kind === 'rehearsal' ? h('span', { class: 'small', style: { opacity: .75 } }, '（驗收）') : f.data.hidden ? h('span', { class: 'small muted' }, '（未顯示）') : null); }), h('a', { class: 'chip', href: '#data/schedule/flows', style: { textDecoration: 'none' } }, '＋ 管理流程（複製、顯示）')), G.bar);
       box.insertBefore(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '像 Excel 一樣直接改：↑↓ 換列、Enter 在下面插入一列、Ctrl+S 儲存；改了時間會自動排到正確的位置；時間直接打 930 或 9:30；改「結束」會自動算時長；新的一列開始時間接上一列結束。活動名稱可以從選單選（活動、集合、緩衝時間、三餐、工人用餐），也可以自己打，打過的下次會出現在選單。「標示」：活動是淡色、重要時程是鮮豔色。包在另一項時段裡的（例如午餐裡的工人用餐）會縮排標「期間內」；只有部分重疊的會標「時間交錯」。⧉ 複製一列再改；勾選左邊可以一次平移時間、改日期、複製；可以從 Excel 複製整塊（開始、時長、活動名稱、場地、負責、關主、機動、備註、連結）貼上。'), G.bar);
       if (Q.id) { var hit = G.rows.filter(function (r) { return r.id === Q.id; })[0]; if (hit) { hit.tr.style.background = 'var(--warn-soft)'; setTimeout(function () { hit.tr.scrollIntoView({ block: 'center' }); }, 50); } }
     },
@@ -1281,7 +1303,7 @@ var PkgAdmin = (function () {
         { k: 'name', label: '活動／課程', w: '180px' },
         { k: 'pub', label: '學員看得到', type: 'switch', w: '100px' },
         { k: 'autoAt', label: '自動公開時間', type: 'datetime', w: '200px' }
-      ].concat(rhs.map(function (x) { return { k: 'rh:' + x.id, label: x.name + '時開放', type: 'datetime', w: '200px' }; })).concat([
+      ].concat(rhs.map(function (x) { return { k: 'rh:' + x.id, label: x.name + '時開放（' + x.start.slice(5) + '～' + x.end.slice(5) + '）', type: 'datetime', w: '210px', min: x.start + 'T00:00', max: x.end + 'T23:59' }; })).concat([
         { k: 'summary', label: '簡介（現在主題、活動列表顯示）', w: '320px' },
         { k: 'st', label: '狀態', type: 'calc', w: '170px', fn: function (v, r) {
           var d = r.a ? r.a.data : {};
@@ -1297,7 +1319,13 @@ var PkgAdmin = (function () {
         saveOp: 'activity.save', delOp: 'activity.delete', addText: '＋ 新增活動', noCopy: true, empty: '還沒有活動',
         blank: function () { return Object.assign({ name: '', pub: false, autoAt: '', summary: '' }, rhVals({})); },
         isEmpty: function (v) { return !String(v.name || '').trim(); },
-        validate: function (d, op) { return op === 'activity.save' && !String(d.name).trim() ? '有一列沒有活動名稱' : ''; },
+        validate: function (d, op) {
+          if (op !== 'activity.save') return '';
+          if (!String(d.name).trim()) return '有一列沒有活動名稱';
+          // 驗收時開放的時間一定要在那次驗收的日期內
+          var bad = rhs.filter(function (x) { var v = String((d.rhOpen || {})[x.id] || '').slice(0, 10); return v && (v < x.start || v > x.end); })[0];
+          return bad ? '「' + d.name + '」在「' + bad.name + '」的開放時間要在 ' + bad.start + '～' + bad.end + ' 之間' : '';
+        },
         saveItems: function (v, r) {
           var d = r.a ? r.a.data : {}, out = [];
           var base = { id: r.id, name: v.name, summary: v.summary, autoAt: v.autoAt ? v.autoAt + ':00+08:00' : '', rhOpen: rhOpenOf(v) };
@@ -1671,18 +1699,19 @@ var PkgAdmin = (function () {
       box.appendChild(bar(addBtn('新增流程', function () {
         var name = inp('', { placeholder: '例如：一驗、二驗、總驗' }), order = inp(D.flows.length, { type: 'number' });
         form('新增流程', [field('名稱', name), field('排序', order), h('div', { class: 'hint' }, '新的流程先不顯示在工作人員端，做好再打開「工作人員端顯示」。')], function () { return run('flow.save', { name: name.value, kind: 'detail', order: order.value, hidden: true }, { action: 'create' }); });
-      }), h('span', { class: 'hint' }, '可以先在後台做好一驗、二驗…，要給工作人員看時再打開「顯示」。「複製」會整份複製（含所有項目），適合二驗跟一驗大致一樣的時候。「總流程」決定學員首頁的現在主題。')));
+      }), h('span', { class: 'hint' }, '可以先在後台做好一驗、二驗…，要給工作人員看時再打開「顯示」。「複製」會整份複製（含所有項目），適合二驗跟一驗大致一樣的時候。「總流程」決定學員首頁的現在主題。在營隊設定加驗收日程時，每次驗收會自動有一份「驗收流程」，驗收期間取代總流程。')));
       var sorted = D.flows.slice().sort(function (x, y) { return (Number(x.data.order) || 0) - (Number(y.data.order) || 0); });
       box.appendChild(table(['流程', '種類', '項目數', '工作人員端顯示', ''], sorted.map(function (f) {
         var n = D.items.filter(function (it) { return it.data.flow === f.id; }).length;
         var sw = h('input', { type: 'checkbox', class: 'sw', checked: !f.data.hidden, disabled: !R.canEdit });
         sw.addEventListener('change', function () { run('flow.save', { id: f.id, name: f.data.name, kind: f.data.kind, order: f.data.order, parentItem: f.data.parentItem || '', hidden: !sw.checked }, { msg: sw.checked ? '「' + f.data.name + '」工作人員端看得到了' : '「' + f.data.name + '」先不給工作人員看' }).catch(function () { sw.checked = !sw.checked; }); });
-        return h('tr', null, h('td', null, h('b', null, f.data.name)), h('td', null, f.data.kind === 'main' ? '總流程' : '其他流程'), h('td', null, n),
-          h('td', null, h('label', { class: 'sw-wrap' }, sw, h('span', { class: 'sw-k' }))),
+        var rh = f.data.kind === 'rehearsal' ? (A.info.rehearsals || []).filter(function (r) { return r.id === f.data.rh; })[0] : null;
+        return h('tr', null, h('td', null, h('b', null, f.data.name)), h('td', null, f.data.kind === 'main' ? '總流程' : f.data.kind === 'rehearsal' ? '驗收流程' : '其他流程'), h('td', null, n),
+          h('td', null, f.data.kind === 'rehearsal' ? h('span', { class: 'small muted' }, rh ? rh.start.slice(5) + (rh.end !== rh.start ? '～' + rh.end.slice(5) : '') + ' 驗收時自動使用' : '驗收已刪除，不會再用到') : h('label', { class: 'sw-wrap' }, sw, h('span', { class: 'sw-k' }))),
           h('td', { class: 'row', style: { gap: '4px', justifyContent: 'flex-end' } },
             R.canEdit ? h('button', { class: 'btn sm', onclick: function () { askText('複製流程', '新流程的名稱', f.data.name + '（複製）').then(function (nm) { nm = String(nm || '').trim(); if (!nm) return; run('flow.copy', { id: f.id, name: nm }, { action: 'create', msg: '已複製為「' + nm + '」（先不顯示，做好再打開）' }); }); } }, '⧉ 複製') : null,
             R.canEdit ? h('button', { class: 'btn sm ghost', onclick: function () { askText('流程改名', '名稱', f.data.name).then(function (nm) { nm = String(nm || '').trim(); if (!nm || nm === f.data.name) return; run('flow.save', { id: f.id, name: nm, kind: f.data.kind, order: f.data.order, parentItem: f.data.parentItem || '' }); }); } }, '改名') : null,
-            f.data.kind === 'main' || !R.canEdit ? null : h('button', { class: 'btn sm ghost', onclick: function () { del('flow.delete', { id: f.id }, f.data.name); } }, '刪除')));
+            f.data.kind === 'main' || rh || !R.canEdit ? null : h('button', { class: 'btn sm ghost', onclick: function () { del('flow.delete', { id: f.id }, f.data.name); } }, '刪除')));
       })));
     }
   };
