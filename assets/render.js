@@ -512,10 +512,11 @@ var Front = (function () {
         function extTools(f, day) {
           clear(extBar);
           var exs = (d.extends || []).filter(function (x) { return x.flow === f.id; });
-          var today = taipei(nowDate()).ymd, can = d.canExtend && env && env.action && !env.preview && day === today;
+          var today = taipei(nowDate()).ymd, can = d.canExtend && env && env.action && day === today;
           if (!can && !exs.length) return;
           var run = function (btn, name, data, msg) {
-            return busy(btn, function () { return env.action('schedule', name, Object.assign({ flow: f.id }, data || {})); }).then(function (r) {
+            // 預覽：照預覽的模擬時間展延（可以測不同時段）
+            return busy(btn, function () { return env.action('schedule', name, Object.assign({ flow: f.id }, data || {}, env.preview && simNow() ? { sim: simNow() } : {})); }).then(function (r) {
               FLOW_SEL[b.id] = f.id;
               toast(msg(r || {}));
               if (env.reload) env.reload();
