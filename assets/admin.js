@@ -422,7 +422,11 @@ A.views.settings = function (m) {
     h('div', { class: 'row', style: { gap: '8px' } },
       h('button', { class: 'btn', type: 'button', onclick: function () { rhList.push({ name: ['一驗', '二驗', '總驗'][rhList.length] || '', start: '', end: '' }); drawRh(); } }, '＋ 新增驗收'),
       h('button', { class: 'btn primary', onclick: function (e) {
-        busy(e.target, function () { return A.op('camp.settings', { data: { rehearsals: rhList.map(function (r) { return { id: r.id, name: r.name, start: r.start, end: r.end }; }) } }); }).then(function () { toast('已儲存驗收日程'); A.reload().then(A.route); }, function () {});
+        busy(e.target, function () { return A.op('camp.settings', { data: { rehearsals: rhList.map(function (r) { return { id: r.id, name: r.name, start: r.start, end: r.end }; }) } }); }).then(function (x) {
+          // 舊版後端（Camps.gs 還沒更新）會直接略過驗收日程，存了也不會留下
+          if (!x || !x.rehearsals) { modal({ title: '驗收日程沒有存進去', body: h('p', null, 'Apps Script 後端還是舊版。請把 Camps.gs、Members.gs、Registry.gs、Setup.gs、Pkg_emergency.gs、Pkg_scoreboard.gs、Pkg_schedule.gs、Pkg_studentflow.gs 換成新版，並「部署 → 管理部署作業 → 編輯 → 新版本」，再回來存一次。') }); return; }
+          toast('已儲存驗收日程'); A.reload().then(A.route);
+        }, function () {});
       } }, '儲存驗收日程'))));
 
   // 通行碼：可以自己訂，也可以按「系統產生」（不含容易看錯的 0/O、1/I/l）
