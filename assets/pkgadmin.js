@@ -1273,10 +1273,15 @@ var PkgAdmin = (function () {
         hasCourses ? h('a', { class: 'btn sm', href: '#data/courses/list' }, '到課程簡介') : A.isAdmin() ? h('button', { class: 'btn sm primary', onclick: function (e) { busy(e.target, function () { return A.op('pkg.install', { data: { pkg: 'courses' } }); }).then(function () { toast('已安裝課程簡介'); return A.reload(); }).then(function () { A.navBuild(); A.route(); }, function () {}); } }, '安裝課程簡介') : null));
       var have = D.activities.map(function (a) { return String(a.data.name || '').trim(); });
       var miss = (D.peopleActs || []).filter(function (n) { return n && have.indexOf(n) < 0; });
+      // 驗收時開放：每次驗收一欄，驗收中到時間就公開，驗收結束後回到原本設定
+      var rhs = A.info.rehearsals || [];
+      var rhVals = function (d) { var o = {}; rhs.forEach(function (x) { o['rh:' + x.id] = (d.rhOpen || {})[x.id] || ''; }); return o; };
+      var rhOpenOf = function (v) { var o = {}; rhs.forEach(function (x) { if (v['rh:' + x.id]) o[x.id] = v['rh:' + x.id]; }); return o; };
       var G = grid(box, [
         { k: 'name', label: '活動／課程', w: '180px' },
         { k: 'pub', label: '學員看得到', type: 'switch', w: '100px' },
-        { k: 'autoAt', label: '自動公開時間', type: 'datetime', w: '200px' },
+        { k: 'autoAt', label: '自動公開時間', type: 'datetime', w: '200px' }
+      ].concat(rhs.map(function (x) { return { k: 'rh:' + x.id, label: x.name + '時開放', type: 'datetime', w: '200px' }; })).concat([
         { k: 'summary', label: '簡介（現在主題、活動列表顯示）', w: '320px' },
         { k: 'st', label: '狀態', type: 'calc', w: '170px', fn: function (v, r) {
           var d = r.a ? r.a.data : {};
@@ -1284,22 +1289,22 @@ var PkgAdmin = (function () {
           if (v.autoAt) return h('span', { class: 'tag info' }, Date.parse(v.autoAt + ':00+08:00') <= Date.now() ? '時間到了，存檔後公開' : fmt(v.autoAt + ':00+08:00') + ' 自動公開');
           return h('span', null, h('span', { class: 'tag' }, '看不到'), d.revealedBy ? h('div', { class: 'small muted' }, (d.revealed ? '公開' : '收回') + '：' + d.revealedBy + ' ' + fmt(d.revealedAt)) : null);
         } }
-      ], {
+      ]), {
         rows: D.activities.map(function (a) {
           var d = a.data, now = Date.now(), vis = d.publicMode === 'public' || (d.publicMode === 'manual' && d.revealed) || (d.publicMode === 'auto' && Date.parse(d.autoAt) <= now);
-          return { id: a.id, ver: a.version, a: a, vals: { name: d.name, pub: !!vis, autoAt: d.publicMode === 'auto' && Date.parse(d.autoAt) > now ? tsLocal(d.autoAt) : '', summary: d.summary || '' } };
+          return { id: a.id, ver: a.version, a: a, vals: Object.assign({ name: d.name, pub: !!vis, autoAt: d.publicMode === 'auto' && Date.parse(d.autoAt) > now ? tsLocal(d.autoAt) : '', summary: d.summary || '' }, rhVals(d)) };
         }),
         saveOp: 'activity.save', delOp: 'activity.delete', addText: '＋ 新增活動', noCopy: true, empty: '還沒有活動',
-        blank: function () { return { name: '', pub: false, autoAt: '', summary: '' }; },
+        blank: function () { return Object.assign({ name: '', pub: false, autoAt: '', summary: '' }, rhVals({})); },
         isEmpty: function (v) { return !String(v.name || '').trim(); },
         validate: function (d, op) { return op === 'activity.save' && !String(d.name).trim() ? '有一列沒有活動名稱' : ''; },
         saveItems: function (v, r) {
           var d = r.a ? r.a.data : {}, out = [];
-          var base = { id: r.id, name: v.name, summary: v.summary, autoAt: v.autoAt ? v.autoAt + ':00+08:00' : '' };
+          var base = { id: r.id, name: v.name, summary: v.summary, autoAt: v.autoAt ? v.autoAt + ':00+08:00' : '', rhOpen: rhOpenOf(v) };
           if (d.publicMode === 'manual' && r.id && !v.autoAt) {
             // 手動公開的活動：名稱、簡介照存，開關是「公開／收回」（會記下誰、什麼時候）
             var was = r.vals0 ? r.vals0.pub : !!d.revealed;
-            if (v.name !== d.name || v.summary !== (d.summary || '')) out.push({ op: 'activity.save', data: Object.assign(base, { publicMode: 'manual' }) });
+            if (v.name !== d.name || v.summary !== (d.summary || '') || JSON.stringify(base.rhOpen) !== JSON.stringify(rhOpenOf(rhVals(d)))) out.push({ op: 'activity.save', data: Object.assign(base, { publicMode: 'manual' }) });
             if (v.pub !== was) out.push({ op: 'activity.reveal', data: { id: r.id, revealed: v.pub } });
             return out.length ? out : [{ op: 'activity.save', data: Object.assign(base, { publicMode: 'manual' }) }];
           }
@@ -1309,7 +1314,7 @@ var PkgAdmin = (function () {
         afterSave: function (r) {
           var v = r.read(); r.vals0 = v;
           if (!r.a) r.a = { id: r.id, data: { publicMode: 'hidden' } };
-          r.a.data.name = v.name; r.a.data.summary = v.summary;
+          r.a.data.name = v.name; r.a.data.summary = v.summary; r.a.data.rhOpen = rhOpenOf(v);
           if (r.a.data.publicMode !== 'manual' || v.autoAt) r.a.data.publicMode = v.pub ? 'public' : v.autoAt ? 'auto' : 'hidden';
         }
       });

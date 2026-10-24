@@ -125,7 +125,8 @@ A.views.home = function (m) {
   var ROLE = { root: '系統終端', admin: '專案管理員', manager: '協作管理員', collab: '協作者', pkg: '活動協作' };
   A.title(m, I.name, (I.start || '未設定日期') + (I.end ? ' ～ ' + I.end : '') + '　·　你的身分：' + (ROLE[I.role] || I.role));
   if (I.status === 'ended') m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '14px' } }, '營隊已結束（回憶模式）：前台保留內容，資料不能再修改。需要時專案管理員可以在「營隊設定」重新開啟。'));
-  if (I.periodLocked) m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '14px' } }, '營期中（' + I.start + ' ～ ' + I.end + '）：你沒有「營期中修改」權限，暫時不能進編輯頁、不能發布。Package 資料（計分、營期流程…）照樣可以改；需要時請專案管理員在「成員」幫你勾「營期中修改」。'));
+  if (I.rehearsal) m.appendChild(h('div', { class: 'fb-notice', style: { marginBottom: '14px' } }, '驗收中：' + I.rehearsal.name + '（' + I.rehearsal.start + (I.rehearsal.end !== I.rehearsal.start ? ' ～ ' + I.rehearsal.end : '') + '）。視同營期；這段期間的積分、加減分、切結書、快速展延、手動公開，驗收結束後會自動清除或還原。'));
+  if (I.periodLocked) m.appendChild(h('div', { class: 'recall-banner', style: { marginBottom: '14px' } }, (I.rehearsal ? '驗收中' : '營期中（' + I.start + ' ～ ' + I.end + '）') + '：你沒有「營期中修改」權限，暫時不能進編輯頁、不能發布。Package 資料（計分、營期流程…）照樣可以改；需要時請專案管理員在「成員」幫你勾「營期中修改」。'));
   var stats = h('div', { class: 'stat' });
   m.appendChild(stats);
   var ev = h('div', { class: 'section' });
@@ -392,6 +393,37 @@ A.views.settings = function (m) {
       busy(e.target, function () { return A.op('camp.settings', { data: { name: name.value, start: start.value, end: end.value, frontUrl: front.value } }); }).then(function () { toast('已儲存'); A.reload(); }, function () {});
     } }, '儲存')));
   m.appendChild(basic);
+
+  // 驗收日程：一驗、二驗、總驗…（模擬正式營隊，天數壓縮）
+  var rhRows = h('div', { class: 'col', style: { gap: '8px' } }), rhList = (I.rehearsals || []).map(function (r) { return Object.assign({}, r); });
+  var today = taipei().ymd;
+  var drawRh = function () {
+    clear(rhRows);
+    if (!rhList.length) rhRows.appendChild(h('div', { class: 'muted small' }, '還沒有驗收日程'));
+    rhList.forEach(function (r, i) {
+      var nm = inp(r.name, { placeholder: '例如 一驗', style: { maxWidth: '140px' } }), s0 = inp(r.start, { type: 'date', style: { maxWidth: '170px' } }), e0 = inp(r.end, { type: 'date', style: { maxWidth: '170px' } });
+      nm.addEventListener('input', function () { r.name = nm.value; });
+      s0.addEventListener('change', function () { r.start = s0.value; if (!r.end || r.end < r.start) { r.end = r.start; e0.value = r.start; } });
+      e0.addEventListener('change', function () { r.end = e0.value; });
+      var state = r.cleared ? h('span', { class: 'tag ok' }, '已清除驗收資料') : r.id && r.start <= today && today <= r.end ? h('span', { class: 'tag warn' }, '驗收中') : r.id && r.end && r.end < today ? h('span', { class: 'tag' }, '等待自動清除') : null;
+      var clr = r.id && !r.cleared && r.start <= today ? h('button', { class: 'btn sm', type: 'button', onclick: function (e) {
+        confirmBox('立即清除「' + r.name + '」的驗收資料', '驗收期間的積分、加減分、切結書會刪掉；被改到的資料、快速展延、手動公開的活動會還原成驗收前。', '清除', true).then(function (ok) {
+          if (ok) busy(e.target, function () { return A.op('camp.rehearsal.reset', { data: { id: r.id } }); }).then(function (x) { toast('已清除 ' + x.cleared + ' 筆'); A.reload().then(A.route); }, function () {});
+        });
+      } }, '立即清除') : null;
+      rhRows.appendChild(h('div', { class: 'row wrap', style: { gap: '8px', alignItems: 'center' } }, nm, s0, h('span', { class: 'muted' }, '～'), e0, state, clr,
+        h('button', { class: 'btn ghost sm', type: 'button', title: '刪除這次驗收', onclick: function () { rhList.splice(i, 1); drawRh(); } }, '✕')));
+    });
+  };
+  drawRh();
+  m.appendChild(h('div', { class: 'card col section' }, h('h2', null, '驗收日程'),
+    h('div', { class: 'hint' }, '驗收日視同營期：「營期中修改」權限、夜間模式、快速展延都和營期一樣；活動可以另外設定「驗收時開放」的時間。驗收期間產生的積分、加減分、切結書，驗收結束後（隔天）會自動清除；被改到的資料、快速展延、手動公開的活動還原成驗收前。'),
+    rhRows,
+    h('div', { class: 'row', style: { gap: '8px' } },
+      h('button', { class: 'btn', type: 'button', onclick: function () { rhList.push({ name: ['一驗', '二驗', '總驗'][rhList.length] || '', start: '', end: '' }); drawRh(); } }, '＋ 新增驗收'),
+      h('button', { class: 'btn primary', onclick: function (e) {
+        busy(e.target, function () { return A.op('camp.settings', { data: { rehearsals: rhList.map(function (r) { return { id: r.id, name: r.name, start: r.start, end: r.end }; }) } }); }).then(function () { toast('已儲存驗收日程'); A.reload().then(A.route); }, function () {});
+      } }, '儲存驗收日程'))));
 
   // 通行碼：可以自己訂，也可以按「系統產生」（不含容易看錯的 0/O、1/I/l）
   var wp = inp('', { type: 'text', placeholder: I.workerPassSet ? '輸入新的通行碼可以更換' : '至少 4 個字', autocomplete: 'off' }), kind = 'custom';
