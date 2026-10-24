@@ -1389,6 +1389,22 @@ var PkgAdmin = (function () {
       };
       /** 時間表型：每列一個時段，好幾欄；格子打 < 和左邊合併、^ 和上面合併；可以從 Excel 整塊貼上 */
       var COLORS = [{ value: '', label: '—' }, { value: 'yellow', label: '黃' }, { value: 'cyan', label: '青' }, { value: 'green', label: '綠' }, { value: 'blue', label: '藍' }, { value: 'purple', label: '紫' }, { value: 'orange', label: '橘' }, { value: 'pink', label: '粉' }, { value: 'red', label: '紅' }, { value: 'gray', label: '灰' }];
+      /** 細流卡可收合：點標題列展開／收起（收起時只看名稱、時間）；新卡、從連結點進來的、剛換模式的會展開 */
+      var ROT_OPEN = window.__rotOpen || (window.__rotOpen = {});
+      var fold = function (el, r, name, act, sub) {
+        var hd = el.firstChild, ttl = h('b', { class: 'rot-ttl' }), meta = h('span', { class: 'small muted rot-meta' }), chev = h('span', { class: 'rot-chev' }, '›');
+        var upd = function () { ttl.textContent = String(name.value || '').trim() || ((act.options[act.selectedIndex] || {}).text || '').replace(/^—$/, '') || '（未命名）'; meta.textContent = sub(); };
+        hd.insertBefore(ttl, hd.children[1]); hd.insertBefore(meta, hd.children[2]); hd.appendChild(chev);
+        hd.classList.add('rot-hd');
+        var open = !r || !r.id || ROT_OPEN[r.id] || (Q.id && Q.id === r.id);
+        el.classList.add('rot-fold'); el.classList.toggle('folded', !open);
+        hd.addEventListener('click', function (e) {
+          if (e.target.closest('button:not(.rot-chev), select, input, a')) return;
+          var f = !el.classList.contains('folded'); el.classList.toggle('folded', f); if (r && r.id) ROT_OPEN[r.id] = !f; upd();
+        });
+        name.addEventListener('input', upd); act.addEventListener('change', upd); upd();
+      };
+      var foldAll = function (f) { [].forEach.call(list.querySelectorAll('.rot-fold'), function (c) { c.classList.toggle('folded', f); }); Object.keys(ROT_OPEN).forEach(function (k) { ROT_OPEN[k] = !f; }); D.rotations.forEach(function (r) { ROT_OPEN[r.id] = !f; }); };
       var tableCard = function (r) {
         r = r || { id: '', data: { kind: 'table', cols: ['各小隊', '關主', '備註'], rows: [] } };
         var d = JSON.parse(JSON.stringify(r.data)), ro = !R.canEdit;
@@ -1503,6 +1519,7 @@ var PkgAdmin = (function () {
           ro ? null : h('div', { class: 'row' }, save, h('button', { class: 'btn ghost', type: 'button', onclick: function () { if (!r.id) { el.remove(); return; } del('rotation.delete', { id: r.id }, d.name || '活動細流'); } }, '刪除')));
         var t = track(el, function () { var v = get(); delete v.id; return v; }, save);
         if (!ro) save.parentNode.appendChild(t.status);
+        fold(el, r, name, act, function () { var rs = (get().rows || []).filter(function (x) { return x.start; }); return rs.length ? rs[0].start + (rs[rs.length - 1].end || rs[rs.length - 1].start ? '–' + (rs[rs.length - 1].end || rs[rs.length - 1].start) : '') + ' · ' + rs.length + ' 列' : ''; });
         el._t = t;
         return el;
       };
@@ -1666,6 +1683,7 @@ var PkgAdmin = (function () {
           } }, '刪除')));
         var t = track(el, function () { var v = get(); delete v.id; return v; }, save);   // 存好後才拿到的 ID 不算改動
         if (!ro) save.parentNode.appendChild(t.status);
+        fold(el, r, name, act, function () { var sl = split(slots.value), n = split(stations.value).length; return [sl.length ? sl[0] + ' 起 · ' + sl.length + ' 個時段' : '', n ? n + ' 關' : ''].filter(String).join(' · '); });
         el._t = t;
         drawPreview();
         return el;
@@ -1683,6 +1701,7 @@ var PkgAdmin = (function () {
         return { id: r.id, version: r.version, data: { kind: 'rot', activity: v.activity, name: v.name, map: v.map, stations: [], places: [], slots: st, grid: {}, len: L, turn: '' } };
       };
       var convert = function (oldEl, r2) {
+        if (r2.id) ROT_OPEN[r2.id] = true;
         var n = r2.data.kind === 'table' ? tableCard(r2) : cardOf(r2);
         oldEl.replaceWith(n);
         if (n._t) n._t.restore('"converted"');
@@ -1691,7 +1710,10 @@ var PkgAdmin = (function () {
       box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '每個活動的細流：可以是「時間表」（像賭場、晚會：每列一個時段，好幾欄分給各小隊、主持人、關主、備註…），或「跑關」（小隊輪流換關）。每一張改好按自己的「儲存」（背景上傳）。在營期流程的「連到流程／活動細流」選它，工作人員點了就會展開。時間超出營期流程排的時段會提醒。'));
       if (R.canEdit) box.appendChild(h('div', { class: 'row wrap', style: { marginBottom: '10px' } },
         h('button', { class: 'btn primary', onclick: function () { list.insertBefore(tableCard(), list.firstChild); } }, '＋ 時間表（賭場、晚會…）'),
-        h('button', { class: 'btn', onclick: function () { list.insertBefore(cardOf(), list.firstChild); } }, '＋ 跑關（小隊輪流換關）')));
+        h('button', { class: 'btn', onclick: function () { list.insertBefore(cardOf(), list.firstChild); } }, '＋ 跑關（小隊輪流換關）'),
+        h('span', { class: 'grow' }),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { foldAll(false); } }, '全部展開'),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { foldAll(true); } }, '全部收合')));
       box.appendChild(list);
       D.rotations.forEach(function (r) { list.appendChild(hl(r.data.kind === 'table' ? tableCard(r) : cardOf(r), r.id)); });
       if (!D.rotations.length && !R.canEdit) list.appendChild(h('div', { class: 'card empty' }, '還沒有活動細流'));

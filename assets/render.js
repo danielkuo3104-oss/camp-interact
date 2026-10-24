@@ -598,6 +598,13 @@ var Front = (function () {
           }
           if (exs.length && day === today) extBar.appendChild(h('div', { class: 'ext-log small' }, '今日展延：' + exs.map(function (x) { return x.at + '「' + x.target + '」+' + x.minutes + ' 分（' + x.by + '）'; }).join('；')));
         }
+        // 完整細流上方切換用：所有活動細流，照流程裡第一次連到它的時間排，沒連到的放最後
+        function rotList() {
+          var at = {};
+          flows.forEach(function (f) { (f.items || []).forEach(function (it) { var m2 = String(it.go || '').match(/^rot:(.+)$/); if (m2 && !it.gone && (!at[m2[1]] || (it.date + it.time) < at[m2[1]])) at[m2[1]] = (it.date || '') + ' ' + (it.time || ''); }); });
+          return Object.keys(d.rots || {}).map(function (id) { var w = at[id] || ''; return { id: id, date: w.split(' ')[0], k: w, rot: d.rots[id] }; })
+            .sort(function (a, b) { return (a.k ? 0 : 1) - (b.k ? 0 : 1) || a.k.localeCompare(b.k); });
+        }
         // 連到別的流程：切過去；連到活動細流：另外開一個畫面看（時間表、跑關順序、地圖）
         function goLink(go, date, done) {
           var m = String(go || '').match(/^(flow|rot):(.+)$/);
@@ -608,7 +615,7 @@ var Front = (function () {
           }
           var r = (d.rots || {})[m[2]];
           if (!r) return null;
-          return h('button', { class: 'btn sm go-btn', type: 'button', onclick: function () { rotPage(r, date); } }, '→ 活動細流：' + r.name);
+          return h('button', { class: 'btn sm go-btn', type: 'button', onclick: function () { rotPage(r, date, rotList(), m[2]); } }, '→ 活動細流：' + r.name);
         }
         flows.forEach(function (f) { var c = h('span', { class: 'chip', 'data-id': f.id }, f.name); c.addEventListener('click', function () { show(f, true); }); tabs.appendChild(c); });
         wrap.appendChild(flows.length > 1 ? tabs : h('div'));

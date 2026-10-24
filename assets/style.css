@@ -602,3 +602,11 @@ table.dt td.dt-pl .clamp.open { -webkit-line-clamp: unset; display: block; }
 /* 可換行的文字（Shift+Enter）：編輯格自動長高，前台保留換行 */
 textarea.g-ta { resize: none; overflow: hidden; min-height: 32px; line-height: 1.4; display: block; }
 table.rt td.rt-note, .sched .it .small.muted, .contact .who small, .job-body { white-space: pre-line; }
+
+/* 後台活動細流卡：可收合 */
+.rot-hd { cursor: pointer; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rot-hd .rot-ttl { font-size: 15px; }
+.rot-chev { color: var(--text-3); font-size: 20px; line-height: 1; transform: rotate(90deg); transition: transform .15s; }
+.rot-fold.folded .rot-chev { transform: none; }
+.rot-fold.folded > :not(:first-child) { display: none; }
+.rot-fold.folded { gap: 0; }
