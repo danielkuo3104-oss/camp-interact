@@ -231,7 +231,7 @@ var PkgAdmin = (function () {
 
   var TABS = {
     people: [['workers', '工作人員'], ['assign', '工作分配'], ['setup', '股別與活動'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['config', '設定']],
-    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['rotations', '活動細流'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
+    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['cards', '活動卡片'], ['rotations', '活動細流'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
     studentflow: [['items', '學員行程'], ['pending', '待處理變更'], ['config', '設定']],
     emergency: [['config', '聯絡與夜間設定'], ['flow', '處理流程圖'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
     courses: [['list', '課程'], ['config', '設定']],
@@ -1358,6 +1358,224 @@ var PkgAdmin = (function () {
       });
       if (miss.length && R.canEdit) box.insertBefore(h('div', { class: 'fb-notice row wrap', style: { marginBottom: '10px' } }, h('span', { class: 'grow' }, '人員與分隊的活動清單還有 ' + miss.length + ' 個不在這裡：' + miss.join('、')),
         h('button', { class: 'btn sm', onclick: function () { miss.forEach(function (n) { var r = G.newRow(''); r.ed.name.set(n); r.t.check(); G.changed(r); }); miss = []; toast('已加到表格下面（學員端先看不到），記得按「儲存變更」'); } }, '加到表格')), G.bar);
+    },
+    /** 活動卡片：每個活動的封面與點開後的樣子。左邊編輯（背景、元件），右邊即時預覽封面、現在主題、點開後 */
+    cards: function (box, D) {
+      var acts = D.activities;
+      if (!acts.length) { box.appendChild(h('div', { class: 'card empty' }, '還沒有活動：先到「活動＆課程」新增活動')); return; }
+      var a = acts.filter(function (x) { return x.id === Q.act; })[0] || acts[0];
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '學員端「活動列表」每個活動一張卡片，點開看詳細；學員行程連到活動的項目、現在主題也會打開這張卡片。標題和時間固定在最上面，其他元件可以拖曳（⠿）排順序、在封面和點開後之間移動，也可以置左／置中／置右。點右邊預覽裡的元件可以直接跳到那個元件。'));
+      box.appendChild(h('div', { class: 'chips', style: { marginBottom: '12px' } }, acts.map(function (x) {
+        return h('a', { class: 'chip' + (x.id === a.id ? ' on' : ''), href: '#data/schedule/cards?act=' + x.id, style: { textDecoration: 'none' } }, (x.data.card ? '🎨 ' : '') + x.data.name);
+      })));
+      // 預覽用的資料：時間、地點看總流程，資源包看學員端連到這個活動的頁面，關卡順序用第一個小隊示範
+      var flows = D.flows || [], mainF = flows.filter(function (f) { return f.data.kind === 'main'; })[0] || flows.filter(function (f) { return f.data.kind !== 'rehearsal'; })[0];
+      var mm = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+      var hmOf = function (n) { n = ((n % 1440) + 1440) % 1440; return ('0' + Math.floor(n / 60)).slice(-2) + ':' + ('0' + n % 60).slice(-2); };
+      var its = D.items.filter(function (it) { return mainF && it.data.flow === mainF.id && it.data.activity === a.id && !it.data.gone; });
+      var pg = (D.studentPages || []).filter(function (p) { return p.activity === a.id; })[0];
+      var sq = (D.squads || [])[0], myrot = [];
+      if (sq) (D.rotations || []).filter(function (r) { return r.data.activity === a.id && r.data.kind !== 'table'; }).forEach(function (r) {
+        var x = r.data, row = (x.grid || {})[String(sq.no)] || [];
+        (x.slots || []).forEach(function (t, i) { var st = row[i]; if (st !== '' && st != null && (x.stations || [])[st]) myrot.push({ t: String(t), st: x.stations[st] }); });
+      });
+      var info = { id: a.id, name: a.data.name, summary: a.data.summary || '', page: pg ? pg.id : '',
+        times: its.map(function (it) { var s = mm(it.data.time), du = Number(it.data.dur) || 0; return { date: it.data.date, time: it.data.time, end: s !== null && du ? hmOf(s + du) : '' }; }),
+        place: ((its.filter(function (it) { return String(it.data.place || '').trim(); })[0] || {}).data || {}).place || '', myrot: myrot };
+      var env = { pages: (D.studentPages || []).map(function (p) { return { id: p.id, title: p.title, activity: p.activity }; }), side: 'student', me: { name: '王小明', squad: sq ? sq.no : 1 }, preview: true,
+        nav: function () { toast('（預覽）學員按了會到活動資源頁'); } };
+      var C = JSON.parse(JSON.stringify(Front.actCardOf(Object.assign({}, info, { card: a.data.card || null }))));
+      C.bg = C.bg || { type: 'grad' }; C.cover = C.cover || []; C.detail = C.detail || [];
+      var SEL = { list: '', i: -1 };
+      var ed = h('div', { class: 'card' }), prev = h('div', { class: 'acd-prev' });
+      var saveBtn = h('button', { class: 'btn' }, '儲存卡片');
+      box.appendChild(h('div', { class: 'acd' }, ed, prev));
+
+      var paint = function () {
+        clear(prev);
+        var inf = Object.assign({}, info, { card: C });
+        var pick = function (node, list) {
+          node.querySelectorAll('.ac-el.ed').forEach(function (x) {
+            var i = Number(x.getAttribute('data-i'));
+            if (SEL.list === list && SEL.i === i) x.classList.add('sel');
+            x.addEventListener('click', function (e) { e.preventDefault(); SEL = { list: list, i: i }; draw(); var t = ed.querySelector('.acd-el.sel'); if (t) t.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+          });
+          return node;
+        };
+        prev.appendChild(h('div', { class: 'small muted' }, '封面（活動列表）'));
+        prev.appendChild(pick(Front.actCard(inf, env, 'cover', { edit: true, card: C }), 'cover'));
+        if (C.theme !== false) { prev.appendChild(h('div', { class: 'small muted' }, '現在主題（首頁）')); prev.appendChild(pick(Front.actCard(inf, env, 'theme', { edit: true, card: C, label: '現在主題 · ' + ((info.times[0] || {}).time || '09:00') }), 'cover')); }
+        prev.appendChild(h('div', { class: 'small muted' }, '點開後'));
+        prev.appendChild(h('div', { class: 'ac-sheet-in' }, pick(Front.actCard(inf, env, 'detail', { edit: true, card: C }), 'detail')));
+        if (!info.times.length) prev.appendChild(h('div', { class: 'hint' }, '這個活動還沒排進總流程，時間先空著；學員端會用學員行程或流程裡的時間。'));
+      };
+
+      var segBtns = function (opts, val, onPick) {
+        return h('div', { class: 'seg' }, opts.map(function (o) { return h('button', { type: 'button', class: 'seg-b' + (o[0] === val ? ' on' : ''), onclick: function () { onPick(o[0]); draw(); } }, o[1]); }));
+      };
+      var range = function (min, max, step, val, fn) { var r = h('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(val), style: { width: '160px' } }); r.addEventListener('input', function () { fn(Number(r.value)); paint(); }); return r; };
+      var note = h('div', { class: 'small', style: { color: 'var(--warn)' } });
+
+      function bgSec() {
+        var b = C.bg, sec = h('div', { class: 'acd-sec' }, h('h3', null, '背景'));
+        sec.appendChild(segBtns([['grad', '漸層'], ['img', '圖片']], b.type === 'img' ? 'img' : 'grad', function (v) { if (v === 'img') { b.type = 'img'; b.mask = b.mask || 'dark'; if (b.mk == null) b.mk = 0.45; b.pos = b.pos || { x: 50, y: 50, z: 1 }; } else b.type = 'grad'; }));
+        if (b.type !== 'img') {
+          var gs = h('div', { class: 'acd-grads with-names' });
+          gs.appendChild(h('button', { type: 'button', class: 'acd-grad' + (b.g == null ? ' on' : ''), title: '依活動自動挑一個', style: { background: 'repeating-linear-gradient(45deg, var(--surface-2) 0 6px, var(--line) 6px 12px)' }, onclick: function () { delete b.g; draw(); } }, h('span', null, '自動')));
+          Front.ACT_GRADS.forEach(function (g, i) { gs.appendChild(h('button', { type: 'button', class: 'acd-grad' + (b.g === i ? ' on' : ''), title: g[0], style: { background: 'linear-gradient(135deg, ' + g[1] + ', ' + g[2] + ')' }, onclick: function () { b.g = i; draw(); } }, h('span', null, g[0]))); });
+          gs.appendChild(h('button', { type: 'button', class: 'acd-grad' + (b.g === -1 ? ' on' : ''), title: '自訂顏色', style: { background: 'linear-gradient(135deg, ' + (b.a || '#4a5d6a') + ', ' + (b.b || '#2e3b44') + ')' }, onclick: function () { b.g = -1; b.a = b.a || '#4a5d6a'; b.b = b.b || '#2e3b44'; if (b.ang == null) b.ang = 135; draw(); } }, h('span', null, '自訂')));
+          sec.appendChild(gs);
+          if (b.g === -1) {
+            var ca = h('input', { type: 'color', value: b.a }), cb = h('input', { type: 'color', value: b.b });
+            ca.addEventListener('input', function () { b.a = ca.value; paint(); }); cb.addEventListener('input', function () { b.b = cb.value; paint(); });
+            sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '從'), ca, h('span', { class: 'small' }, '到'), cb, h('span', { class: 'small' }, '角度'), range(0, 360, 5, b.ang, function (v) { b.ang = v; })));
+          }
+          sec.appendChild(h('div', { class: 'hint' }, '預設都是低彩度的沉穩色；「自動」會依活動挑不同的顏色，整排看起來不會都一樣。'));
+          return sec;
+        }
+        var pick = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
+        pick.addEventListener('change', function () { if (pick.files[0]) upload(pick.files[0], note).then(function (r) { b.img = r.img || r.url; b.pos = { x: 50, y: 50, z: 1 }; draw(); }, fail); });
+        var url = inp(b.img || '', { placeholder: '或貼圖片網址 https://（雲端硬碟分享連結也可以）' });
+        url.addEventListener('change', function () { var v = url.value.trim(), m = v.match(/^https:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/); b.img = m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1600' : v; draw(); });
+        sec.appendChild(h('div', { class: 'row wrap' }, pick, h('button', { class: 'btn sm', type: 'button', onclick: function () { pick.click(); } }, b.img ? '換圖片' : '上傳圖片'), h('div', { class: 'grow', style: { minWidth: '220px' } }, url)));
+        sec.appendChild(note);
+        if (b.img) {
+          b.pos = b.pos || { x: 50, y: 50, z: 1 };
+          var dot = h('span', { class: 'acd-dot', style: { left: b.pos.x + '%', top: b.pos.y + '%' } });
+          var img = h('img', { src: b.img, alt: '' }), stage = h('div', { class: 'acd-stage' }, img, dot);
+          img.addEventListener('load', function () { if (img.naturalWidth) { stage.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; stage.style.maxWidth = Math.min(420, 260 * img.naturalWidth / img.naturalHeight) + 'px'; } });
+          var setPos = function (e) { var r = stage.getBoundingClientRect(); b.pos.x = Math.round(Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100))); b.pos.y = Math.round(Math.max(0, Math.min(100, (e.clientY - r.top) / r.height * 100))); dot.style.left = b.pos.x + '%'; dot.style.top = b.pos.y + '%'; paint(); };
+          var down = false;
+          stage.addEventListener('pointerdown', function (e) { down = true; stage.setPointerCapture(e.pointerId); setPos(e); });
+          stage.addEventListener('pointermove', function (e) { if (down) setPos(e); });
+          stage.addEventListener('pointerup', function () { down = false; ed.dispatchEvent(new Event('change', { bubbles: true })); });
+          sec.appendChild(h('div', { class: 'small muted' }, '點圖片選要對準的位置（白點），卡片會以這一點為中心裁切'));
+          sec.appendChild(stage);
+          sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '放大'), range(1, 3, 0.05, b.pos.z || 1, function (v) { b.pos.z = v; })));
+          sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '遮罩'), segBtns([['dark', '霧黑'], ['light', '霧白'], ['none', '不加']], b.mask || 'dark', function (v) { b.mask = v; })));
+          if (b.mask !== 'none') sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '濃度'), range(0, 0.9, 0.05, b.mk == null ? 0.45 : b.mk, function (v) { b.mk = v; })));
+          sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '霧化'), range(0, 10, 1, b.bl || 0, function (v) { b.bl = v; })));
+          sec.appendChild(h('div', { class: 'hint' }, '文字顏色會跟著遮罩自動換（霧黑用白字、霧白用深色字）；要固定顏色在下面「文字顏色」改。'));
+        }
+        return sec;
+      }
+
+      function lookSec() {
+        var sec = h('div', { class: 'acd-sec' }, h('h3', null, '樣式'));
+        var fgOn = !!C.fg, fc = h('input', { type: 'color', value: C.fg || '#ffffff' });
+        fc.addEventListener('input', function () { C.fg = fc.value; paint(); });
+        sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small', style: { width: '64px' } }, '文字顏色'), segBtns([['', '自動'], ['set', '指定']], fgOn ? 'set' : '', function (v) { C.fg = v ? (C.fg || '#ffffff') : ''; }), fgOn ? fc : null));
+        sec.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small', style: { width: '64px' } }, '封面高度'), segBtns([['sm', '小'], ['md', '中'], ['lg', '大']], C.h || 'md', function (v) { C.h = v; })));
+        var th = h('input', { type: 'checkbox', checked: C.theme !== false });
+        th.addEventListener('change', function () { C.theme = th.checked; paint(); });
+        sec.appendChild(h('label', { class: 'check' }, th, h('span', null, '現在主題用這張卡片的樣式', h('div', { class: 'hint' }, '關掉的話，進行到這個活動時首頁「現在主題」用原本的樣式。'))));
+        return sec;
+      }
+
+      // 元件：拖曳排序（也可以拖到另一個清單）
+      var DRAG = null;
+      function elRow(list, i) {
+        var e = C[list][i], sel = SEL.list === list && SEL.i === i;
+        var handle = h('span', { class: 'acd-h', title: '拖曳排順序' }, '⠿');
+        var al = h('div', { class: 'acd-al' }, [['l', '左'], ['c', '中'], ['r', '右']].map(function (x) { return h('button', { type: 'button', class: (e.al || 'l') === x[0] ? 'on' : '', title: '置' + x[1], onclick: function () { e.al = x[0]; draw(); } }, x[1]); }));
+        var mv = function (d) { var arr = C[list], j = i + d; if (j < 0 || j >= arr.length) return; arr.splice(j, 0, arr.splice(i, 1)[0]); SEL = { list: list, i: j }; draw(); };
+        var other = list === 'cover' ? 'detail' : 'cover';
+        var row = h('div', { class: 'acd-el' + (sel ? ' sel' : '') },
+          h('div', { class: 'acd-eh' }, handle, h('b', { class: 'grow small', style: { cursor: 'pointer' }, onclick: function () { SEL = sel ? { list: '', i: -1 } : { list: list, i: i }; draw(); } }, Front.ACT_ELS[e.t] || e.t, elHint(e)), al,
+            h('button', { type: 'button', class: 'btn sm ghost', title: '上移', onclick: function () { mv(-1); } }, '↑'), h('button', { type: 'button', class: 'btn sm ghost', title: '下移', onclick: function () { mv(1); } }, '↓'),
+            h('button', { type: 'button', class: 'btn sm ghost', title: '移到' + (other === 'cover' ? '封面' : '點開後'), onclick: function () { C[other].push(C[list].splice(i, 1)[0]); SEL = { list: other, i: C[other].length - 1 }; draw(); } }, other === 'cover' ? '→封面' : '→點開'),
+            h('button', { type: 'button', class: 'btn sm ghost', style: { color: 'var(--bad)' }, title: '刪除', onclick: function () { C[list].splice(i, 1); SEL = { list: '', i: -1 }; draw(); } }, '✕')));
+        if (sel) row.appendChild(elBody(e));
+        handle.addEventListener('pointerdown', function () { row.draggable = true; });
+        row.addEventListener('dragstart', function (ev) { DRAG = { list: list, i: i }; row.classList.add('drag'); try { ev.dataTransfer.setData('text/plain', 'el'); ev.dataTransfer.effectAllowed = 'move'; } catch (x) {} });
+        row.addEventListener('dragend', function () { row.draggable = false; row.classList.remove('drag'); DRAG = null; });
+        return row;
+      }
+      function elHint(e) {
+        var t = e.t === 'sub' ? e.text : e.t === 'text' ? String(e.md || '').split('\n')[0] : e.t === 'button' ? (e.text || { res: '活動資源', map: '地圖', url: '前往', page: '前往' }[e.go || 'res']) : '';
+        return t ? h('span', { class: 'muted', style: { fontWeight: 400 } }, '　' + String(t).slice(0, 24)) : null;
+      }
+      function elBody(e) {
+        var b = h('div', { class: 'acd-eb' });
+        var live = function (el, fn) { el.addEventListener('input', function () { fn(el.value); paint(); }); return el; };
+        if (e.t === 'text') {
+          var ta = area(e.md || '', { rows: 7, placeholder: '活動說明、規則、注意事項…（上面的按鈕可以加粗、換色、條列、置中、卡片、圖片、地點、表格）' });
+          live(ta, function (v) { e.md = v; });
+          b.appendChild(RT.toolbar(ta, { vars: Front.ACT_VARS }));
+          b.appendChild(ta);
+        } else if (e.t === 'sub') {
+          b.appendChild(live(inp(e.text || '', { placeholder: '例如：清大校園探險趣', maxlength: '80' }), function (v) { e.text = v; }));
+        } else if (e.t === 'button') {
+          var go = sel([{ value: 'res', label: '活動資源包（連到這個活動的頁面）' }, { value: 'map', label: '地圖（Google 地圖）' }, { value: 'url', label: '網址' }, { value: 'page', label: '學員端其他頁面' }], e.go || 'res');
+          go.addEventListener('change', function () { e.go = go.value; draw(); });
+          b.appendChild(h('div', { class: 'grid2' }, field('按鈕文字', live(inp(e.text || '', { placeholder: { res: '活動資源', map: '地圖', url: '前往', page: '前往' }[e.go || 'res'], maxlength: '30' }), function (v) { e.text = v; })), field('按了之後', go)));
+          if ((e.go || 'res') === 'res') b.appendChild(h('div', { class: 'hint' }, info.page ? '會打開學員端連到這個活動的頁面（活動資源包）。' : '學員端還沒有頁面連到這個活動：到「前台編輯 → 學員端」新增頁面，在頁面設定裡連到這個活動。沒有的話學員端不顯示這個按鈕。'));
+          if (e.go === 'map') b.appendChild(field('地點', live(inp(e.q || '', { placeholder: info.place ? '不填就用流程裡的地點：' + info.place : '地點名稱或地址' }), function (v) { e.q = v; })));
+          if (e.go === 'url') b.appendChild(field('網址', live(inp(e.url || '', { placeholder: 'https://' }), function (v) { e.url = v.trim(); })));
+          if (e.go === 'page') { var ps = sel([{ value: '', label: '選頁面' }].concat(env.pages.map(function (p) { return { value: p.id, label: p.title }; })), e.page || ''); ps.addEventListener('change', function () { e.page = ps.value; paint(); }); b.appendChild(field('頁面', ps)); }
+        } else if (e.t === 'image') {
+          var pk = h('input', { type: 'file', accept: 'image/*', class: 'hidden' }), nt = h('div', { class: 'small', style: { color: 'var(--warn)' } });
+          pk.addEventListener('change', function () { if (pk.files[0]) upload(pk.files[0], nt).then(function (r) { e.img = r.img || r.url; draw(); }, fail); });
+          b.appendChild(h('div', { class: 'row wrap' }, pk, h('button', { class: 'btn sm', type: 'button', onclick: function () { pk.click(); } }, e.img ? '換圖片' : '上傳圖片'), h('div', { class: 'grow', style: { minWidth: '200px' } }, live(inp(e.img || '', { placeholder: '或貼圖片網址 https://' }), function (v) { e.img = v.trim(); }))), nt);
+          b.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '寬度'), range(20, 100, 5, e.r || 100, function (v) { e.r = v; })));
+        } else if (e.t === 'spacer') {
+          b.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '高度'), range(4, 80, 2, e.n || 16, function (v) { e.n = v; })));
+        } else {
+          b.appendChild(h('div', { class: 'hint' }, {
+            summary: '顯示「活動＆課程」裡填的簡介。', when: '顯示第一個時段（日期＋時間）。', sessions: '列出所有時段：驗收中用驗收的學員行程，平常用學員行程；學員行程沒有就看總流程。',
+            place: '顯示總流程裡這個活動的場地。', myrot: '學員看到自己小隊在「活動細流」跑關的順序；這個活動沒有跑關細流就不顯示。預覽用第一小隊示範。', divider: '一條細線。'
+          }[e.t] || ''));
+        }
+        return b;
+      }
+      function listBox(list, title) {
+        var lb = h('div', { class: 'acd-list' });
+        lb.appendChild(h('div', { class: 'acd-pin' }, '📌 ' + (list === 'cover' ? '標題（時間在右下）' : '標題＋時間') + '：固定在最上面'));
+        C[list].forEach(function (e, i) { lb.appendChild(elRow(list, i)); });
+        if (!C[list].length) lb.appendChild(h('div', { class: 'small muted', style: { padding: '6px 8px' } }, '還沒有元件'));
+        var at = function (ev) { var rows = [].slice.call(lb.querySelectorAll('.acd-el')); for (var k = 0; k < rows.length; k++) { var r = rows[k].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) return k; } return rows.length; };
+        lb.addEventListener('dragover', function (ev) { if (!DRAG) return; ev.preventDefault(); lb.classList.add('over'); });
+        lb.addEventListener('dragleave', function () { lb.classList.remove('over'); });
+        lb.addEventListener('drop', function (ev) {
+          ev.preventDefault(); lb.classList.remove('over');
+          if (!DRAG) return;
+          var k = at(ev), it = C[DRAG.list].splice(DRAG.i, 1)[0];
+          if (DRAG.list === list && DRAG.i < k) k--;
+          C[list].splice(k, 0, it);
+          SEL = { list: list, i: k }; DRAG = null; draw();
+        });
+        var add = sel([{ value: '', label: '＋ 加元件…' }].concat(Object.keys(Front.ACT_ELS).map(function (k) { return { value: k, label: Front.ACT_ELS[k] }; })), '', { style: { width: 'auto' } });
+        add.addEventListener('change', function () {
+          if (!add.value) return;
+          var n = { t: add.value, al: 'l' };
+          if (n.t === 'button') { n.go = 'res'; n.al = 'c'; }
+          if (n.t === 'text') n.md = '';
+          C[list].push(n); SEL = { list: list, i: C[list].length - 1 }; draw();
+        });
+        return h('div', { class: 'acd-sec' }, h('div', { class: 'row' }, h('h3', { class: 'grow' }, title), add), lb);
+      }
+
+      function draw() {
+        var y = window.scrollY;
+        clear(ed);
+        ed.appendChild(h('div', { class: 'row wrap', style: { marginBottom: '10px' } }, h('h2', { class: 'grow' }, a.data.name), a.data.card ? h('span', { class: 'tag ok' }, '已自訂') : h('span', { class: 'tag' }, '預設樣式')));
+        ed.appendChild(bgSec());
+        ed.appendChild(lookSec());
+        ed.appendChild(listBox('cover', '封面'));
+        ed.appendChild(listBox('detail', '點開後'));
+        if (R.canEdit) ed.appendChild(h('div', { class: 'row wrap', style: { marginTop: '16px' } }, saveBtn,
+          a.data.card ? h('button', { class: 'btn ghost', onclick: function (ev) { confirmBox('恢復預設樣式', '「' + a.data.name + '」的卡片會回到預設的漸層和內容，你做的設定會不見。', '恢復預設').then(function (ok) { if (ok) busy(ev.target, function () { return run('activity.card', { id: a.id, reset: true }, { ver: a.version, msg: '已恢復預設' }); }); }); } }, '恢復預設') : null,
+          h('span', { class: 'grow' }), T.status));
+        paint();
+        window.scrollTo(0, y);
+        T.check();
+      }
+      saveBtn.addEventListener('click', function () {
+        var card = JSON.parse(JSON.stringify(C));
+        busy(saveBtn, function () { return run('activity.card', { id: a.id, card: card }, { ver: a.version, msg: '已儲存「' + a.data.name + '」的卡片' }); }).then(null, function () {});
+      });
+      var T = track(ed, function () { return C; }, saveBtn);
+      draw();
     },
     rotations: function (box, D) {
       // 直接在畫面上改，每個跑關一張卡、按「儲存」背景上傳；關卡、時段用空白分隔
