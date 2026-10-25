@@ -19,12 +19,14 @@
       <span class="chip on" data-tab="login" role="tab" tabindex="0">登入</span>
       <span class="chip" data-tab="join" role="tab" tabindex="0">用邀請碼加入</span>
     </div>
+    <div id="invite-note" class="fb-notice hidden">你收到營隊的協作邀請：登入或建立帳號後會自動加入。</div>
     <div id="msg" class="err"></div>
     <form id="login" class="col" autocomplete="on">
       <label class="field"><span>信箱</span><input class="input" id="email" type="email" autocomplete="username" required></label>
       <label class="field"><span>密碼</span><input class="input" id="pw" type="password" autocomplete="current-password" required></label>
       <label class="check"><input type="checkbox" id="remember"><span>保持登入（30 天）</span></label>
       <button class="btn primary" type="submit">登入</button>
+      <button class="btn ghost sm" type="button" id="forgot">忘記密碼？</button>
       <p class="hint" style="margin:0">這裡是編輯者（籌辦團隊）的入口。學員請從報名系統的學員專區進入；工作人員請用籌辦團隊給的工作人員連結。</p>
     </form>
     <form id="join" class="col hidden" autocomplete="on">
@@ -47,7 +49,20 @@ homeName('管理', '');
   if (param('msg')) $('#msg').textContent = param('msg');
   IA.token = store('ia_token');
   IA.onAuth = function () { store('ia_token', null); IA.token = null; };
-  if (IA.token) api('whoami').then(function (u) { if (u && u.email) location.replace(next); }, function () {});
+  // 邀請連結（index.html?invite=代碼）：已登入直接加入；沒登入的人登入或建立帳號後自動加入
+  var invite = String(param('invite') || '').trim().toUpperCase();
+  var redeem = function () {
+    return op('invite.redeem', { data: { code: invite } }).then(function (r) { location.replace('admin.html?c=' + encodeURIComponent(r.campId)); },
+      function (err) { $('#msg').textContent = err.message; invite = ''; });
+  };
+  if (invite) {
+    $('#code').value = invite;
+    $('#code').closest('label').classList.add('hidden');
+    $('#join .hint').textContent = '你收到營隊的協作邀請。還沒有帳號就在這裡建立；已經有帳號請切到「登入」，登入後會自動加入。';
+    $('[data-tab="join"]').textContent = '建立帳號並加入';
+    $('#invite-note').classList.remove('hidden');
+  }
+  if (IA.token) api('whoami').then(function (u) { if (u && u.email) { if (invite) redeem(); else location.replace(next); } }, function () {});
   $all('[data-tab]').forEach(function (t) {
     var go = function () {
       $all('[data-tab]').forEach(function (x) { x.classList.toggle('on', x === t); });
@@ -64,8 +79,23 @@ homeName('管理', '');
     $('#msg').textContent = '';
     busy(btn, function () { return api('login', $('#email').value, $('#pw').value, $('#remember').checked); }).then(function (r) {
       store('ia_token', r.token, $('#remember').checked);
-      location.replace(next);
+      if (r.mustChange) { try { sessionStorage.setItem('ia_must_pw', '1'); } catch (e) {} }
+      IA.token = r.token;
+      if (invite) redeem(); else location.replace(next);
     }, function (err) { $('#msg').textContent = err.message; });
+  });
+  // 忘記密碼：臨時密碼寄到帳號的信箱
+  $('#forgot').addEventListener('click', function () {
+    var em = inp($('#email').value, { type: 'email', autocomplete: 'username' });
+    modal({ title: '忘記密碼', body: h('div', { class: 'col' }, field('帳號的信箱', em), h('div', { class: 'hint' }, '會寄一組臨時密碼到這個信箱，1 小時內有效。用臨時密碼登入後，系統會請你設定新密碼。')),
+      actions: [{ text: '取消' }, { text: '寄出臨時密碼', cls: 'primary', onClick: function () {
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em.value.trim())) { toast('請填正確的信箱', true); return false; }
+        return api('forgotPassword', em.value.trim()).then(function (r) {
+          $('#email').value = em.value.trim(); $('#pw').value = '';
+          $('#msg').textContent = '';
+          toast('如果這個信箱有帳號，臨時密碼已經寄出（' + r.minutes + ' 分鐘內有效），也看一下垃圾郵件');
+        });
+      } }] });
   });
   $('#join').addEventListener('submit', function (e) {
     e.preventDefault();
