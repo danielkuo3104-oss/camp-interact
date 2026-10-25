@@ -730,3 +730,8 @@ table.rt td.rt-note, .sched .it .small.muted, .contact .who small, .job-body { w
 .ac-el.ed { outline: 1px dashed transparent; border-radius: 6px; }
 .ac-el.ed.sel { outline-color: currentColor; outline-offset: 3px; }
 @media (max-width: 1100px) { .acd { grid-template-columns: minmax(0, 1fr); } .acd-prev { position: static; } }
+
+/* 時間、地點的線條小圖示 */
+.mi { display: inline-flex; align-items: flex-start; gap: 6px; }
+.mi > .ico { flex: none; margin-top: .22em; opacity: .75; }
+.rt-pin { vertical-align: -2px; margin-right: 5px; opacity: .75; }
