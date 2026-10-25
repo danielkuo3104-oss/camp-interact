@@ -26,13 +26,13 @@ var Editor = (function () {
       if (E.q.page && E.pages[E.q.page]) E.sel = E.q.page;
       render();
       if (E.q.block) setTimeout(function () { var el = $('[data-edit-bid="' + E.q.block + '"]'); if (el) { el.classList.add('hit'); el.scrollIntoView({ block: 'center' }); } }, 80);
-    }, function (e) { clear(m).appendChild(h('div', { class: 'card' }, h('h2', null, '無法開啟編輯器'), h('p', null, e.message))); });
+    }, function (e) { if (!E || E.m !== m) return; clear(m).appendChild(h('div', { class: 'card' }, h('h2', null, '無法開啟編輯器'), h('p', null, e.message))); });   // 已經切到別頁就不要蓋掉
     E.timers.push(setInterval(ping, 60000));
     E.timers.push(setInterval(watchLock, 30000));
     A.leaving = leave;
     window.addEventListener('beforeunload', beacon);
     // 活動 Package 的頁面可以連到「活動」：先讀活動清單
-    if (A.pool.some(function (p) { return p.pkg === 'schedule'; })) api('getPkgAdmin', A.camp, 'schedule').then(function (r) { E.acts = r.data.activities || []; }, function () {});
+    if (A.pool.some(function (p) { return p.pkg === 'schedule'; })) api('getPkgAdmin', A.camp, 'schedule').then(function (r) { if (E && E.m === m) E.acts = r.data.activities || []; }, function () {});
   }
 
   function stop() {
@@ -75,6 +75,7 @@ var Editor = (function () {
 
   /** 預覽用：草稿快照裡的 Package 發布資料（例如學員行程） */
   function refreshPub() {
+    if (!E) return;   // 載入途中已經離開編輯器
     return api('frontBoot', A.camp, E.side, 'draft').then(function (b) { if (E && b.snapshot) { E.pkgPub = b.snapshot.packages || {}; E.me = b.me; } }, function () {});
   }
 

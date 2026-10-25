@@ -26,8 +26,10 @@
   }
 
   $('#redeem').addEventListener('click', function () {
-    askText('輸入邀請碼', '邀請碼', '', { placeholder: 'XXXX-XXXX', hint: '邀請碼只能使用一次；新的邀請碼產生後，舊的就失效。' }).then(function (code) {
+    askText('輸入邀請碼', '邀請碼或邀請連結', '', { placeholder: 'XXXX-XXXX', hint: '邀請碼只能使用一次；新的邀請碼產生後，舊的就失效。' }).then(function (code) {
       if (!code) return;
+      var m = code.match(/[?&]invite=([^&#\s]+)/);   // 貼整個邀請連結也可以
+      if (m) code = decodeURIComponent(m[1]);
       op('invite.redeem', { data: { code: code.trim().toUpperCase() } }).then(function (r) { toast('已加入'); location.href = 'admin.html?c=' + encodeURIComponent(r.campId); }, fail);
     });
   });

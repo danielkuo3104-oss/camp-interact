@@ -247,8 +247,8 @@
     if (!c || !/^\d\d:\d\d$/.test(c.nightStart || '') || !/^\d\d:\d\d$/.test(c.nightEnd || '') || c.nightStart === c.nightEnd) return false;
     var tp = taipei(), t = tp.hm;
     if (!(c.nightStart < c.nightEnd ? (t >= c.nightStart && t < c.nightEnd) : (t >= c.nightStart || t < c.nightEnd))) return false;
-    // 只在營期內的晚上：凌晨（夜間結束前）算前一天晚上（已經確定在夜間時段內）
-    if (c.campStart && c.campEnd) { var nd = t < c.nightEnd ? taipei(new Date(nowDate().getTime() - 86400000)).ymd : tp.ymd; if (nd < c.campStart || nd >= c.campEnd) return false; }
+    // 只在營期內的晚上：凌晨（夜間結束前）算前一天晚上
+    if (c.campStart && c.campEnd) { var nd = t < c.nightEnd && c.nightStart > c.nightEnd ? taipei(new Date(nowDate().getTime() - 86400000)).ymd : tp.ymd; if (nd < c.campStart || nd >= c.campEnd) return false; }
     return true;
   }
 

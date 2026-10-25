@@ -258,7 +258,7 @@ A.views.members = function (m) {
     var bar = h('div', { class: 'row wrap', style: { marginBottom: '12px' } });
     if (A.isAdmin()) bar.appendChild(h('button', { class: 'btn primary', onclick: function () { addMember(r); } }, '加入成員'));
     if (I.isRoot) bar.appendChild(h('button', { class: 'btn', onclick: function () { pkgGrant(r); } }, '授權活動 Package'));
-    if (A.isManager() || Object.keys(I.pkgPerms || {}).length) bar.appendChild(h('button', { class: 'btn', onclick: function () { makeInvite(r); } }, '產生邀請碼'));
+    if (A.isManager() || Object.keys(I.pkgPerms || {}).length) bar.appendChild(h('button', { class: 'btn', onclick: function () { makeInvite(r); } }, '產生邀請連結'));
     if (A.isAdmin()) bar.appendChild(h('button', { class: 'btn', onclick: function () {
       confirmBox('關閉全部協作者', '營期中收斂權限：一次撤銷所有「協作者」，只留專案管理員與協作管理員。之後要再加入需要新的邀請碼。', '全部關閉', true).then(function (ok) {
         if (ok) A.op('member.closeCollabs').then(function (x) { toast('已關閉 ' + x.closed + ' 位協作者'); load(); }, fail);
@@ -286,7 +286,7 @@ A.views.members = function (m) {
       h('div', { class: 'tbl-wrap', style: { marginTop: '8px' } }, h('table', { class: 't' }, h('tbody', null, past.map(function (g) {
         return h('tr', null, h('td', null, g.name + '（' + g.email + '）'), h('td', null, g.roleName), h('td', null, { revoked: '已撤銷', expired: '已到期' }[g.status] || g.status), h('td', { class: 'small' }, g.revokedBy || ''));
       }))))));
-    if (r.invites.length) box.appendChild(h('div', { class: 'section' }, h('h2', null, '邀請碼紀錄'), h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('tbody', null, r.invites.slice().reverse().slice(0, 30).map(function (i) {
+    if (r.invites.length) box.appendChild(h('div', { class: 'section' }, h('h2', null, '邀請紀錄'), h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('tbody', null, r.invites.slice().reverse().slice(0, 30).map(function (i) {
       return h('tr', null, h('td', { class: 'small' }, fmt(i.created)), h('td', null, i.pkg ? '活動協作：' + i.pkg : '協作者'), h('td', null, i.perms.map(function (p) { return permName(r, p, !!i.pkg); }).join('、')),
         h('td', null, h('span', { class: 'tag ' + (i.status === 'active' ? 'ok' : '') }, { active: '可使用', used: '已使用', replaced: '已被新邀請碼取代', expired: '已失效' }[i.status] || i.status)), h('td', { class: 'small' }, i.usedBy || ''));
     }))))));
@@ -339,12 +339,18 @@ A.views.members = function (m) {
     };
     kind.addEventListener('change', draw);
     draw();
-    modal({ title: '產生邀請碼', body: h('div', { class: 'col' }, field('種類', kind), wrap, h('div', { class: 'hint' }, '邀請碼只能使用一次；產生新的之後，你之前產生的同種邀請碼會失效；營隊結束時全部失效。')),
+    modal({ title: '產生邀請連結', body: h('div', { class: 'col' }, field('種類', kind), wrap, h('div', { class: 'hint' }, '邀請連結只能使用一次；產生新的之後，你之前產生的同種邀請會失效；營隊結束時全部失效。')),
       actions: [{ text: '取消' }, { text: '產生', cls: 'primary', onClick: function () {
         return A.op('invite.create', { data: { pkg: kind.value, perms: ch.get() } }).then(function (x) {
-          modal({ title: '邀請碼', body: h('div', { class: 'col', style: { alignItems: 'center' } }, h('code', { style: { fontSize: '26px', letterSpacing: '.1em' } }, x.code),
-            h('div', { class: 'hint' }, '對方到登入頁「用邀請碼加入」，或登入後在「我的營隊」輸入。這個邀請碼只顯示這一次。'),
-            h('button', { class: 'btn', onclick: function () { navigator.clipboard.writeText(x.code).then(function () { toast('已複製'); }); } }, '複製')) });
+          // 邀請連結：對方點開就加入（已登入直接加入；沒登入先登入或建立帳號，之後自動加入），不用自己輸入邀請碼
+          var link = location.href.replace(/[^/]*([?#].*)?$/, '').replace(/\/?$/, '/') + 'index.html?invite=' + encodeURIComponent(x.code);
+          var copy = function (t, msg) { (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast(msg); }, function () { askText('請手動複製', '', t); }); };
+          modal({ title: '邀請連結', body: h('div', { class: 'col' },
+            h('input', { class: 'input', readonly: true, value: link, onclick: function () { this.select(); } }),
+            h('button', { class: 'btn primary', onclick: function () { copy(link, '已複製邀請連結'); } }, '複製邀請連結'),
+            h('div', { class: 'hint' }, '把連結傳給對方，點開就會加入：已經登入的人直接加入；還沒登入的人登入或建立帳號後自動加入。連結只能用一次，只顯示這一次。'),
+            h('details', { class: 'small muted' }, h('summary', { style: { cursor: 'pointer' } }, '改用邀請碼'), h('div', { class: 'row', style: { marginTop: '6px', gap: '8px', alignItems: 'center' } }, h('code', { style: { fontSize: '18px', letterSpacing: '.1em' } }, x.code),
+              h('button', { class: 'btn sm', onclick: function () { copy(x.code, '已複製邀請碼'); } }, '複製')))) });
           load();
         });
       } }] });
