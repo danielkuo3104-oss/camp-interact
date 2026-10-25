@@ -134,6 +134,8 @@ var Front = (function () {
     var g = actGrad(c, id);
     return RT.textOn(g.a) === '#111111' && RT.textOn(g.b) === '#111111' ? '#1d2521' : '#ffffff';
   }
+  /** 時間、地點前面的線條小圖示 */
+  function mi(name, text) { return h('span', { class: 'mi' }, icon(name === 'place' ? 'pin' : 'clock', 14), h('span', null, text)); }
   function md2(d) { var m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})$/); return m ? Number(m[1]) + '/' + Number(m[2]) : ''; }
   function hm0(t) { return String(t || '').replace(/^0(\d):/, '$1:'); }
   function actTime(t, noDate) { return t ? [noDate ? '' : md2(t.date), hm0(t.time) + (t.end ? '–' + hm0(t.end) : '')].filter(String).join('　') : ''; }
@@ -169,11 +171,11 @@ var Front = (function () {
       case 'text': if (String(e.md || '').trim()) node = h('div', { class: 'rt', html: RT.html(e.md, actVars(info, env), { btn: dark ? '#ffffff' : '#2f5d62', notes: ctx.edit }) }); break;
       case 'sub': if (e.text) node = h('div', { class: 'ac-sub' }, e.text); break;
       case 'summary': if (info.summary) node = h('div', { class: 'ac-sum' }, info.summary); break;
-      case 'when': if (t) node = h('div', { class: 'ac-meta' }, '🕘 ' + (t.date ? dayLabel(t.date) + ' ' : '') + hm0(t.time) + (t.end ? '–' + hm0(t.end) : '')); break;
+      case 'when': if (t) node = h('div', { class: 'ac-meta' }, mi('time', (t.date ? dayLabel(t.date) + ' ' : '') + hm0(t.time) + (t.end ? '–' + hm0(t.end) : ''))); break;
       case 'sessions':
-        if ((info.times || []).length) node = h('div', { class: 'ac-meta' }, info.times.length > 1 ? h('div', { class: 'ac-lbl' }, '時段') : null, info.times.map(function (x) { return h('div', null, '🕘 ' + (x.date ? dayLabel(x.date) + ' ' : '') + hm0(x.time) + (x.end ? '–' + hm0(x.end) : '')); }));
+        if ((info.times || []).length) node = h('div', { class: 'ac-meta' }, info.times.length > 1 ? h('div', { class: 'ac-lbl' }, '時段') : null, info.times.map(function (x) { return h('div', null, mi('time', (x.date ? dayLabel(x.date) + ' ' : '') + hm0(x.time) + (x.end ? '–' + hm0(x.end) : ''))); }));
         break;
-      case 'place': if (info.place) node = h('div', { class: 'ac-meta' }, '📍 ' + info.place); break;
+      case 'place': if (info.place) node = h('div', { class: 'ac-meta' }, mi('place', info.place)); break;
       case 'myrot':
         if ((info.myrot || []).length) node = h('div', { class: 'ac-meta' }, h('div', { class: 'ac-lbl' }, '我們小隊的關卡順序'), h('ol', { class: 'ac-rot' }, info.myrot.map(function (r) { return h('li', null, r.t ? h('span', { class: 'ac-rt' }, r.t) : null, r.st); })));
         break;
@@ -187,7 +189,7 @@ var Front = (function () {
         if (node) node = h('div', { class: 'ac-btns' }, node);
         break;
       }
-      case 'divider': node = h('hr', { class: 'ac-hr' }); break;
+      case 'divider': node = h('hr', { class: 'ac-hr', style: e.c ? { borderTopColor: e.c, opacity: 1 } : null }); break;
       case 'image': if (okUrl(e.img)) node = h('img', { class: 'ac-img', src: e.img, alt: '', loading: 'lazy', style: { width: (e.r || 100) + '%' } }); break;
       case 'spacer': node = h('div', { style: { height: (e.n || 16) + 'px' } }); break;
     }
@@ -236,9 +238,9 @@ var Front = (function () {
     var tm = c.start ? c.start + (c.end ? '–' + c.end : '') : '';
     var meta = h('div', { class: 'cs-meta' },
       by === 'date' ? h('span', { class: 'tag' }, c.type) : null,
-      (c.date || tm) && lay !== 'plain' ? h('span', null, '🕘 ' + [by === 'date' ? '' : (c.date ? dayLabel(c.date) : ''), tm].filter(String).join(' ')) : null,
+      (c.date || tm) && lay !== 'plain' ? mi('time', [by === 'date' ? '' : (c.date ? dayLabel(c.date) : ''), tm].filter(String).join(' ')) : null,
       c.dur ? h('span', null, courseMins(c.dur)) : null,
-      c.place ? h('span', null, '📍 ' + c.place) : null);
+      c.place ? mi('place', c.place) : null);
     var who = c.speaker ? h('div', { class: 'cs-who' }, c.speaker) : null;
     var files = (c.files || []).filter(function (f) { return okUrl(f.url); });
     var more = c.desc || files.length;
@@ -586,7 +588,7 @@ var Front = (function () {
         if (d.act && d.mode && d.mode !== 'none') return actCard(Object.assign({}, d.act, { name: d.name || d.act.name }), env, 'theme', { label: '現在主題 · ' + hm0(d.time || '') + (d.end ? '–' + hm0(d.end) : '') });
         if (d.mode === 'none' || !d.mode) return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在'), h('h2', null, '自由時間'), h('div', { style: { opacity: 0.85 } }, '有需要請找隊輔'));
         return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在主題 · ' + (d.time || '') + (d.end ? '–' + d.end : '')), h('h2', null, d.name || ''),
-          d.place ? h('div', { style: { opacity: 0.9 } }, '📍 ' + d.place) : null, d.summary ? h('div', { style: { opacity: 0.9, marginTop: '4px', whiteSpace: 'pre-line' } }, d.summary) : null,
+          d.place ? h('div', { style: { opacity: 0.9 } }, mi('place', d.place)) : null, d.summary ? h('div', { style: { opacity: 0.9, marginTop: '4px', whiteSpace: 'pre-line' } }, d.summary) : null,
           d.page ? h('button', { class: 'btn', onclick: function () { env.nav(d.page); } }, '查看活動') : null);
       },
       activities: function (d, b, env) {

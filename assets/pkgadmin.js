@@ -1518,12 +1518,16 @@ var PkgAdmin = (function () {
           pk.addEventListener('change', function () { if (pk.files[0]) upload(pk.files[0], nt).then(function (r) { e.img = r.img || r.url; draw(); }, fail); });
           b.appendChild(h('div', { class: 'row wrap' }, pk, h('button', { class: 'btn sm', type: 'button', onclick: function () { pk.click(); } }, e.img ? '換圖片' : '上傳圖片'), h('div', { class: 'grow', style: { minWidth: '200px' } }, live(inp(e.img || '', { placeholder: '或貼圖片網址 https://' }), function (v) { e.img = v.trim(); }))), nt);
           b.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '寬度'), range(20, 100, 5, e.r || 100, function (v) { e.r = v; })));
+        } else if (e.t === 'divider') {
+          var dc = h('input', { type: 'color', value: e.c || '#ffffff' });
+          dc.addEventListener('input', function () { e.c = dc.value; paint(); });
+          b.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '顏色'), segBtns([['', '跟文字一樣（淡）'], ['set', '指定']], e.c ? 'set' : '', function (v) { if (v) e.c = e.c || '#ffffff'; else delete e.c; }), e.c ? dc : null));
         } else if (e.t === 'spacer') {
           b.appendChild(h('div', { class: 'row wrap' }, h('span', { class: 'small' }, '高度'), range(4, 80, 2, e.n || 16, function (v) { e.n = v; })));
         } else {
           b.appendChild(h('div', { class: 'hint' }, {
             summary: '顯示「活動＆課程」裡填的簡介。', when: '顯示第一個時段（日期＋時間）。', sessions: '列出所有時段：驗收中用驗收的學員行程，平常用學員行程；學員行程沒有就看總流程。',
-            place: '顯示總流程裡這個活動的場地。', myrot: '學員看到自己小隊在「活動細流」跑關的順序；這個活動沒有跑關細流就不顯示。預覽用第一小隊示範。', divider: '一條細線。'
+            place: '顯示總流程裡這個活動的場地。', myrot: '學員看到自己小隊在「活動細流」跑關的順序；這個活動沒有跑關細流就不顯示。預覽用第一小隊示範。'
           }[e.t] || ''));
         }
         return b;

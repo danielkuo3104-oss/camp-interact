@@ -13,6 +13,7 @@ var RT = (function () {
   var SIZES = { '特大': 24, '大': 19, '中': 16, '小': 12 };
   var HEX_RE = '#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})';
   var CARD_COLOR = '#b3261e';
+  var PIN = '<svg class="rt-pin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21zm0-9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg>';
 
   function normHex(v) {
     v = String(v || '').trim().replace(/^#?/, '#');
@@ -66,7 +67,7 @@ var RT = (function () {
       name = name.replace(/<br>/g, ' ').trim();
       var q = encodeURIComponent(unesc(name));
       if (!q) return '';
-      return '<div class="rt-map"><div class="rt-map-n">📍 ' + name + '</div><a href="' + (url || 'https://www.google.com/maps/search/?api=1&amp;query=' + q) + '" target="_blank" rel="noopener">在 Google 地圖開啟</a></div>';
+      return '<div class="rt-map"><div class="rt-map-n">' + PIN + name + '</div><a href="' + (url || 'https://www.google.com/maps/search/?api=1&amp;query=' + q) + '" target="_blank" rel="noopener">在 Google 地圖開啟</a></div>';
     });
     out = out.replace(new RegExp('\\[(link|button)=((?:https?:\\/\\/|mailto:|tel:)[^\\]\\s"\'<>]+)(?: +(' + HEX_RE + '))?\\]([\\s\\S]*?)\\[\\/\\1\\]', 'g'), function (_, kind, url, color, text) {
       text = text || url;
