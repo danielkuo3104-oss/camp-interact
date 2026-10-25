@@ -762,7 +762,10 @@ var Front = (function () {
   };
 
   function sfView(pub, which, env) {
-    var items = (pub && pub.items) || [], t = taipei(), tm = taipei(new Date(nowDate().getTime() + 86400000));
+    var t = taipei(), tm = taipei(new Date(nowDate().getTime() + 86400000));
+    // 驗收中看那次驗收的學員行程，平常看正式的
+    var rh = ((pub && pub.rehearsals) || []).filter(function (r) { return r.start <= t.ymd && t.ymd <= r.end; })[0];
+    var items = ((pub && pub.items) || []).filter(function (x) { return rh ? x.rh === rh.id : !x.rh; });
     var title = (pub && pub.title) || '行程表';
     var pageOf = function (it) { var p = it.activity ? env.pages.filter(function (x) { return x.activity === it.activity; })[0] : null; return p ? p.id : ''; };
     var map = function (arr, showDay) { return arr.map(function (x) { return { date: x.date, time: x.time, end: x.end, title: x.title, note: x.note, page: pageOf(x), showDay: showDay }; }); };
