@@ -1749,16 +1749,38 @@ var PkgAdmin = (function () {
     }
   };
 
+  var SF_RH = '';   // 學員行程目前看哪一份：'' 正式，或驗收 ID
   VIEWS.studentflow = {
     items: function (box, D) {
+      // 正式／每次驗收各一份：驗收的那份在設定驗收日程時自動照正式行程產生，也可以依驗收流程重新產生
+      var rhs = A.info.rehearsals || [];
+      if (SF_RH && !rhs.some(function (r) { return r.id === SF_RH; })) SF_RH = '';
+      var rh = rhs.filter(function (r) { return r.id === SF_RH; })[0] || null;
+      var rhFlow = rh ? (D.flows || []).filter(function (f) { return f.kind === 'rehearsal' && f.rh === rh.id; })[0] : null;
+      var schedAll = D.schedule.filter(function (x) { var f = (D.flows || []).filter(function (y) { return y.id === x.data.flow; })[0]; return rh ? f && f.id === (rhFlow && rhFlow.id) : !f || f.kind !== 'rehearsal'; });
       var schById = {};
       D.schedule.forEach(function (x) { schById[x.id] = x; });
-      var sch = [{ value: '', label: '（不引用）' }].concat(D.schedule.map(function (x) { return { value: x.id, label: (x.data.date || '').slice(5) + ' ' + (x.data.time || '') + ' ' + x.data.name }; }));
+      var sch = [{ value: '', label: '（不引用）' }].concat(schedAll.map(function (x) { return { value: x.id, label: (x.data.date || '').slice(5) + ' ' + (x.data.time || '') + ' ' + x.data.name }; }));
       var acts = [{ value: '', label: '（不連活動）' }].concat((D.activities || []).map(function (a) { return { value: a.id, label: a.data.name }; }));
-      var days = [];
-      if (A.info.start && A.info.end) for (var dd = new Date(A.info.start + 'T12:00:00+08:00'); taipei(dd).ymd <= A.info.end; dd = new Date(dd.getTime() + 86400000)) days.push(taipei(dd).ymd);
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '放進這裡＝學員看得到（要保密就先不要放）。像試算表一樣一次打好幾列，改完按一次「儲存變更」。時間只寫開始也可以，「結束」可不填；Enter 在下面插入一列，改了時間會自動排好。「引用」選營期流程的項目會帶入時間和名稱（之後流程改了會出現在「待處理變更」，不會自動改）。內容跟著學員端一起發布。'));
-      if (D.pending.length) box.appendChild(h('a', { class: 'fb-notice', href: '#data/studentflow/pending', style: { display: 'block', marginBottom: '10px' } }, '營期流程有 ' + D.pending.length + ' 項變更還沒處理 →'));
+      var days = [], d0 = rh ? rh.start : A.info.start, d1 = rh ? rh.end : A.info.end;
+      if (d0 && d1) for (var dd = new Date(d0 + 'T12:00:00+08:00'); taipei(dd).ymd <= d1; dd = new Date(dd.getTime() + 86400000)) days.push(taipei(dd).ymd);
+      if (rhs.length) {
+        var tabs = h('div', { class: 'chips', style: { marginBottom: '8px' } }, [{ id: '', name: '正式' }].concat(rhs).map(function (r) {
+          return h('span', { class: 'chip' + (r.id === SF_RH ? ' on' : ''), onclick: function () { if (r.id === SF_RH) return; SF_RH = r.id; clear(box); VIEWS.studentflow.items(box, D); } }, r.id ? r.name + '（驗收）' : '正式');
+        }));
+        box.appendChild(tabs);
+      }
+      if (rh) {
+        box.appendChild(h('div', { class: 'fb-notice', style: { marginBottom: '8px' } }, '「' + rh.name + '」（' + rh.start.slice(5) + '～' + rh.end.slice(5) + '）用的學員行程：驗收中學員看這一份，現在主題也從這裡來。設定驗收日程時已照正式行程自動產生（營期第幾天 → 驗收第幾天）。',
+          !R.canEdit ? null : h('div', { class: 'row', style: { marginTop: '6px' } }, h('button', { class: 'btn sm', type: 'button', onclick: function (e) {
+            confirmBox('依驗收流程重新產生', '清掉「' + rh.name + '」目前的學員行程，照正式學員行程重新產生；驗收流程（' + (rhFlow ? rhFlow.name : '還沒有') + '）裡同名或同活動的項目會對上那個時間。', '重新產生', true).then(function (ok) {
+              if (ok) busy(e.target, function () { return run('rh.generate', { rh: rh.id }, { msg: '已重新產生' }); });
+            });
+          } }, '依驗收流程重新產生'))));
+      } else {
+        box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '放進這裡＝學員看得到（要保密就先不要放）。學員端的「現在主題」也照這裡的時間。像試算表一樣一次打好幾列，改完按一次「儲存變更」。時間只寫開始也可以，「結束」可不填；Enter 在下面插入一列，改了時間會自動排好。「引用」選營期流程的項目會帶入時間和名稱（之後流程改了會出現在「待處理變更」，不會自動改）。內容跟著學員端一起發布。'));
+        if (D.pending.length) box.appendChild(h('a', { class: 'fb-notice', href: '#data/studentflow/pending', style: { display: 'block', marginBottom: '10px' } }, '營期流程有 ' + D.pending.length + ' 項變更還沒處理 →'));
+      }
       var G = grid(box, [
         { k: 'date', type: 'hidden' },
         { k: 'time', label: '時間', type: 'time', w: '74px' },
@@ -1768,7 +1790,7 @@ var PkgAdmin = (function () {
         { k: 'ref', label: '引用營期流程', type: 'select', w: '210px', nopaste: true, opts: sch },
         { k: 'activity', label: '連到活動', type: 'select', w: '150px', nopaste: true, opts: acts }
       ], {
-        rows: D.items.slice().sort(function (a, b) { return ((a.data.date || '') + (a.data.time || '')).localeCompare((b.data.date || '') + (b.data.time || '')); }).map(function (it) { var d = it.data; return { id: it.id, ver: it.version, vals: { date: d.date || '', time: d.time || '', end: d.end || '', title: d.title || '', note: d.note || '', ref: d.ref || '', activity: d.activity || '' } }; }),
+        rows: D.items.filter(function (it) { return (it.data.rh || '') === SF_RH; }).sort(function (a, b) { return ((a.data.date || '') + (a.data.time || '')).localeCompare((b.data.date || '') + (b.data.time || '')); }).map(function (it) { var d = it.data; return { id: it.id, ver: it.version, vals: { date: d.date || '', time: d.time || '', end: d.end || '', title: d.title || '', note: d.note || '', ref: d.ref || '', activity: d.activity || '' } }; }),
         saveOp: 'item.save', delOp: 'item.delete', parse: parseCell, addText: '＋ 這一天加一項',
         groupOf: function (v) { return v.date || ''; }, extraGroups: days,
         groupOrder: function (keys) { return keys.sort(function (x, y) { return (x || '9999').localeCompare(y || '9999'); }); },
@@ -1778,7 +1800,7 @@ var PkgAdmin = (function () {
         blank: function (k) { return { date: k, time: '', end: '', title: '', note: '', ref: '', activity: '' }; },
         isEmpty: function (v) { return !String(v.title || '').trim(); },
         validate: function (d) { return !String(d.title).trim() ? '有一列沒有名稱' : ''; },
-        toData: function (v, r) { return { id: r.id, date: v.date, time: v.time, end: v.end, title: v.title, note: v.note, activity: v.activity, ref: v.ref }; },
+        toData: function (v, r) { return { id: r.id, date: v.date, time: v.time, end: v.end, title: v.title, note: v.note, activity: v.activity, ref: v.ref, rh: SF_RH }; },
         rowInit: function (r, G) {
           r.ed.ref.input.addEventListener('change', function () {
             var x = schById[r.ed.ref.get()];
