@@ -204,16 +204,31 @@ var Front = (function () {
     var c = o.card || actCardOf(info), fg = actFg(c, info.id), t = (info.times || [])[0];
     var el = h('div', { class: 'ac ac-' + mode + ' ac-h-' + (c.h || 'md') + (fg === '#1d2521' ? ' light' : '') + ((c.bg || {}).type === 'img' && (c.bg.mask === 'none' || (c.bg.mk || 0) < 0.25) ? ' shade' : ''), style: { color: fg } }, actBg(c, info.id));
     var inner = h('div', { class: 'ac-in' });
-    if (mode === 'theme') inner.appendChild(h('div', { class: 'ac-k' }, o.label || '現在主題'));
+    if (mode === 'theme') inner.appendChild(h('div', { class: 'ac-k' }, h('i', { class: 'live-dot', 'aria-hidden': 'true' }), o.label || '現在主題'));
     var title = h(mode === 'detail' ? 'h2' : 'h3', { class: 'ac-title' }, info.name || '');
     inner.appendChild(h('div', { class: 'ac-top' }, title, mode === 'detail' && t ? h('div', { class: 'ac-when' }, actTime(t, false)) : null));
     var list = (mode === 'detail' ? c.detail : c.cover) || [];
     list.forEach(function (e, i) { var n = actEl(e, info, env, { fg: fg, edit: o.edit, i: i }); if (n) inner.appendChild(n); });
     if (mode === 'cover' && (t || !o.noChev)) inner.appendChild(h('div', { class: 'ac-foot' }, t ? h('span', { class: 'ac-when' }, actTime(t, false)) : null, h('span', { class: 'ac-chev' }, '›')));
-    if (mode === 'theme') inner.appendChild(h('div', { class: 'ac-foot' }, h('span', { class: 'ac-chev' }, '查看活動 ›')));
+    if (mode === 'theme') { if (o.prog) inner.appendChild(o.prog); inner.appendChild(h('div', { class: 'ac-foot' }, h('span', { class: 'ac-chev' }, '查看活動 ›'))); }
     el.appendChild(inner);
     if (mode !== 'detail' && !o.edit) el.addEventListener('click', function () { openAct(info, env, el); });
     return el;
+  }
+  /** 現在主題的進度條：已經進行多久、還剩幾分鐘（有結束時間才有；每 30 秒自己更新） */
+  function themeProg(d) {
+    if (!/^\d\d:\d\d$/.test(d.time || '') || !/^\d\d:\d\d$/.test(d.end || '')) return null;
+    var day = taipei(nowDate()).ymd, s0 = Date.parse(day + 'T' + d.time + ':00+08:00'), e0 = Date.parse(day + 'T' + d.end + ':00+08:00');
+    if (e0 <= s0) e0 += 86400000;
+    var fill = h('i'), txt = h('span'), box = h('div', { class: 'th-prog' }, h('div', { class: 'th-bar' }, fill), txt);
+    var upd = function () {
+      var t = nowDate().getTime(), p = Math.max(0, Math.min(1, (t - s0) / (e0 - s0))), left = Math.ceil((e0 - t) / 60000);
+      fill.style.width = (p * 100).toFixed(1) + '%';
+      txt.textContent = t < s0 ? '還沒開始' : left > 0 ? '還有 ' + (left >= 60 ? Math.floor(left / 60) + ' 小時 ' + (left % 60 ? left % 60 + ' 分' : '') : left + ' 分鐘') : '快結束了';
+    };
+    upd();
+    var iv = setInterval(function () { if (!box.isConnected) { if (box.dataset.seen) clearInterval(iv); return; } box.dataset.seen = 1; upd(); }, 30000);
+    return box;
   }
   /** 點開活動卡片：蓋在畫面上（管理端手機預覽時蓋在手機框裡） */
   var ACT_SHEET = null;
@@ -612,11 +627,11 @@ var Front = (function () {
   var VIEWS = {
     schedule: {
       theme: function (d, b, env) {
-        if (d.act && d.mode && d.mode !== 'none') return actCard(Object.assign({}, d.act, { name: d.name || d.act.name }), env, 'theme', { label: '現在主題 · ' + hm0(d.time || '') + (d.end ? '–' + hm0(d.end) : '') });
-        if (d.mode === 'none' || !d.mode) return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在'), h('h2', null, '自由時間'), h('div', { style: { opacity: 0.85 } }, '有需要請找隊輔'));
-        return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, '現在主題 · ' + (d.time || '') + (d.end ? '–' + d.end : '')), h('h2', null, d.name || ''),
+        if (d.act && d.mode && d.mode !== 'none') return actCard(Object.assign({}, d.act, { name: d.name || d.act.name }), env, 'theme', { label: '現在主題 · ' + hm0(d.time || '') + (d.end ? '–' + hm0(d.end) : ''), prog: themeProg(d) });
+        if (d.mode === 'none' || !d.mode) return h('div', { class: 'theme-card free' }, h('div', { class: 'k' }, '現在'), h('h2', null, '自由時間'), h('div', { style: { opacity: 0.85 } }, '有需要請找隊輔'));
+        return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, h('i', { class: 'live-dot', 'aria-hidden': 'true' }), '現在主題 · ' + (d.time || '') + (d.end ? '–' + d.end : '')), h('h2', null, d.name || ''),
           d.place ? h('div', { style: { opacity: 0.9 } }, mi('place', d.place)) : null, d.summary ? h('div', { style: { opacity: 0.9, marginTop: '4px', whiteSpace: 'pre-line' } }, d.summary) : null,
-          d.page ? h('button', { class: 'btn', onclick: function () { env.nav(d.page); } }, '查看活動') : null);
+          themeProg(d), d.page ? h('button', { class: 'btn', onclick: function () { env.nav(d.page); } }, '查看活動') : null);
       },
       activities: function (d, b, env) {
         var list = d.list || [];

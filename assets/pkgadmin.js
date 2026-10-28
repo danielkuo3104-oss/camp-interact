@@ -503,7 +503,7 @@ var PkgAdmin = (function () {
     /** 新的一列；blank(組, 上一列的值) 可以用上一列帶預設值（例如時間接上一列結束） */
     G.newRow = function (groupKey, before, fill) {
       var prevTr = before ? before.previousSibling : body.lastChild, prev = null;
-      while (prevTr && prevTr.classList && prevTr.classList.contains('hidden')) prevTr = prevTr.previousSibling;
+      while (prevTr && prevTr.classList && (prevTr.classList.contains('hidden') || prevTr.classList.contains('g-nowline'))) prevTr = prevTr.previousSibling;
       if (prevTr && !prevTr.classList.contains('g-grp')) { var pr = G.rows.filter(function (x) { return x.tr === prevTr; })[0]; if (pr) prev = pr.read(); }
       return G.add({ id: '', ver: undefined, vals: o.blank ? o.blank(groupKey, null, prev) : {}, fill: fill }, before);
     };
@@ -610,7 +610,25 @@ var PkgAdmin = (function () {
       G.changed();
       G.hooks();
       G.labels();
+      G.markNow();
     };
+    /** o.nowSpan(vals) → [開始, 結束]（毫秒）：正在進行的列標出來，今天的列表中間畫一條「現在」的線；每分鐘更新 */
+    G.markNow = function () {
+      if (!o.nowSpan) return;
+      $all('tr.g-nowline', body).forEach(function (x) { x.remove(); });
+      var t = Date.now(), today = taipei().ymd, nx = null, began = false;
+      Array.prototype.forEach.call(body.children, function (tr) {
+        var r = tr.dataset.key && G.rows.filter(function (x) { return x.tr === tr; })[0];
+        if (!r || r.del) return;
+        var sp = o.nowSpan(r.read()), td = sp && taipei(new Date(sp[0])).ymd === today;
+        tr.classList.toggle('g-now', !!sp && sp[0] <= t && t < sp[1]);
+        if (td && sp[0] <= t) began = true;
+        if (td && !nx && sp[0] > t) nx = tr;
+      });
+      if (!nx || !began) return;   // 今天還沒開始或已經全部結束：不畫線
+      body.insertBefore(h('tr', { class: 'g-nowline', 'aria-hidden': 'true' }, h('td', { colspan: span }, h('span', null, '現在 ' + taipei().hm))), nx);
+    };
+    if (o.nowSpan) var nowIv = setInterval(function () { if (!table.isConnected) { if (table.dataset.seen) clearInterval(nowIv); return; } table.dataset.seen = 1; G.markNow(); }, 60000);
     G.moveBefore = function (r, node) { body.insertBefore(r.tr, node); };
     // Enter 往下、Ctrl+S 儲存
     table.addEventListener('keydown', function (e) {
@@ -620,7 +638,7 @@ var PkgAdmin = (function () {
         var td0 = e.target.closest('td'), tr0 = td0 && td0.parentNode;
         if (!td0 || !td0.dataset.ci) return;
         var sib = e.key === 'ArrowUp' ? 'previousSibling' : 'nextSibling', nx0 = tr0[sib];
-        while (nx0 && (nx0.classList.contains('hidden') || nx0.classList.contains('g-grp'))) nx0 = nx0[sib];
+        while (nx0 && (nx0.classList.contains('hidden') || nx0.classList.contains('g-grp') || nx0.classList.contains('g-nowline'))) nx0 = nx0[sib];
         var t0 = nx0 && nx0.querySelector('td[data-ci="' + td0.dataset.ci + '"] input, td[data-ci="' + td0.dataset.ci + '"] select');
         if (t0) { e.preventDefault(); t0.focus(); if (t0.select) try { t0.select(); } catch (er) {} }
         return;
@@ -641,7 +659,7 @@ var PkgAdmin = (function () {
         return;
       }
       var nx = tr.nextSibling;
-      while (nx && nx.classList.contains('hidden')) nx = nx.nextSibling;
+      while (nx && (nx.classList.contains('hidden') || nx.classList.contains('g-nowline'))) nx = nx.nextSibling;
       if ((!nx || nx.classList.contains('g-grp')) && !ro) { var cur = G.rows.filter(function (x) { return x.tr === tr; })[0], gk2 = o.groupOf && cur ? o.groupOf(cur.read()) : ''; nx = G.newRow(gk2, o.groupOf ? G.groupEnd(gk2) : null).tr; }
       var t2 = nx && nx.querySelector('td[data-ci="' + td.dataset.ci + '"] input, td[data-ci="' + td.dataset.ci + '"] select, td[data-ci="' + td.dataset.ci + '"] textarea');
       if (t2) t2.focus();
@@ -1168,6 +1186,7 @@ var PkgAdmin = (function () {
         groupLabel: function (k, rs) { return k ? dayNo(k) + dayLabel(k) + '　' + rs.length + ' 項' : '（沒填日期）'; },
         enterInsert: true,
         sortKey: function (v) { return (v.time || '99:99') + String(10000 - (Number(v.dur) || 0)).padStart(5, '0') + v.name; },
+        nowSpan: function (v) { var s = /^\d{2}:\d{2}$/.test(v.time || '') && Date.parse(v.date + 'T' + v.time + ':00+08:00'), e = endOf(v); return isFinite(s) && s && e !== null ? [s, s + (e - toMin(v.time)) * 60000] : null; },
         // 新的一列：開始時間接上一列的結束
         blank: function (k, _, prev) { var e = prev ? endOf(prev) : null; var v = { date: k, flow: cur, time: e === null ? '' : toHm(e), dur: '', end: '', tone: '', name: '', place: '', owner: [], staff: [], backup: [], note: '', go: '', link: '' }; cf.forEach(function (c) { v['cf:' + c] = ''; }); return v; },
         isEmpty: function (v) { return !String(v.name || '').trim(); },
@@ -2019,6 +2038,12 @@ var PkgAdmin = (function () {
         groupLabel: function (k, rs) { return k ? dayLabel(k) + '　' + rs.length + ' 項' : '（沒填日期）'; },
         enterInsert: true,
         sortKey: function (v) { return v.time || '99:99'; },
+        nowSpan: function (v) {
+          var s = /^\d{2}:\d{2}$/.test(v.time || '') && Date.parse(v.date + 'T' + v.time + ':00+08:00');
+          if (!isFinite(s) || !s) return null;
+          var e = /^\d{2}:\d{2}$/.test(v.end || '') ? Date.parse(v.date + 'T' + v.end + ':00+08:00') : s + 3600000;
+          return [s, e > s ? e : s + 3600000];
+        },
         blank: function (k) { return { date: k, time: '', end: '', title: '', note: '', ref: '', activity: '' }; },
         isEmpty: function (v) { return !String(v.title || '').trim(); },
         validate: function (d) { return !String(d.title).trim() ? '有一列沒有名稱' : ''; },

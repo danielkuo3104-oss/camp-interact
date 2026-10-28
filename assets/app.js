@@ -23,6 +23,11 @@
 
   function screen(node) { clear(root); root.appendChild(node); }
   document.addEventListener('touchstart', function () {}, { passive: true });   // iPhone 要有這行，按下去的 :active 回饋才會出現
+  /** 等待畫面：營字標誌外面一圈在轉，下面三個點跳動（驗證入場券、登入後載入） */
+  function waitScreen(title, sub) {
+    screen(h('div', { class: 'wait-wrap', role: 'status' }, h('div', { class: 'wait-logo' }, h('span', { class: 'wait-ring' }), h('span', { class: 'brand-mark' }, '營')),
+      h('div', { class: 'wait-t' }, title), sub ? h('div', { class: 'wait-s' }, sub) : null, h('div', { class: 'wait-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))));
+  }
   function msgScreen(title, text, extra) {
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' }, h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '營隊互動'), h('h1', null, title), text ? h('p', { class: 'muted', style: { margin: 0 } }, text) : null, extra || null)));
   }
@@ -39,7 +44,7 @@
     var m = location.hash.match(/[#&]t=([^&]+)/);
     if (m && side === 'student' && !preview) {
       history.replaceState(null, '', location.pathname + location.search);
-      msgScreen('正在進入…', '');
+      waitScreen('正在驗證身分…', '從報名系統帶你進來，請稍等一下');
       api('studentEnter', decodeURIComponent(m[1])).then(function (r) {
         store(TK, r.token, true);
         try { sessionStorage.removeItem(VK); } catch (e) {}
@@ -93,7 +98,7 @@
 
   /** 登入成功：按鈕維持不能按，等畫面載入（不要又亮起來讓人再按一次） */
   function loggedIn(btn, inputs) {
-    btn.disabled = true; btn.textContent = '登入成功，載入中…';
+    btn.disabled = true; btn.textContent = '登入成功，載入中…'; btn.classList.add('btn-ok');
     (inputs || []).forEach(function (x) { x.disabled = true; });
   }
 
@@ -179,6 +184,7 @@
     var ver = '';
     if (preview === 'draft') ver = 'draft';
     else if (!preview) { try { ver = sessionStorage.getItem(VK) || ''; } catch (e) {} }
+    if (!S.boot && !root.querySelector('.login-card')) waitScreen('載入中…', '');
     // live：打開時順便把所有動態區塊的資料一起拿回來（少一次請求，很多人同時打開時不用排那麼久）
     api('frontBoot', camp, side, ver, simNow(), { live: true }).then(function (b) {
       S.offline = false;
@@ -206,36 +212,6 @@
     toast('重新整理中…');
     boot();
   }
-  /** 手機在最上面往下拉：重新整理（預覽、活動卡片打開、正在打字時不算） */
-  function pullRefresh() {
-    if (preview || S.ptr) return;
-    S.ptr = true;
-    document.documentElement.classList.add('ptr-on');
-    var ind = h('div', { class: 'ptr', 'aria-hidden': 'true' }, h('span', { class: 'ptr-ic' }, '⟳'));
-    document.body.appendChild(ind);
-    var y0 = null, p = 0, TH = 64;
-    var reset = function () { ind.classList.remove('ready', 'go'); ind.style.transform = ''; ind.style.opacity = ''; p = 0; };
-    window.addEventListener('touchstart', function (e) {
-      y0 = null;
-      if (!S.env || window.scrollY > 0 || e.touches.length !== 1 || document.querySelector('.ac-sheet, .modal-bg')) return;
-      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable], canvas')) return;
-      y0 = e.touches[0].clientY;
-    }, { passive: true });
-    window.addEventListener('touchmove', function (e) {
-      if (y0 === null) return;
-      var dy = e.touches[0].clientY - y0;
-      if (dy <= 0 || window.scrollY > 0) { if (p) reset(); return; }
-      p = Math.min(dy * 0.5, 110);
-      ind.style.transform = 'translate(-50%, ' + p + 'px) rotate(' + p * 3 + 'deg)';
-      ind.style.opacity = Math.min(1, p / 40);
-      ind.classList.toggle('ready', p >= TH);
-    }, { passive: true });
-    window.addEventListener('touchend', function () {
-      if (y0 === null) return;
-      y0 = null;
-      if (p >= TH) { ind.classList.add('go'); ind.style.transform = ''; refresh(); setTimeout(reset, 900); } else reset();
-    });
-  }
   function logoutBtn() {
     if (preview) return null;
     return h('button', { class: 'btn sm', onclick: function () { api('logout').catch(function () {}); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {} start(); } }, side === 'worker' ? '登出' : '離開');
@@ -261,7 +237,6 @@
     var start = (location.hash.match(/#p=([\w]+)/) || [])[1];
     var home = roots()[0];
     S.cur = start && Front.pageById(S.env, start) ? start : (home ? home.id : '');
-    pullRefresh();
     window.onhashchange = function () { var p = (location.hash.match(/#p=([\w]+)/) || [])[1]; if (p && p !== S.cur && Front.pageById(S.env, p)) { S.cur = p; render(); } else if (!p && home) { S.cur = home.id; render(); } };
     render();
     // 大約每分鐘更新一次，每個人隨機錯開（50～70 秒），不會所有手機在同一秒一起問伺服器

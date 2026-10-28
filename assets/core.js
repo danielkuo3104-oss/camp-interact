@@ -270,10 +270,11 @@ function askText(title, label, dflt, opt) {
 
 /** 按鈕執行期間鎖住，錯誤顯示提示 */
 function busy(btn, fn) {
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
   var p;
   try { p = Promise.resolve(fn()); } catch (e) { p = Promise.reject(e); }
-  return p.then(function (v) { if (btn) btn.disabled = false; return v; }, function (e) { if (btn) btn.disabled = false; fail(e); throw e; });
+  var done = function () { if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); } };
+  return p.then(function (v) { done(); return v; }, function (e) { done(); fail(e); throw e; });
 }
 
 /* ---------------- 欄位小工具 ---------------- */
