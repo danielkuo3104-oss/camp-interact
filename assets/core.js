@@ -396,6 +396,7 @@ function param(k) { return new URLSearchParams(location.search).get(k) || ''; }
 /* ---------------- 圖示（線條 SVG） ---------------- */
 var ICON_PATHS = {
   home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  refresh: 'M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9a7 7 0 0 1 14 0',
   sos: 'M12 3l9 16H3zM12 10v4m0 3v.5',
   flag: 'M5 21V4m0 0h11l-2 4 2 4H5',
