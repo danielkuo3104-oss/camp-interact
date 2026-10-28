@@ -809,7 +809,7 @@ var Front = (function () {
     scoreboard: {
       mini: function (d) {
         var open = function () { if (d.mine) modal({ title: d.mine.name + ' · ' + d.mine.score + ' 分', body: sbParts(d.mine.parts) }); };
-        return h('div', { class: 'fb row' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
+        return h('div', { class: 'fb row sb-mini' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
           d.mine ? h('div', null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', { 'data-count': d.mine.score }, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊')),
           d.top ? h('div', { style: { textAlign: 'right' } }, h('div', { class: 'small muted' }, '目前第一'), h('b', null, d.top.name), h('div', { class: 'small' }, d.top.score + ' 分')) : null);
       },
