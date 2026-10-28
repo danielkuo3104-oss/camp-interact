@@ -870,6 +870,14 @@ tr.g-nowline > td::after { content: ''; position: absolute; right: 8px; top: -6p
 .calm, .calm * { animation: none !important; transition: none !important; }
 .page-content > .calm { opacity: 1 !important; transform: none !important; }
 
+/* 現在線：底線淡一點，上面一條實線一分鐘從左跑到右，跑完時間 +1 分鐘 */
+.now-line, table.dt tr.now-tr td::before, tr.g-nowline > td { border-top-color: rgba(229, 57, 53, .35) !important; }
+.nl-run { position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: #e53935; transform-origin: left center; transform: scaleX(0); animation: ia-run 60s linear infinite; pointer-events: none; }
+.now-line .nl-run { top: -2px; }
+table.dt tr.now-tr td .nl-run { top: -1px; }
+@keyframes ia-run { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
 @media (prefers-reduced-motion: reduce) {
+  .nl-run { transform: scaleX(1); }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
 }

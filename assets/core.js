@@ -37,6 +37,7 @@ function netState_() {
   else el.classList.remove('on', 'retry');
 }
 function apiOnce_(url, body) {
+  var t0 = Date.now();
   return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, redirect: 'follow' }).then(function (r) {
     if (!r.ok) throw Object.assign(new Error('連線失敗（HTTP ' + r.status + '）'), { code: 'NET', retry: r.status === 404 || r.status === 429 || r.status >= 500 });
     return r.json().catch(function () { throw Object.assign(new Error('伺服器回應看不懂，請稍後再試'), { code: 'NET', retry: true }); });
@@ -45,6 +46,7 @@ function apiOnce_(url, body) {
   }).then(function (j) {
     if (j && j.ok && !('result' in j)) throw Object.assign(new Error('伺服器暫時沒有正確回應，請稍後再試'), { code: 'NET', retry: true });
     if (j && !j.ok && BUSY_RE_.test(String(j.error || ''))) throw Object.assign(new Error('現在使用的人很多，請稍後再試'), { code: 'NET', retry: true, busy: true });
+    if (j && j.now) clockSync_(t0, Date.now(), Number(j.now));
     return j;
   });
 }
@@ -378,7 +380,25 @@ function fmt(iso) {
 /** 現在時間：編輯者預覽可以設定模擬時間（sessionStorage ia_sim） */
 var SIM_OK_ = false;   // 只有前台預覽（app.html&preview）才用模擬時間
 function simNow() { if (!SIM_OK_) return ''; try { return sessionStorage.getItem('ia_sim') || ''; } catch (e) { return ''; } }
-function nowDate() { var v = simNow(), t = Date.parse(v); return v && isFinite(t) ? new Date(t) : new Date(); }
+function nowDate() { var v = simNow(), t = Date.parse(v); return v && isFinite(t) ? new Date(t) : new Date(Date.now() + CLOCK_.off); }
+/** 對時：每次呼叫後端都帶回伺服器時間，取來回最快的那次算手機時鐘差多少（之後都在手機上自己算） */
+var CLOCK_ = { off: 0, rtt: Infinity, at: 0 };
+function clockSync_(t0, t1, srv) {
+  var rtt = t1 - t0;
+  if (!isFinite(srv) || rtt < 0 || rtt > 8000) return;
+  if (rtt <= CLOCK_.rtt || t1 - CLOCK_.at > 600000) { CLOCK_.off = Math.round(srv - (t0 + t1) / 2); CLOCK_.rtt = rtt; CLOCK_.at = t1; }
+}
+/** 每到整分鐘呼叫一次（回傳 false 就不再呼叫）：現在線往下走、時間 +1 分鐘 */
+var MIN_FNS_ = [];
+function onMinute(fn) { MIN_FNS_.push(fn); if (MIN_FNS_.length === 1) minuteLoop_(); }
+function minuteLoop_() {
+  setTimeout(function () {
+    MIN_FNS_ = MIN_FNS_.filter(function (f) { try { return f() !== false; } catch (e) { return false; } });
+    if (MIN_FNS_.length) minuteLoop_();
+  }, 60000 - nowDate().getTime() % 60000 + 40);
+}
+/** 現在線上跑的那一條：一分鐘從左跑到右，跑完剛好換下一分鐘 */
+function nowRun() { return h('i', { class: 'nl-run', 'aria-hidden': 'true', style: 'animation-delay:-' + (nowDate().getTime() % 60000 / 1000).toFixed(2) + 's' }); }
 function taipei(d) {
   var p = {};
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
