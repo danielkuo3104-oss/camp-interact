@@ -23,9 +23,19 @@
 
   function screen(node) { clear(root); root.appendChild(node); }
   document.addEventListener('touchstart', function () {}, { passive: true });   // iPhone 要有這行，按下去的 :active 回饋才會出現
-  /** 等待畫面：營字標誌外面一圈在轉，下面三個點跳動（驗證入場券、登入後載入） */
+  /** 載入畫面中間的圖（營隊設定的主視覺），記在手機上，下次一打開就用 */
+  var GK = 'ia_logo_' + camp;
+  function logoNode() {
+    var u = jget(GK, '');
+    if (!/^https:\/\//.test(u)) return h('span', { class: 'brand-mark' }, '營');
+    var im = h('img', { class: 'wait-img', src: u, alt: '' });
+    im.addEventListener('error', function () { im.replaceWith(h('span', { class: 'brand-mark' }, '營')); });
+    return im;
+  }
+  function rememberLogo(u) { u = u || ''; if (u !== jget(GK, '')) { jset(GK, u || null); if (u) new Image().src = u; } }
+  /** 等待畫面：標誌外面一圈在轉，下面三個點跳動（驗證入場券、登入後載入） */
   function waitScreen(title, sub) {
-    screen(h('div', { class: 'wait-wrap', role: 'status' }, h('div', { class: 'wait-logo' }, h('span', { class: 'wait-ring' }), h('span', { class: 'brand-mark' }, '營')),
+    screen(h('div', { class: 'wait-wrap', role: 'status' }, h('div', { class: 'wait-logo' }, h('span', { class: 'wait-ring' }), logoNode()),
       h('div', { class: 'wait-t' }, title), sub ? h('div', { class: 'wait-s' }, sub) : null, h('div', { class: 'wait-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))));
   }
   function msgScreen(title, text, extra) {
@@ -40,6 +50,7 @@
   };
 
   function start() {
+    if (camp && root.querySelector('.wait-wrap') && jget(GK, '')) waitScreen('載入中…', '');
     if (!camp) { msgScreen('網址不完整', '請從報名系統的學員專區，或籌辦團隊給你的連結進入。'); return; }
     var m = location.hash.match(/[#&]t=([^&]+)/);
     if (m && side === 'student' && !preview) {
@@ -73,6 +84,7 @@
     var err = h('div', { class: 'err' }), title = h('h1', null, '學員登入'), btn = h('button', { class: 'btn primary' }, '進入');
     var note = h('p', { class: 'small muted', style: { margin: 0 } }, '用報名時填的姓名和身分證字號登入（沒有填身分證的營隊，請改填報名時的 Email）。也可以從報名系統的「學員專區」按「進入營隊互動」。');
     api('campPublicInfo', camp).then(function (c) {
+      rememberLogo(c.loadImg);
       title.textContent = c.name; setAppName(c.name);
       if (!c.studentLogin) { clear(note).appendChild(document.createTextNode('這個營隊還沒有開放直接登入，請打開報名系統的「學員專區」，按「進入營隊互動」。')); name.disabled = idk.disabled = btn.disabled = true; }
     }, function () {});
@@ -112,6 +124,7 @@
     var err = h('div', { class: 'err' }), title = h('h1', null, '工作人員登入');
     var passF = field('營隊通行碼', pass, '通行碼由籌辦團隊提供');
     api('campPublicInfo', camp).then(function (c) {
+      rememberLogo(c.loadImg);
       title.textContent = c.name; setAppName(c.name); if (c.noPass) passF.classList.add('hidden');
       if (!(c.depts || []).length) { useText(); return; }
       c.depts.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
@@ -188,6 +201,7 @@
     // live：打開時順便把所有動態區塊的資料一起拿回來（少一次請求，很多人同時打開時不用排那麼久）
     api('frontBoot', camp, side, ver, simNow(), { live: true }).then(function (b) {
       S.offline = false;
+      if (b.camp) rememberLogo(b.camp.loadImg);
       if (!b.snapshot) { msgScreen(b.camp.name, side === 'student' ? '學員端還沒有發布內容，晚點再來看看。' : '工作人員端還沒有發布內容。', logoutBtn()); return; }
       if (b.live) {
         Object.keys(b.live).forEach(function (k) { S.live[k] = b.live[k]; });
@@ -279,6 +293,26 @@
     return out;
   }
 
+  /** 緊急聯絡的區塊加上 calm（不播任何動畫）；回傳這頁有沒有緊急聯絡 */
+  function calmMark(box) {
+    var any = false;
+    S.env.blocks.forEach(function (b) {
+      if (b.type !== 'pkg' || !b.data || b.data.pkg !== 'emergency') return;
+      var n = box.querySelector('[data-bid="' + b.id + '"]');
+      if (n) { n.classList.add('calm'); if (b.id.indexOf('zzNight') !== 0) any = true; }
+    });
+    return any;
+  }
+  /** 夜間的星空：隨機位置的星星一閃一閃，偶爾劃過流星（只建一次，換頁沿用） */
+  function skyLayer() {
+    var sky = h('div', { class: 'sky', 'aria-hidden': 'true' });
+    for (var i = 0; i < 46; i++) {
+      var s = 1 + Math.random() * 2.2;
+      sky.appendChild(h('i', { style: { left: (Math.random() * 100).toFixed(1) + '%', top: (Math.random() * 70).toFixed(1) + '%', width: s.toFixed(1) + 'px', height: s.toFixed(1) + 'px', animationDelay: (Math.random() * 5).toFixed(2) + 's', animationDuration: (2.5 + Math.random() * 3).toFixed(2) + 's' } }));
+    }
+    sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' }));
+    return sky;
+  }
   var body;
   function render() {
     var b = S.boot, rs = roots();
@@ -290,7 +324,7 @@
     var head = h('div', { class: 'app-head' },
       cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : h('span', { class: 'brand-mark' }, '營'),
       h('div', { class: 'grow' }, h('div', { class: 'small muted' }, b.camp.name + (b.me && b.me.name ? ' · ' + b.me.name : '')), h('h1', null, cur ? cur.title : '')),
-      h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, h('span', { class: 'rf-ic', 'aria-hidden': 'true' }, '⟳'), h('span', { class: 'rf-tx' }, '重新整理')),
+      h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, h('span', { class: 'rf-ic', 'aria-hidden': 'true' }, icon('refresh', 18)), h('span', { class: 'rf-tx' }, '重新整理')),
       logoutBtn());
     var banners = [];
     if (preview) banners.push(h('div', { class: 'recall-banner row wrap', style: { gap: '8px' } }, h('span', { class: 'grow' }, preview === 'draft' ? '預覽：目前的草稿（還沒發布）' : '預覽：目前發布的第 ' + b.snapshot.ver + ' 版'), simBox()));
@@ -302,6 +336,9 @@
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
+    // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
+    var hasEm = calmMark(content);
+    var deco = side !== 'student' ? null : S.night ? (S.sky = S.sky || skyLayer()) : hasEm ? null : (S.amb = S.amb || h('div', { class: 'amb', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')));
     // 換頁動畫：區塊一個接一個淡入；切到右邊的分頁或往下一層從右邊滑進來，反過來從左邊
     var prev = S.shown, enter = prev !== S.cur;
     S.shown = S.cur;
@@ -322,7 +359,7 @@
       }));
       if (enter && rootOf && S.tabRoot !== rootOf.id) navEl.classList.add('moved');
       S.tabRoot = rootOf && rootOf.id;
-      screen(h('div', { style: { display: 'contents' } }, head, body, navEl));
+      screen(h('div', { style: { display: 'contents' } }, deco, head, body, navEl));
     } else {
       navEl = h('nav', { class: 'wk-menu', 'aria-label': '主選單' }, rs.map(function (p) {
         return h('button', { class: rootOf && rootOf.id === p.id ? 'on' : '', onclick: function () { nav(p.id); } }, p.title);
@@ -357,7 +394,9 @@
       // 第一次拿到資料：淡入；之後內容有變：閃一下，分數從舊的數字跳到新的
       var olds = $all('[data-count]', old).map(function (x) { return Number(x.dataset.count); });
       var i = old.style.getPropertyValue('--i'); if (i) n.style.setProperty('--i', i);
+      if (old.classList.contains('calm')) n.classList.add('calm');
       old.replaceWith(n);
+      if (n.classList.contains('calm')) return;
       if (!motionOk()) return;
       n.classList.add(first[k] ? 'live-in' : 'live-upd');
       $all('[data-count]', n).forEach(function (x, j) { countUp(x, first[k] ? 0 : (olds[j] === undefined ? Number(x.dataset.count) : olds[j]), Number(x.dataset.count)); });

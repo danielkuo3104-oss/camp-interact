@@ -393,10 +393,20 @@ A.views.settings = function (m) {
   var I = A.info;
   A.title(m, '營隊設定與備份');
   var name = inp(I.name), start = inp(I.start, { type: 'date' }), end = inp(I.end, { type: 'date' }), front = inp(I.frontUrl, { placeholder: 'https://你的帳號.github.io/camp-interact/' });
+  // 學員端、工作人員端載入畫面中間的圖（營隊主視覺）：沒設定就是「營」字標誌
+  var limg = inp(I.loadImg || '', { placeholder: '圖片網址，或雲端硬碟的分享連結' }), lprev = h('div', { class: 'wait-logo', style: { margin: '6px 0 0' } });
+  var drawLogo = function () {
+    var v = limg.value.trim(), m = v.match(/^https:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/);
+    if (m) v = 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600';
+    clear(lprev).appendChild(h('span', { class: 'wait-ring' }));
+    lprev.appendChild(/^https:\/\//.test(v) ? h('img', { class: 'wait-img', src: v, alt: '' }) : h('span', { class: 'brand-mark' }, '營'));
+  };
+  limg.addEventListener('change', drawLogo); drawLogo();
   var basic = h('div', { class: 'card col' }, h('h2', null, '基本資料'), field('營隊名稱', name), h('div', { class: 'grid2' }, field('營期開始', start), field('營期結束', end)),
     field('前台網址（GitHub Pages）', front, '用來產生工作人員連結；空白時用目前這個網站的網址'),
+    field('載入畫面圖片（營隊主視覺）', h('div', null, limg, lprev), '學員、工作人員打開時，載入動畫中間顯示這張圖（建議正方形）；空白就用「營」字標誌。第一次打開的手機要載入一次之後才會換成這張圖。'),
     h('div', null, h('button', { class: 'btn primary', onclick: function (e) {
-      busy(e.target, function () { return A.op('camp.settings', { data: { name: name.value, start: start.value, end: end.value, frontUrl: front.value } }); }).then(function () { toast('已儲存'); A.reload(); }, function () {});
+      busy(e.target, function () { return A.op('camp.settings', { data: { name: name.value, start: start.value, end: end.value, frontUrl: front.value, loadImg: limg.value } }); }).then(function () { toast('已儲存'); A.reload(); }, function () {});
     } }, '儲存')));
   m.appendChild(basic);
 

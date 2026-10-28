@@ -466,8 +466,9 @@ td.dt-merged textarea { color: var(--text-3); text-align: center; }
 .t.grid tr.g-tone-crit td .pp-in { color: #fff; }
 .t.grid tr.g-tone-crit td .pp-in:focus { color: var(--text); background: #fff; border-radius: 6px; }
 .refresh-btn { white-space: nowrap; gap: 4px; }
-.refresh-btn .rf-ic { font-size: 16px; line-height: 1; }
-@media (max-width: 520px) { .refresh-btn { padding: 6px 10px; } .refresh-btn .rf-tx { display: none; } .refresh-btn .rf-ic { font-size: 18px; } }
+.refresh-btn .rf-ic { display: inline-flex; line-height: 0; }
+.refresh-btn .rf-ic svg { display: block; }
+@media (max-width: 520px) { .refresh-btn { padding: 6px 10px; } .refresh-btn .rf-tx { display: none; } }
 .map-ed.map-zoom .map-wrap { max-width: none; }
 .map-lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .map-lib-it { display: flex; flex-direction: column; gap: 4px; }
@@ -789,7 +790,7 @@ details[open] > summary ~ * { animation: ia-down .25s var(--ease-out); }
 .modal-bg > .modal { animation: ia-sheet-in .3s var(--ease-out) both; }
 
 /* 重新整理：圖示轉圈 */
-.refresh-btn.spinning .rf-ic { display: inline-block; animation: ia-spin .8s linear infinite; }
+.refresh-btn.spinning .rf-ic svg { transform-origin: 50% 50%; animation: ia-spin .8s linear infinite; }
 
 /* 夜間模式切換時慢慢變色 */
 .app-shell, .app-shell .fb, .app-tabs { transition: background-color .5s, color .5s, border-color .5s; }
@@ -821,8 +822,8 @@ details[open] > summary ~ * { animation: ia-down .25s var(--ease-out); }
 @keyframes ia-drift { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
 @keyframes ia-zoom { from { scale: 1; } to { scale: 1.08; } }
 .theme-card { background-size: 180% 180%; animation: ia-drift 18s ease-in-out infinite alternate; position: relative; overflow: hidden; }
-.ac-theme::after, .theme-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .22) 50%, transparent 65%); transform: translateX(-120%); animation: ia-shine 1.4s .5s var(--ease-out) both; }
-@keyframes ia-shine { to { transform: translateX(120%); } }
+.ac-theme::after, .theme-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .22) 50%, transparent 65%); transform: translateX(-120%); animation: ia-shine 7s 1s ease-in-out infinite; }
+@keyframes ia-shine { 0% { transform: translateX(-120%); } 22%, 100% { transform: translateX(120%); } }
 .theme-card.free { animation: none; }
 .th-prog { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; opacity: .92; }
 .th-bar { flex: 1; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .25); overflow: hidden; }
@@ -837,6 +838,37 @@ table.grid tr.g-now > td:first-child { box-shadow: inset 4px 0 0 var(--accent); 
 tr.g-nowline > td { padding: 0 !important; height: 0; border: 0; border-top: 2px solid #e53935; position: relative; background: none; }
 tr.g-nowline span { position: absolute; left: 8px; top: -11px; z-index: 1; background: #e53935; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
 tr.g-nowline > td::after { content: ''; position: absolute; right: 8px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: #e53935; animation: ia-pulse 2s ease-in-out infinite; }
+
+/* 現在主題的標題：每個字輪流跳一下，每 6 秒一次 */
+.wave > span { position: relative; animation: ia-wave 6s ease-in-out infinite; animation-delay: calc(.6s + var(--d, 0) * 70ms); }
+@keyframes ia-wave { 0%, 9%, 100% { top: 0; } 4% { top: -6px; } }
+
+/* 學員端背景：慢慢飄的光暈（有緊急聯絡的頁面不顯示） */
+.app-shell > div > .app-head, .app-shell > div > .app-body { position: relative; z-index: 1; }
+.app-shell > div > .app-tabs { z-index: 3; }
+.amb { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.amb i { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; opacity: .55; }
+.amb i:nth-child(1) { left: -30vmax; top: -25vmax; background: radial-gradient(circle, rgba(63, 122, 128, .16), transparent 62%); animation: ia-float1 26s ease-in-out infinite alternate; }
+.amb i:nth-child(2) { right: -35vmax; top: 20vh; background: radial-gradient(circle, rgba(200, 128, 58, .12), transparent 62%); animation: ia-float2 32s ease-in-out infinite alternate; }
+.amb i:nth-child(3) { left: -10vmax; bottom: -40vmax; background: radial-gradient(circle, rgba(119, 112, 138, .12), transparent 62%); animation: ia-float1 38s ease-in-out infinite alternate-reverse; }
+@keyframes ia-float1 { to { transform: translate(18vmax, 12vmax) scale(1.15); } }
+@keyframes ia-float2 { to { transform: translate(-16vmax, -10vmax) scale(.9); } }
+/* 夜間：星星閃爍、流星 */
+.sky { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.sky i { position: absolute; border-radius: 50%; background: #fff; opacity: .2; animation: ia-twinkle 4s ease-in-out infinite; }
+@keyframes ia-twinkle { 0%, 100% { opacity: .15; transform: scale(.8); } 50% { opacity: .9; transform: scale(1.15); } }
+.meteor { position: absolute; top: 8%; left: 62%; width: 120px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, rgba(255, 255, 255, .9), transparent); transform: rotate(-35deg) translateX(0); opacity: 0; animation: ia-meteor 9s 2s linear infinite; }
+.meteor.m2 { top: 22%; left: 88%; width: 90px; animation-duration: 13s; animation-delay: 7s; }
+@keyframes ia-meteor { 0% { opacity: 0; transform: rotate(-35deg) translateX(0); } 2% { opacity: 1; } 9% { opacity: 0; transform: rotate(-35deg) translateX(-340px); } 100% { opacity: 0; transform: rotate(-35deg) translateX(-340px); } }
+/* 其他小動態：我的隊伍那一列、「現在」標籤 */
+.board .r.me { animation: ia-me 3s ease-in-out infinite; }
+@keyframes ia-me { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(47, 93, 98, 0); } 50% { box-shadow: inset 0 0 0 2px rgba(47, 93, 98, .25); } }
+.sched .it.now .it-hd::after, .sched .it.now .nm::after { animation: ia-badge 2.4s ease-in-out infinite; }
+@keyframes ia-badge { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.wait-img { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; animation: ia-breathe 1.8s ease-in-out infinite; }
+/* 緊急聯絡：完全不動 */
+.calm, .calm * { animation: none !important; transition: none !important; }
+.page-content > .calm { opacity: 1 !important; transform: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
