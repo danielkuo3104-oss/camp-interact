@@ -885,7 +885,8 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 
 /* 翻牌（學員端）：一列一列像時刻表的牌子翻過去 */
 .flip { animation: ia-flip .7s cubic-bezier(.3, .7, .3, 1) both; animation-delay: calc(var(--fi, 0) * 80ms); transform-origin: 50% 50%; backface-visibility: hidden; }
-@keyframes ia-flip { 0% { transform: perspective(600px) rotateX(0); } 45% { transform: perspective(600px) rotateX(-88deg); opacity: .35; } 55% { transform: perspective(600px) rotateX(88deg); opacity: .35; } 100% { transform: perspective(600px) rotateX(0); opacity: 1; } }
+/* 只轉不改透明度：已經結束的（變暗的）項目翻完還是暗的，不會先亮一下 */
+@keyframes ia-flip { 0% { transform: perspective(600px) rotateX(0); } 45% { transform: perspective(600px) rotateX(-88deg); } 55% { transform: perspective(600px) rotateX(88deg); } 100% { transform: perspective(600px) rotateX(0); } }
 .calm .flip { animation: none; }
 @media (prefers-reduced-motion: reduce) { .flip { animation: none; } }
 
@@ -898,3 +899,17 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .amb .pt { position: absolute; bottom: -20px; border-radius: 50%; animation: ia-rise linear infinite; }
 @keyframes ia-rise { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: 1; } 50% { transform: translate(18px, -50vh); } 90% { opacity: .8; } 100% { transform: translate(-10px, -105vh); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .amb .sun, .amb .cloud, .amb .pt { animation: none; } .amb .pt { display: none; } }
+
+/* 白天四種時段：清晨粉紫、晨光低掛；早上清爽藍綠；中午陽光正上方最亮；午後金橘、太陽偏西 */
+.amb::before { content: ''; position: absolute; inset: 0; transition: background 3s ease; }
+.amb .sun, .amb .cloud { transition: top 3s ease, left 3s ease, right 3s ease, background 3s ease; }
+.amb.tod-dawn::before { background: linear-gradient(180deg, rgba(246, 196, 214, .32), rgba(214, 200, 240, .18) 40%, transparent 75%); }
+.amb.tod-dawn .sun { right: auto; left: -110px; top: 46vh; background: radial-gradient(circle, rgba(255, 170, 150, .38), rgba(255, 170, 150, .12) 45%, transparent 70%); }
+.amb.tod-dawn .cloud { background: rgba(240, 210, 225, .55); box-shadow: 50px -22px 0 6px rgba(240, 210, 225, .5), 100px 0 0 -4px rgba(240, 210, 225, .5); }
+.amb.tod-morning::before { background: linear-gradient(180deg, rgba(170, 214, 236, .3), rgba(190, 228, 220, .14) 45%, transparent 75%); }
+.amb.tod-noon::before { background: radial-gradient(ellipse at 50% -10%, rgba(255, 226, 140, .34), rgba(255, 240, 200, .12) 45%, transparent 70%); }
+.amb.tod-noon .sun { right: auto; left: calc(50% - 170px); top: -150px; width: 340px; height: 340px; background: radial-gradient(circle, rgba(255, 214, 100, .45), rgba(255, 214, 100, .14) 45%, transparent 70%); animation-duration: 4.5s; }
+.amb.tod-noon .cloud { opacity: .5; }
+.amb.tod-afternoon::before { background: linear-gradient(200deg, rgba(255, 196, 120, .3), rgba(240, 170, 110, .14) 45%, transparent 78%); }
+.amb.tod-afternoon .sun { top: 30vh; right: -120px; background: radial-gradient(circle, rgba(255, 160, 80, .4), rgba(255, 160, 80, .12) 45%, transparent 70%); }
+.amb.tod-afternoon .cloud { background: rgba(250, 220, 190, .55); box-shadow: 50px -22px 0 6px rgba(250, 220, 190, .5), 100px 0 0 -4px rgba(250, 220, 190, .5); }
