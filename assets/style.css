@@ -882,3 +882,19 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
   .nl-run { transform: scaleX(1); }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
 }
+
+/* 翻牌（學員端）：一列一列像時刻表的牌子翻過去 */
+.flip { animation: ia-flip .7s cubic-bezier(.3, .7, .3, 1) both; animation-delay: calc(var(--fi, 0) * 80ms); transform-origin: 50% 50%; backface-visibility: hidden; }
+@keyframes ia-flip { 0% { transform: perspective(600px) rotateX(0); } 45% { transform: perspective(600px) rotateX(-88deg); opacity: .35; } 55% { transform: perspective(600px) rotateX(88deg); opacity: .35; } 100% { transform: perspective(600px) rotateX(0); opacity: 1; } }
+.calm .flip { animation: none; }
+@media (prefers-reduced-motion: reduce) { .flip { animation: none; } }
+
+/* 白天背景：陽光、雲、往上飄的小光點 */
+.amb .sun { position: absolute; right: -90px; top: -90px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 196, 92, .32), rgba(255, 196, 92, .1) 45%, transparent 70%); animation: ia-sun 7s ease-in-out infinite; }
+@keyframes ia-sun { 0%, 100% { transform: scale(1); opacity: .8; } 50% { transform: scale(1.12); opacity: 1; } }
+.amb .cloud { position: absolute; top: 14vh; left: 0; width: 180px; height: 56px; border-radius: 56px; background: rgba(200, 220, 232, .5); filter: blur(5px); box-shadow: 50px -22px 0 6px rgba(200, 220, 232, .45), 100px 0 0 -4px rgba(200, 220, 232, .45); animation: ia-cloud 70s linear infinite; animation-delay: -20s; }
+.amb .cloud.c2 { top: 52vh; transform: scale(.7); opacity: .8; animation-duration: 95s; animation-delay: -60s; }
+@keyframes ia-cloud { from { translate: -320px 0; } to { translate: calc(100vw + 120px) 0; } }
+.amb .pt { position: absolute; bottom: -20px; border-radius: 50%; animation: ia-rise linear infinite; }
+@keyframes ia-rise { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: 1; } 50% { transform: translate(18px, -50vh); } 90% { opacity: .8; } 100% { transform: translate(-10px, -105vh); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .amb .sun, .amb .cloud, .amb .pt { animation: none; } .amb .pt { display: none; } }

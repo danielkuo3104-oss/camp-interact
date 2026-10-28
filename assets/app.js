@@ -12,7 +12,7 @@
   var camp = param('c'), side = param('s') === 'worker' ? 'worker' : 'student', preview = param('preview');
   var root = $('#root');
   var TK = 'ia_f_' + camp + '_' + side, VK = 'ia_ver_' + camp + '_' + side, BK = 'ia_boot_' + camp + '_' + side;
-  var S = { boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false, scrolled: {} };
+  var S = { flipAt: Date.now() + 30000, boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false, scrolled: {} };
   var LK = 'ia_live_' + camp + '_' + side;
   SIM_OK_ = !!preview;
 
@@ -305,6 +305,25 @@
     });
     return any;
   }
+  /** 翻牌（只有學員端）：打開 30 秒後，時程、小隊排行、活動列表像時刻表一樣一列一列翻一次，之後每 3 分鐘再翻一輪；
+   *  內容有變（下一項、名次、分數）就翻那一塊。一開始不翻，免得還沒看清楚就在動；緊急聯絡不翻 */
+  var FLIP_SEL = '.sched > .it, .sched > .day, .board .r, .sb-mini, .ac-list > *';
+  function flipRows(box) {
+    if (side !== 'student' || !box || !motionOk() || Date.now() < S.flipAt) return false;
+    var rows = $all(FLIP_SEL, box).filter(function (el) { return !el.closest('.calm') && el.offsetParent; });
+    if (!rows.length) return false;
+    rows.forEach(function (el, i) {
+      el.classList.remove('flip'); void el.offsetWidth;
+      el.style.setProperty('--fi', Math.min(i, 12));
+      el.classList.add('flip');
+      setTimeout(function () { el.classList.remove('flip'); }, 900 + Math.min(i, 12) * 80);
+    });
+    return true;
+  }
+  if (side === 'student') {
+    setTimeout(function () { if (body && !document.hidden) flipRows(body); }, 30000);
+    setInterval(function () { if (body && !document.hidden) flipRows(body); }, 180000);
+  }
   /** 夜間的星空：隨機位置的星星一閃一閃，偶爾劃過流星（只建一次，換頁沿用） */
   function skyLayer() {
     var sky = h('div', { class: 'sky', 'aria-hidden': 'true' });
@@ -314,6 +333,16 @@
     }
     sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' }));
     return sky;
+  }
+  /** 白天的背景：慢慢飄的光暈、右上角呼吸的陽光、兩朵飄過的雲、往上飄的小光點（只建一次，換頁沿用） */
+  function dayLayer() {
+    var amb = h('div', { class: 'amb', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('b', { class: 'sun' }), h('b', { class: 'cloud' }), h('b', { class: 'cloud c2' }));
+    var cols = ['63, 122, 128', '200, 128, 58', '119, 112, 138', '224, 163, 94'];
+    for (var i = 0; i < 16; i++) {
+      var sz = 5 + Math.random() * 8, dur = 16 + Math.random() * 14;
+      amb.appendChild(h('span', { class: 'pt', style: { left: (Math.random() * 100).toFixed(1) + '%', width: sz.toFixed(1) + 'px', height: sz.toFixed(1) + 'px', background: 'rgba(' + cols[i % cols.length] + ', .4)', animationDuration: dur.toFixed(1) + 's', animationDelay: '-' + (Math.random() * dur).toFixed(1) + 's' } }));
+    }
+    return amb;
   }
   var body;
   function render() {
@@ -340,7 +369,7 @@
     Front.page(content, S.cur, S.env);
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
-    var deco = side !== 'student' ? null : S.night ? (S.sky = S.sky || skyLayer()) : hasEm ? null : (S.amb = S.amb || h('div', { class: 'amb', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')));
+    var deco = side !== 'student' ? null : S.night ? (S.sky = S.sky || skyLayer()) : hasEm ? null : (S.amb = S.amb || dayLayer());
     // 換頁動畫：區塊一個接一個淡入；切到右邊的分頁或往下一層從右邊滑進來，反過來從左邊
     var prev = S.shown, enter = prev !== S.cur;
     S.shown = S.cur;
@@ -400,7 +429,7 @@
       old.replaceWith(n);
       if (n.classList.contains('calm')) return;
       if (!motionOk()) return;
-      n.classList.add(first[k] ? 'live-in' : 'live-upd');
+      if (first[k] || !flipRows(n)) n.classList.add(first[k] ? 'live-in' : 'live-upd');
       $all('[data-count]', n).forEach(function (x, j) { countUp(x, first[k] ? 0 : (olds[j] === undefined ? Number(x.dataset.count) : olds[j]), Number(x.dataset.count)); });
     });
     afterDraw();
