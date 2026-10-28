@@ -350,6 +350,22 @@ function pageTab() {
 }
 
 /* ---------------- 時間 ---------------- */
+/** 動畫：使用者在系統設定「減少動態效果」時一律不動 */
+function motionOk() { return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
+/** 數字從 from 跳到 to（分數等），0.7 秒、先快後慢 */
+function countUp(el, from, to) {
+  if (!motionOk() || !isFinite(from) || !isFinite(to) || from === to) return;
+  var t0 = null, dec = String(to).indexOf('.') >= 0 ? 1 : 0, txt = el.textContent;
+  var step = function (t) {
+    if (!el.isConnected) return;
+    if (t0 === null) t0 = t;
+    var k = Math.min(1, (t - t0) / 700), v = from + (to - from) * (1 - Math.pow(1 - k, 3));
+    el.textContent = k < 1 ? v.toFixed(dec) : txt;
+    if (k < 1) requestAnimationFrame(step);
+  };
+  el.textContent = from.toFixed(dec);
+  requestAnimationFrame(step);
+}
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 function fmt(iso) {
   if (!iso) return '';

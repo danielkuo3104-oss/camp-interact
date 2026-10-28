@@ -22,6 +22,7 @@
   if (side === 'worker') { var tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.content = '#3b4f8c'; }
 
   function screen(node) { clear(root); root.appendChild(node); }
+  document.addEventListener('touchstart', function () {}, { passive: true });   // iPhone 要有這行，按下去的 :active 回饋才會出現
   function msgScreen(title, text, extra) {
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' }, h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '營隊互動'), h('h1', null, title), text ? h('p', { class: 'muted', style: { margin: 0 } }, text) : null, extra || null)));
   }
@@ -201,8 +202,39 @@
     try { sessionStorage.removeItem(VK); } catch (e) {}
     S.prefetched = false; S.scrolled = {};
     Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
+    var rb = root.querySelector('.refresh-btn'); if (rb) rb.classList.add('spinning');
     toast('重新整理中…');
     boot();
+  }
+  /** 手機在最上面往下拉：重新整理（預覽、活動卡片打開、正在打字時不算） */
+  function pullRefresh() {
+    if (preview || S.ptr) return;
+    S.ptr = true;
+    document.documentElement.classList.add('ptr-on');
+    var ind = h('div', { class: 'ptr', 'aria-hidden': 'true' }, h('span', { class: 'ptr-ic' }, '⟳'));
+    document.body.appendChild(ind);
+    var y0 = null, p = 0, TH = 64;
+    var reset = function () { ind.classList.remove('ready', 'go'); ind.style.transform = ''; ind.style.opacity = ''; p = 0; };
+    window.addEventListener('touchstart', function (e) {
+      y0 = null;
+      if (!S.env || window.scrollY > 0 || e.touches.length !== 1 || document.querySelector('.ac-sheet, .modal-bg')) return;
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable], canvas')) return;
+      y0 = e.touches[0].clientY;
+    }, { passive: true });
+    window.addEventListener('touchmove', function (e) {
+      if (y0 === null) return;
+      var dy = e.touches[0].clientY - y0;
+      if (dy <= 0 || window.scrollY > 0) { if (p) reset(); return; }
+      p = Math.min(dy * 0.5, 110);
+      ind.style.transform = 'translate(-50%, ' + p + 'px) rotate(' + p * 3 + 'deg)';
+      ind.style.opacity = Math.min(1, p / 40);
+      ind.classList.toggle('ready', p >= TH);
+    }, { passive: true });
+    window.addEventListener('touchend', function () {
+      if (y0 === null) return;
+      y0 = null;
+      if (p >= TH) { ind.classList.add('go'); ind.style.transform = ''; refresh(); setTimeout(reset, 900); } else reset();
+    });
   }
   function logoutBtn() {
     if (preview) return null;
@@ -229,6 +261,7 @@
     var start = (location.hash.match(/#p=([\w]+)/) || [])[1];
     var home = roots()[0];
     S.cur = start && Front.pageById(S.env, start) ? start : (home ? home.id : '');
+    pullRefresh();
     window.onhashchange = function () { var p = (location.hash.match(/#p=([\w]+)/) || [])[1]; if (p && p !== S.cur && Front.pageById(S.env, p)) { S.cur = p; render(); } else if (!p && home) { S.cur = home.id; render(); } };
     render();
     // 大約每分鐘更新一次，每個人隨機錯開（50～70 秒），不會所有手機在同一秒一起問伺服器
@@ -294,11 +327,26 @@
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
+    // 換頁動畫：區塊一個接一個淡入；切到右邊的分頁或往下一層從右邊滑進來，反過來從左邊
+    var prev = S.shown, enter = prev !== S.cur;
+    S.shown = S.cur;
+    if (enter && motionOk()) {
+      var pi = -1, ni = -1, pp = prev && Front.pageById(S.env, prev);
+      rs.forEach(function (p, i) { if (pp && (p.id === prev || p.id === (pp.parent || ''))) pi = i; if (rootOf && p.id === rootOf.id) ni = i; });
+      var dir = !prev ? '' : cur && cur.parent === prev ? 'from-r' : pp && pp.parent === S.cur ? 'from-l' : pi >= 0 && ni >= 0 && pi !== ni ? (ni > pi ? 'from-r' : 'from-l') : '';
+      $all(':scope > *', content).forEach(function (c, i) { c.style.setProperty('--i', Math.min(i, 8)); });
+      content.classList.add('pg-in');
+      if (dir) content.classList.add(dir);
+      setTimeout(function () { content.classList.remove('pg-in', 'from-r', 'from-l'); }, 1000);
+      $all('[data-count]', content).forEach(function (x) { countUp(x, 0, Number(x.dataset.count)); });
+    }
     var navEl;
     if (side === 'student') {
       navEl = h('nav', { class: 'app-tabs', 'aria-label': '主選單' }, rs.map(function (p) {
         return h('button', { class: rootOf && rootOf.id === p.id ? 'on' : '', onclick: function () { nav(p.id); } }, icon(p.icon || 'page'), p.title);
       }));
+      if (enter && rootOf && S.tabRoot !== rootOf.id) navEl.classList.add('moved');
+      S.tabRoot = rootOf && rootOf.id;
       screen(h('div', { style: { display: 'contents' } }, head, body, navEl));
     } else {
       navEl = h('nav', { class: 'wk-menu', 'aria-label': '主選單' }, rs.map(function (p) {
@@ -321,14 +369,23 @@
   /** 拿到的區塊資料：有變的才重畫（正在填的表單不會被洗掉） */
   function applyLive(r) {
     var changed = Object.keys(r.live).filter(function (k) { return JSON.stringify(S.live[k]) !== JSON.stringify(r.live[k]); });
-    changed.forEach(function (k) { S.live[k] = r.live[k]; });
+    var first = {};
+    changed.forEach(function (k) { first[k] = S.live[k] === undefined; S.live[k] = r.live[k]; });
     if (!preview) jset(LK, S.live);
     if (!body) return;
     changed.forEach(function (k) {
       var old = body.querySelector('[data-bid="' + k + '"]'), b = S.env.blocks.filter(function (x) { return x.id === k; })[0];
       if (!old || !b) return;
       var n = Front.block(b, S.env);
-      if (n) { n.dataset.bid = k; old.replaceWith(n); } else old.remove();
+      if (!n) { old.remove(); return; }
+      n.dataset.bid = k;
+      // 第一次拿到資料：淡入；之後內容有變：閃一下，分數從舊的數字跳到新的
+      var olds = $all('[data-count]', old).map(function (x) { return Number(x.dataset.count); });
+      var i = old.style.getPropertyValue('--i'); if (i) n.style.setProperty('--i', i);
+      old.replaceWith(n);
+      if (!motionOk()) return;
+      n.classList.add(first[k] ? 'live-in' : 'live-upd');
+      $all('[data-count]', n).forEach(function (x, j) { countUp(x, first[k] ? 0 : (olds[j] === undefined ? Number(x.dataset.count) : olds[j]), Number(x.dataset.count)); });
     });
     afterDraw();
   }

@@ -735,3 +735,72 @@ table.rt td.rt-note, .sched .it .small.muted, .contact .who small, .job-body { w
 .mi { display: inline-flex; align-items: flex-start; gap: 6px; }
 .mi > .ico { flex: none; margin-top: .22em; opacity: .75; }
 .rt-pin { vertical-align: -2px; margin-right: 5px; opacity: .75; }
+
+/* ---------- 學員端／工作人員端的動畫與互動 ---------- */
+:root { --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.34, 1.4, .5, 1); }
+@keyframes ia-up { from { opacity: 0; transform: translateY(14px); } }
+@keyframes ia-from-r { from { opacity: 0; transform: translateX(22px); } }
+@keyframes ia-from-l { from { opacity: 0; transform: translateX(-22px); } }
+@keyframes ia-fade { from { opacity: 0; } }
+@keyframes ia-down { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes ia-pop { 0% { transform: scale(.7); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes ia-sheet-in { from { opacity: 0; transform: translateY(40px) scale(.97); } }
+@keyframes ia-sheet-out { to { opacity: 0; transform: translateY(30px) scale(.98); } }
+@keyframes ia-glow { 0% { box-shadow: 0 0 0 0 rgba(47, 93, 98, .35), var(--shadow); } 100% { box-shadow: 0 0 0 10px rgba(47, 93, 98, 0), var(--shadow); } }
+@keyframes ia-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@keyframes ia-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.7); opacity: .35; } }
+
+/* 換頁：區塊一個接一個淡入；分頁往右、往下一層從右邊滑進來 */
+.pg-in > * { animation: ia-up .42s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.pg-in.from-r > * { animation-name: ia-from-r; }
+.pg-in.from-l > * { animation-name: ia-from-l; }
+/* 區塊資料到了淡入；之後有更新閃一圈 */
+.page-content > .live-in { animation: ia-fade .35s ease both; }
+.page-content > .live-upd { animation: ia-glow 1.1s ease-out; }
+/* 載入中：骨架閃光 */
+.fb.sk { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; }
+.fb.sk .sk-tx { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.fb.sk .sk-l { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--line) 30%, var(--bg) 50%, var(--line) 70%) 0 0 / 300% 100%; animation: ia-shimmer 1.3s linear infinite; }
+.fb.sk .sk-l.s { width: 60%; }
+.app-shell.night .fb.sk .sk-l { background-image: linear-gradient(90deg, #1c2840 30%, #26365a 50%, #1c2840 70%); }
+
+/* 按下去縮一點 */
+.ac, .sb-click, .app-body .btn, .app-tabs button, .wk-menu button, .page-content .contact[style*="cursor"], .board summary, details.cs > summary, .sched .it[role=button], .ac-btn { transition: transform .16s var(--ease-out), box-shadow .2s, background-color .2s; -webkit-tap-highlight-color: transparent; }
+.ac:active, .sb-click:active, .app-body .btn:active, .page-content .contact[style*="cursor"]:active, .board summary:active, details.cs > summary:active, .ac-btn:active { transform: scale(.97); }
+.app-tabs button:active svg { transform: scale(.85); }
+@media (hover: hover) { .ac:not(.ac-detail):hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); } }
+
+/* 底部分頁：目前這頁的圖示有圓角底色，切換時彈一下 */
+.app-tabs svg { box-sizing: content-box; padding: 3px 16px; border-radius: 999px; transition: background-color .25s, transform .16s var(--ease-out); }
+.app-tabs button.on svg { background: var(--brand-soft); }
+.app-tabs.moved button.on svg { animation: ia-pop .45s var(--ease-spring); }
+.app-shell.night .app-tabs button.on svg { background: #1c2a45; }
+
+/* 展開的內容往下滑出 */
+details[open] > summary ~ * { animation: ia-down .25s var(--ease-out); }
+.now-line::before { content: ''; position: absolute; right: 0; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: #e53935; animation: ia-pulse 2s ease-in-out infinite; }
+
+/* 活動卡片：從下面彈上來，關掉時往下淡出；可以往下滑關掉 */
+.ac-sheet { animation: ia-fade .22s ease both; }
+.ac-sheet .ac-sheet-in { animation: ia-sheet-in .36s var(--ease-out) both; transition: transform .25s var(--ease-out); }
+.ac-sheet.out { animation: ia-fade .2s ease reverse both; }
+.ac-sheet.out .ac-sheet-in { animation: ia-sheet-out .2s ease both; }
+.modal-bg { animation: ia-fade .2s ease both; }
+.modal-bg > .modal { animation: ia-sheet-in .3s var(--ease-out) both; }
+
+/* 重新整理：圖示轉圈；往下拉的圓圈 */
+.refresh-btn.spinning .rf-ic { display: inline-block; animation: ia-spin .8s linear infinite; }
+html.ptr-on { overscroll-behavior-y: contain; }
+.ptr { position: fixed; top: 6px; left: 50%; z-index: 80; width: 38px; height: 38px; margin-top: -44px; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow-lg); display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 20px; opacity: 0; transform: translate(-50%, 0); pointer-events: none; transition: color .15s; }
+.ptr.ready { color: var(--brand); }
+.ptr.go { opacity: 1; transform: translate(-50%, 56px); transition: transform .2s var(--ease-out); }
+.ptr.go .ptr-ic { animation: ia-spin .8s linear infinite; }
+.ptr-ic { display: inline-block; line-height: 1; }
+
+/* 夜間模式切換時慢慢變色 */
+.app-shell, .app-shell .fb, .app-tabs { transition: background-color .5s, color .5s, border-color .5s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
+  .ptr { display: none; }
+}
