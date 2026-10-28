@@ -280,7 +280,9 @@
     if (n !== S.night) { S.night = n; S.env.night = n; render(); return; }
     loadLive();
   }
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.env) setTimeout(loadLive, Math.random() * 2000); });   // 很多人一起打開手機時錯開一點
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.env) setTimeout(loadLive, Math.random() * 2000); });
+  // 整分鐘：現在線往下走、時間 +1（不用等下一次向伺服器拿資料）
+  onMinute(function () { if (body && !document.hidden) Front.markNow(body); });   // 很多人一起打開手機時錯開一點
 
   /** 夜間模式：學員首頁最上面放緊急聯絡與明日行程（夜間不是鎖死其他資訊） */
   function nightBlocks(pid) {

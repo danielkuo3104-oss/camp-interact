@@ -321,7 +321,7 @@ var Front = (function () {
       var td = its.filter(function (el) { return taipei(new Date(Number(el.dataset.s))).ymd === today; });
       if (!td.length) return;
       var nx = td.filter(function (el) { return Number(el.dataset.s) > t; })[0];
-      var line = h('div', { class: 'now-line' }, h('span', null, '現在 ' + taipei().hm));
+      var line = h('div', { class: 'now-line' }, nowRun(), h('span', null, '現在 ' + taipei().hm));
       if (nx && nx.previousElementSibling && nx.previousElementSibling.classList.contains('par-label')) nx = nx.previousElementSibling;   // 「同時進行」的標題跟著那一組
       if (nx) list.insertBefore(line, nx); else { var last = td[td.length - 1]; last.after(line); }
     });
@@ -334,7 +334,7 @@ var Front = (function () {
       var n = 0; $all('td', td[0]).forEach(function (c) { n += Number(c.getAttribute('colspan')) || 1; });
       var nx = td.filter(function (el) { return Number(el.dataset.s) > t; })[0];
       if (nx && trs.indexOf(nx) > 0 && $all('td[rowspan]', tb).some(function (c) { var r0 = trs.indexOf(c.parentNode), rs = Number(c.getAttribute('rowspan')); return r0 >= 0 && r0 < trs.indexOf(nx) && r0 + rs > trs.indexOf(nx); })) return;   // 合併的格子中間不插
-      var line = h('tr', { class: 'now-tr' }, h('td', { colspan: n }, h('span', null, '現在 ' + taipei().hm)));
+      var line = h('tr', { class: 'now-tr' }, h('td', { colspan: n }, nowRun(), h('span', null, '現在 ' + taipei().hm)));
       if (nx) tb.insertBefore(line, nx); else td[td.length - 1].after(line);
     });
   }

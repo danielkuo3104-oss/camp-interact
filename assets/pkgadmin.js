@@ -616,7 +616,7 @@ var PkgAdmin = (function () {
     G.markNow = function () {
       if (!o.nowSpan) return;
       $all('tr.g-nowline', body).forEach(function (x) { x.remove(); });
-      var t = Date.now(), today = taipei().ymd, nx = null, began = false;
+      var t = nowDate().getTime(), today = taipei().ymd, nx = null, began = false;
       Array.prototype.forEach.call(body.children, function (tr) {
         var r = tr.dataset.key && G.rows.filter(function (x) { return x.tr === tr; })[0];
         if (!r || r.del) return;
@@ -626,9 +626,10 @@ var PkgAdmin = (function () {
         if (td && !nx && sp[0] > t) nx = tr;
       });
       if (!nx || !began) return;   // 今天還沒開始或已經全部結束：不畫線
-      body.insertBefore(h('tr', { class: 'g-nowline', 'aria-hidden': 'true' }, h('td', { colspan: span }, h('span', null, '現在 ' + taipei().hm))), nx);
+      body.insertBefore(h('tr', { class: 'g-nowline', 'aria-hidden': 'true' }, h('td', { colspan: span }, nowRun(), h('span', null, '現在 ' + taipei().hm))), nx);
     };
-    if (o.nowSpan) var nowIv = setInterval(function () { if (!table.isConnected) { if (table.dataset.seen) clearInterval(nowIv); return; } table.dataset.seen = 1; G.markNow(); }, 60000);
+    // 整分鐘：時間 +1、線移到對的位置（時間用打開時和伺服器對好的時鐘，在電腦上自己算）
+    if (o.nowSpan) onMinute(function () { if (!table.isConnected) return !table.dataset.seen; table.dataset.seen = 1; G.markNow(); });
     G.moveBefore = function (r, node) { body.insertBefore(r.tr, node); };
     // Enter 往下、Ctrl+S 儲存
     table.addEventListener('keydown', function (e) {
@@ -2022,6 +2023,11 @@ var PkgAdmin = (function () {
         box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '放進這裡＝學員看得到（要保密就先不要放）。學員端的「現在主題」也照這裡的時間。像試算表一樣一次打好幾列，改完按一次「儲存變更」。時間只寫開始也可以，「結束」可不填；Enter 在下面插入一列，改了時間會自動排好。「引用」選營期流程的項目會帶入時間和名稱（之後流程改了會出現在「待處理變更」，不會自動改）。內容跟著學員端一起發布。'));
         if (D.pending.length) box.appendChild(h('a', { class: 'fb-notice', href: '#data/studentflow/pending', style: { display: 'block', marginBottom: '10px' } }, '營期流程有 ' + D.pending.length + ' 項變更還沒處理 →'));
       }
+      // 勾選左邊：一次平移時間（開始、結束一起動）、改到別天、刪除（和營期流程一樣）
+      var toMin = function (t) { var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+      var toHm = function (n) { n = ((n % 1440) + 1440) % 1440; return pad2(Math.floor(n / 60)) + ':' + pad2(n % 60); };
+      var selBar = h('span', { class: 'row wrap hidden' });
+      var shift = inp('', { type: 'number', placeholder: '±分鐘', style: { width: '90px' } }), toDate = inp('', { type: 'date', style: { width: '150px' } });
       var G = grid(box, [
         { k: 'date', type: 'hidden' },
         { k: 'time', label: '時間', type: 'time', w: '74px' },
@@ -2045,6 +2051,23 @@ var PkgAdmin = (function () {
           return [s, e > s ? e : s + 3600000];
         },
         blank: function (k) { return { date: k, time: '', end: '', title: '', note: '', ref: '', activity: '' }; },
+        select: true, drag: R.canEdit,
+        onDrop: function (r, k, G) { r.ed.date.set(k); G.moveTo(r, k); r.t.check(); G.changed(r); },
+        onSelect: function (list) { selBar.classList.toggle('hidden', !list.length); selBar.firstChild.textContent = '已選 ' + list.length + ' 項：'; },
+        tools: function (G) {
+          var apply = function (fn, msg) { var l = G.selected(); if (!l.length) return; l.forEach(function (r) { fn(r); r.t.check(); G.changed(r); }); toast(msg + '（' + l.length + ' 項），記得按「儲存變更」'); };
+          selBar.appendChild(h('b', { class: 'small' }, ''));
+          selBar.appendChild(h('span', { class: 'row' }, shift, h('button', { class: 'btn sm', type: 'button', onclick: function () {
+            var n = Number(shift.value); if (!n) { toast('填要往後（正數）或往前（負數）幾分鐘', true); return; }
+            apply(function (r) { var v = r.read(), t = toMin(v.time), e = toMin(v.end); if (t !== null) r.ed.time.set(toHm(t + n)); if (e !== null) r.ed.end.set(toHm(e + n)); }, '已平移 ' + (n > 0 ? '+' : '') + n + ' 分鐘');
+          } }, '平移時間')));
+          selBar.appendChild(h('span', { class: 'row' }, toDate, h('button', { class: 'btn sm', type: 'button', onclick: function () {
+            if (!toDate.value) { toast('先選日期', true); return; }
+            apply(function (r) { r.ed.date.set(toDate.value); G.moveTo(r, toDate.value); }, '已改到 ' + dayLabel(toDate.value));
+          } }, '改到這天')));
+          selBar.appendChild(h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { G.selected().forEach(function (r) { if (r.id) { r.del = true; r.tr.classList.add('g-del'); r.t.check(); } else { r.tr.remove(); G.rows = G.rows.filter(function (x) { return x !== r; }); } r.ck.checked = false; }); G.selChanged(); G.changed(); } }, '刪除'));
+          return [h('button', { class: 'btn', type: 'button', title: '每一天依時間重新排好', onclick: function () { G.sort(); } }, '依時間排序'), selBar];
+        },
         isEmpty: function (v) { return !String(v.title || '').trim(); },
         validate: function (d) { return !String(d.title).trim() ? '有一列沒有名稱' : ''; },
         toData: function (v, r) { return { id: r.id, date: v.date, time: v.time, end: v.end, title: v.title, note: v.note, activity: v.activity, ref: v.ref, rh: SF_RH }; },
