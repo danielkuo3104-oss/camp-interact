@@ -76,7 +76,7 @@ var Front = (function () {
     var view = (VIEWS[d.pkg] || {})[d.view];
     if (!view) return env.preview ? h('div', { class: 'maint' }, '（不認得的 Package 畫面：' + d.pkg + '／' + d.view + '）') : null;
     if (d.pkg !== 'studentflow') {
-      if (data === undefined) return h('div', { class: 'fb muted small' }, '載入中…');
+      if (data === undefined) return h('div', { class: 'fb sk', 'aria-busy': 'true' }, h('span', { class: 'sk-tx' }, '載入中…'), h('i', { class: 'sk-l' }), h('i', { class: 'sk-l s' }));
       if (data && data.maintenance === true) return h('div', { class: 'maint' }, '這個功能維護中，稍後再回來看看');
       if (data && data.error) return blockErr(env, d, data.detail || data.error);
     }
@@ -217,7 +217,33 @@ var Front = (function () {
   }
   /** 點開活動卡片：蓋在畫面上（管理端手機預覽時蓋在手機框裡） */
   var ACT_SHEET = null;
-  function closeAct() { if (ACT_SHEET) { ACT_SHEET.remove(); ACT_SHEET = null; } }
+  function closeAct() {
+    var sh = ACT_SHEET;
+    if (!sh) return;
+    ACT_SHEET = null;
+    if (!motionOk()) { sh.remove(); return; }
+    sh.classList.add('out');
+    setTimeout(function () { sh.remove(); }, 200);
+  }
+  /** 往下滑關掉活動卡片（卡片捲到最上面時才算） */
+  function swipeClose(sheet, card) {
+    var y0 = null, dy = 0;
+    sheet.addEventListener('touchstart', function (e) { y0 = sheet.scrollTop <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+    sheet.addEventListener('touchmove', function (e) {
+      if (y0 === null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 0) { card.style.transform = ''; return; }
+      card.style.transition = 'none';
+      card.style.transform = 'translateY(' + dy * 0.6 + 'px)';
+      sheet.style.backgroundColor = 'rgba(12, 16, 14, ' + Math.max(0.15, 0.5 - dy / 900) + ')';
+    }, { passive: true });
+    sheet.addEventListener('touchend', function () {
+      if (y0 === null) return;
+      y0 = null;
+      card.style.transition = ''; sheet.style.backgroundColor = '';
+      if (dy > 110) closeAct(); else card.style.transform = '';
+    });
+  }
   function openAct(info, env, from) {
     closeAct();
     var root = (from && from.closest && from.closest('.phone')) || document.body;
@@ -226,6 +252,7 @@ var Front = (function () {
     sheet.addEventListener('click', function (e) { if (e.target === sheet || e.target === x) closeAct(); });
     var onKey = function (e) { if (e.key === 'Escape') { closeAct(); document.removeEventListener('keydown', onKey); } };
     document.addEventListener('keydown', onKey);
+    swipeClose(sheet, sheet.firstChild);
     root.appendChild(sheet);
     ACT_SHEET = sheet;
     x.focus();
@@ -764,7 +791,7 @@ var Front = (function () {
       mini: function (d) {
         var open = function () { if (d.mine) modal({ title: d.mine.name + ' · ' + d.mine.score + ' 分', body: sbParts(d.mine.parts) }); };
         return h('div', { class: 'fb row' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
-          d.mine ? h('div', null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', null, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊')),
+          d.mine ? h('div', null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', { 'data-count': d.mine.score }, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊')),
           d.top ? h('div', { style: { textAlign: 'right' } }, h('div', { class: 'small muted' }, '目前第一'), h('b', null, d.top.name), h('div', { class: 'small' }, d.top.score + ' 分')) : null);
       },
       team: function (d) {
@@ -775,7 +802,7 @@ var Front = (function () {
         var my = env.me && env.me.squad;
         return card((d.title || '團隊積分') + (d.provisional ? '（暫定排名）' : ''), h('div', { class: 'board' }, (d.rows || []).map(function (r) {
           // 點一隊展開分數明細
-          return h('details', { class: 'r-wrap' }, h('summary', { class: 'r' + (String(r.no) === String(my) ? ' me' : '') }, h('span', { class: 'rk' }, r.rank), h('span', { class: 'grow' }, r.name), h('span', { class: 'sc' }, r.score), h('span', { class: 'cs-chev' }, '›')), h('div', { class: 'r-parts' }, sbParts(r.parts)));
+          return h('details', { class: 'r-wrap' }, h('summary', { class: 'r' + (String(r.no) === String(my) ? ' me' : '') }, h('span', { class: 'rk' }, r.rank), h('span', { class: 'grow' }, r.name), h('span', { class: 'sc', 'data-count': r.score }, r.score), h('span', { class: 'cs-chev' }, '›')), h('div', { class: 'r-parts' }, sbParts(r.parts)));
         })), d.provisional ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, '有關卡成績還沒公布，排名可能會變') : null);
       }
     },
