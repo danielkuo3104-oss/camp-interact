@@ -616,17 +616,17 @@ var PkgAdmin = (function () {
     G.markNow = function () {
       if (!o.nowSpan) return;
       $all('tr.g-nowline', body).forEach(function (x) { x.remove(); });
-      var t = nowDate().getTime(), today = taipei().ymd, nx = null, began = false;
+      var t = nowDate().getTime(), today = taipei().ymd, nx = null, nxS = 0, began = false;
       Array.prototype.forEach.call(body.children, function (tr) {
         var r = tr.dataset.key && G.rows.filter(function (x) { return x.tr === tr; })[0];
         if (!r || r.del) return;
         var sp = o.nowSpan(r.read()), td = sp && taipei(new Date(sp[0])).ymd === today;
         tr.classList.toggle('g-now', !!sp && sp[0] <= t && t < sp[1]);
         if (td && sp[0] <= t) began = true;
-        if (td && !nx && sp[0] > t) nx = tr;
+        if (td && !nx && sp[0] > t) { nx = tr; nxS = sp[0]; }
       });
       if (!nx || !began) return;   // 今天還沒開始或已經全部結束：不畫線
-      body.insertBefore(h('tr', { class: 'g-nowline', 'aria-hidden': 'true' }, h('td', { colspan: span }, nowRun(), h('span', null, '現在 ' + taipei().hm))), nx);
+      body.insertBefore(h('tr', { class: 'g-nowline', 'aria-hidden': 'true' }, h('td', { colspan: span }, nowRun(), h('span', null, nowLabel(nxS)))), nx);
     };
     // 整分鐘：時間 +1、線移到對的位置（時間用打開時和伺服器對好的時鐘，在電腦上自己算）
     if (o.nowSpan) onMinute(function () { if (!table.isConnected) return !table.dataset.seen; table.dataset.seen = 1; G.markNow(); });

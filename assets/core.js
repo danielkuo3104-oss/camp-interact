@@ -399,6 +399,13 @@ function minuteLoop_() {
 }
 /** 現在線上跑的那一條：一分鐘從左跑到右，跑完剛好換下一分鐘 */
 function nowRun() { return h('i', { class: 'nl-run', 'aria-hidden': 'true', style: 'animation-delay:-' + (nowDate().getTime() % 60000 / 1000).toFixed(2) + 's' }); }
+/** 現在線上的標籤：下一項還要超過 30 分鐘才開始時，寫「X 小時 Y 分後開始」，免得看到時間以為快到了 */
+function nowLabel(next) {
+  var m = next ? Math.ceil((next - nowDate().getTime()) / 60000) : 0;
+  if (m <= 30) return '現在 ' + taipei().hm;
+  var hh = Math.floor(m / 60), mm = m % 60;
+  return '下一項 ' + (hh ? hh + ' 小時' + (mm ? ' ' + mm + ' 分' : '') : mm + ' 分') + '後開始';
+}
 function taipei(d) {
   var p = {};
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
