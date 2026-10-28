@@ -142,6 +142,7 @@ table.t th { color: var(--text-2); font-weight: 500; background: var(--surface-2
 .app-shell.night .contact { border-color: #263553; }
 .app-shell.night .app-tabs { background: #0c1320; border-color: #263553; }
 .app-shell.night .sched .tm { color: #8fd0d6; } .app-shell.night .sched .it, .app-shell.night .sched .day { border-color: #263553; color: inherit; }
+.app-shell.night .sched .it.now { background: #3a2f1e; } .app-shell.night .sched .it.now .tm { color: #f2c27e; }
 .app-shell.night .board .r { border-color: #263553; } .app-shell.night .board .r.me { background: #23314d; } .app-shell.night .rk { background: #263553; color: var(--night-text); }
 .app-shell.night .night-banner { background: #23314d; }
 .night-banner { background: #23314d; color: #dce6f8; border-radius: var(--radius-md); padding: 12px 14px; display: flex; gap: 10px; align-items: center; }
