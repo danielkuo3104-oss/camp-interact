@@ -600,6 +600,39 @@ var Front = (function () {
     return h('div', { class: 'col rt-box', style: { gap: '8px' } }, h('div', { class: 'small muted' }, '每一格是那一隊在這個時段去的關卡；點小隊只看那一隊的順序。'), chips, view);
   }
   function card(title, body, extra) { return h('div', { class: 'fb' }, title ? h('h2', null, title) : null, body, extra || null); }
+  /** 小隊分數級距：依分數回傳第幾級（0–4），沒有設定或關閉回 -1 */
+  function sbTier(fx, score) {
+    if (!fx || !fx.tierFx || !(fx.tiers || []).length) return -1;
+    var t = fx.tiers.map(function (x, i) { return { i: i, min: +x.min || 0 }; }).sort(function (a, b) { return a.min - b.min; }), k = -1;
+    t.forEach(function (x, j) { if ((+score || 0) >= x.min) k = j; });
+    return k < 0 ? 0 : k;
+  }
+  function sbTierList(fx) { return (fx.tiers || []).slice().sort(function (a, b) { return (+a.min || 0) - (+b.min || 0); }); }
+  var TIER_FX = ['微光', '泡泡', '彩帶', '煙火', '金光'];
+  /** 卡片背景常駐的級距動畫（純裝飾，不擋點擊） */
+  function tierLayer(k) {
+    var n = [6, 9, 12, 4, 10][k], out = h('div', { class: 'tfx tfx-' + (k + 1), 'aria-hidden': 'true' });
+    for (var i = 0; i < n; i++) {
+      out.appendChild(h('i', { style: '--x:' + Math.round(((i + 0.5) / n) * 100 + (Math.random() * 10 - 5)) + '%;--d:' + (Math.random() * 6).toFixed(2) + 's;--s:' + (0.7 + Math.random() * 0.6).toFixed(2) + ';--h:' + Math.round(Math.random() * 360) }));
+    }
+    return out;
+  }
+  function tierBadge(fx, k) { var t = sbTierList(fx)[k]; return t ? h('span', { class: 'tier-badge tb-' + (k + 1) }, 'Lv.' + (k + 1) + ' ' + t.name) : null; }
+  /** 距離下一級還差多少（已經最高級就顯示滿格） */
+  function tierNext(fx, k, score) {
+    var list = sbTierList(fx), cur = list[k], nx = list[k + 1];
+    if (!cur) return null;
+    var pct = nx ? Math.max(0, Math.min(100, ((score - cur.min) / Math.max(1, nx.min - cur.min)) * 100)) : 100;
+    return h('div', { class: 'tier-next' }, h('div', { class: 'tier-bar' }, h('span', { style: { width: pct.toFixed(1) + '%' } })), h('div', { class: 'small muted' }, nx ? '再 ' + Math.max(0, nx.min - score) + ' 分升到「' + nx.name + '」' : '已經是最高級距'));
+  }
+  var CROWN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 18h18l-1.6-9.2-4.6 3.6L12 5.5 9.2 12.4 4.6 8.8z" fill="#f2c14e" stroke="#a8781a" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="5" r="1.4" fill="#fff3c4"/></svg>';
+  function crown() { var c = h('span', { class: 'crown', title: '第一名' }); c.innerHTML = CROWN; return c; }
+  /** 把級距動畫、第一名裝飾套到一張卡片上 */
+  function tierDress(el, fx, k, first) {
+    if (k >= 0) { el.classList.add('tier', 'tier-' + (k + 1)); el.insertBefore(tierLayer(k), el.firstChild); }
+    if (first && fx && fx.firstDeco) el.classList.add('is-first');
+    return el;
+  }
   /** 團隊計分明細：每個 Game 與加減分 */
   function sbParts(parts) {
     parts = parts || [];
@@ -809,19 +842,26 @@ var Front = (function () {
     scoreboard: {
       mini: function (d) {
         var open = function () { if (d.mine) modal({ title: d.mine.name + ' · ' + d.mine.score + ' 分', body: sbParts(d.mine.parts) }); };
-        return h('div', { class: 'fb row sb-mini' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
-          d.mine ? h('div', null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', { 'data-count': d.mine.score }, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊')),
-          d.top ? h('div', { style: { textAlign: 'right' } }, h('div', { class: 'small muted' }, '目前第一'), h('b', null, d.top.name), h('div', { class: 'small' }, d.top.score + ' 分')) : null);
+        var fx = d.fx || {}, k = d.mine ? sbTier(fx, d.mine.score) : -1, first = d.mine && d.mine.rank === 1;
+        var el = h('div', { class: 'fb row sb-mini' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
+          d.mine ? h('div', null, first && fx.firstDeco ? crown() : null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', { 'data-count': d.mine.score }, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊'),
+          k >= 0 ? h('div', { class: 'tier-line' }, tierBadge(fx, k), tierNext(fx, k, d.mine.score)) : null),
+          d.top && !first ? h('div', { class: 'sb-top' }, h('div', { class: 'small muted' }, '目前第一'), h('b', null, d.top.name), h('div', { class: 'small' }, d.top.score + ' 分')) : null);
+        return tierDress(el, fx, k, first);
       },
       team: function (d) {
         if (!d.mine) return card('我的隊伍分數', h('div', { class: 'muted small' }, '你還沒有分到小隊'));
-        return card(d.mine.name + ' · ' + d.mine.score + ' 分' + (d.provisional ? '（暫定）' : ''), sbParts(d.mine.parts), h('div', { class: 'small muted', style: { marginTop: '6px' } }, '目前第 ' + d.mine.rank + ' 名'));
+        var fx = d.fx || {}, k = sbTier(fx, d.mine.score), first = d.mine.rank === 1;
+        var el = card(d.mine.name + ' · ' + d.mine.score + ' 分' + (d.provisional ? '（暫定）' : ''), k >= 0 ? h('div', { class: 'tier-line' }, tierBadge(fx, k), tierNext(fx, k, d.mine.score)) : null, h('div', null, sbParts(d.mine.parts), h('div', { class: 'small muted', style: { marginTop: '6px' } }, '目前第 ' + d.mine.rank + ' 名')));
+        if (first && fx.firstDeco) el.querySelector('h2').insertBefore(crown(), el.querySelector('h2').firstChild);
+        return tierDress(el, fx, k, first);
       },
       full: function (d, b, env) {
-        var my = env.me && env.me.squad;
+        var my = env.me && env.me.squad, fx = d.fx || {};
         return card((d.title || '團隊積分') + (d.provisional ? '（暫定排名）' : ''), h('div', { class: 'board' }, (d.rows || []).map(function (r) {
-          // 點一隊展開分數明細
-          return h('details', { class: 'r-wrap' }, h('summary', { class: 'r' + (String(r.no) === String(my) ? ' me' : '') }, h('span', { class: 'rk' }, r.rank), h('span', { class: 'grow' }, r.name), h('span', { class: 'sc', 'data-count': r.score }, r.score), h('span', { class: 'cs-chev' }, '›')), h('div', { class: 'r-parts' }, sbParts(r.parts)));
+          // 點一隊展開分數明細；每隊標上級距，第一名戴皇冠
+          var k = sbTier(fx, r.score), first = r.rank === 1 && fx.firstDeco;
+          return h('details', { class: 'r-wrap' }, h('summary', { class: 'r' + (String(r.no) === String(my) ? ' me' : '') + (k >= 0 ? ' rt-' + (k + 1) : '') + (first ? ' is-first' : '') }, h('span', { class: 'rk' }, first ? crown() : r.rank), h('span', { class: 'grow' }, r.name, k >= 0 ? h('span', { class: 'tier-dot tb-' + (k + 1) }, sbTierList(fx)[k].name) : null), h('span', { class: 'sc', 'data-count': r.score }, r.score), h('span', { class: 'cs-chev' }, '›')), h('div', { class: 'r-parts' }, sbParts(r.parts)));
         })), d.provisional ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, '有關卡成績還沒公布，排名可能會變') : null);
       }
     },
@@ -1086,6 +1126,6 @@ var Front = (function () {
       .map(function (b) { return { id: b.id, pkg: b.data.pkg, view: b.data.view, config: b.data.config || {} }; });
   }
 
-  return { page: page, block: block, liveBlocks: liveBlocks, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, centerNow: centerNow, actColor: actColor, mapView: mapView, detailTable: detailTable, rotTable: rotTable, MAP_ANGLES: MAP_ANGLES, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard,
+  return { page: page, block: block, liveBlocks: liveBlocks, tierLayer: tierLayer, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, centerNow: centerNow, actColor: actColor, mapView: mapView, detailTable: detailTable, rotTable: rotTable, MAP_ANGLES: MAP_ANGLES, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard,
     actCard: actCard, openAct: openAct, closeAct: closeAct, actCardOf: actCardOf, actDefault: actDefault, ACT_GRADS: ACT_GRADS, ACT_ELS: ACT_ELS, ACT_VARS: ACT_VARS };
 })();

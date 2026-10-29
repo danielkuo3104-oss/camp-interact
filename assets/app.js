@@ -310,9 +310,11 @@
     });
     return any;
   }
-  /** 翻牌（只有學員端）：打開 30 秒後，時程、小隊排行、活動列表像時刻表一樣一列一列翻一次，之後每 3 分鐘再翻一輪；
+  /** 翻牌（只有學員端）：打開 30 秒後，時程、小隊分數像時刻表一樣一列一列翻一次，之後每 3 分鐘再翻一輪；
    *  內容有變（下一項、名次、分數）就翻那一塊。一開始不翻，免得還沒看清楚就在動；緊急聯絡不翻 */
-  var FLIP_SEL = '.sched > .it, .sched > .day, .board .r, .sb-mini, .ac-list > *';
+  var FLIP_SEL = '.sched > .it, .sched > .day, .board .r, .sb-mini';
+  /** 這張卡片是流程或分數（翻牌）；其他卡片用滑的 */
+  function isFlipCard(c) { return c.classList.contains('sb-mini') || !!c.querySelector('.sched, .board, .sb-mini'); }
   function flipRows(box) {
     if (side !== 'student' || !box || !motionOk() || Date.now() < S.flipAt) return false;
     var rows = $all(FLIP_SEL, box).filter(function (el) { return !el.closest('.calm') && el.offsetParent; });
@@ -339,10 +341,11 @@
     sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' }));
     return sky;
   }
-  /** 白天分四種背景：清晨（到 08:00）、早上（到 11:00）、中午（到 13:00）、午後（到夜間模式） */
+  /** 白天分四種背景：清晨、早上、中午、午後（到夜間模式）；分界時間在管理端「緊急聯絡」設定，預設 08:00／11:00／13:00 */
   function dayPart() {
-    var hm = taipei().hm;
-    return hm < '08:00' ? 'dawn' : hm < '11:00' ? 'morning' : hm < '13:00' ? 'noon' : 'afternoon';
+    var hm = taipei().hm, c = (S.boot && S.boot.ext && S.boot.ext.emergency) || {};
+    var at = function (v, d) { return /^\d\d:\d\d$/.test(v || '') ? v : d; };
+    return hm < at(c.dawnEnd, '08:00') ? 'dawn' : hm < at(c.morningEnd, '11:00') ? 'morning' : hm < at(c.noonEnd, '13:00') ? 'noon' : 'afternoon';
   }
   function dayTone() { if (S.amb) { var t = dayPart(); if (S.amb.dataset.tod !== t) { S.amb.className = 'amb tod-' + t; S.amb.dataset.tod = t; } } }
   onMinute(dayTone);
@@ -385,21 +388,19 @@
     // 換頁動畫：區塊一個接一個淡入；切到右邊的分頁或往下一層從右邊滑進來，反過來從左邊
     var prev = S.shown, enter = prev !== S.cur;
     S.shown = S.cur;
-    var flipIn = S.flipNext; S.flipNext = false;
-    if ((enter || flipIn) && side === 'student' && motionOk()) {
-      // 學員端：進入一頁、重新整理時，卡片一張一張翻一次
+    var flipIn = S.flipNext && side === 'student'; S.flipNext = false;
+    if ((enter || flipIn) && motionOk()) {
+      // 換頁、重新整理：卡片一張接一張滑進來（切到右邊的分頁或往下一層從右邊，反過來從左邊）；學員端的流程和分數卡片改成翻牌
+      var pi = -1, ni = -1, pp = prev && Front.pageById(S.env, prev);
+      rs.forEach(function (p, i) { if (pp && (p.id === prev || p.id === (pp.parent || ''))) pi = i; if (rootOf && p.id === rootOf.id) ni = i; });
+      var dir = !enter || !prev ? '' : cur && cur.parent === prev ? 'from-r' : pp && pp.parent === S.cur ? 'from-l' : pi >= 0 && ni >= 0 && pi !== ni ? (ni > pi ? 'from-r' : 'from-l') : '';
       $all(':scope > *', content).forEach(function (c, i) {
-        if (c.classList.contains('calm')) return;
+        c.style.setProperty('--i', Math.min(i, 8));
+        if (side !== 'student' || c.classList.contains('calm') || !isFlipCard(c)) return;
         c.style.setProperty('--fi', Math.min(i, 8));
         c.classList.add('flip');
         setTimeout(function () { c.classList.remove('flip'); }, 900 + Math.min(i, 8) * 80);
       });
-      $all('[data-count]', content).forEach(function (x) { countUp(x, 0, Number(x.dataset.count)); });
-    } else if (enter && motionOk()) {
-      var pi = -1, ni = -1, pp = prev && Front.pageById(S.env, prev);
-      rs.forEach(function (p, i) { if (pp && (p.id === prev || p.id === (pp.parent || ''))) pi = i; if (rootOf && p.id === rootOf.id) ni = i; });
-      var dir = !prev ? '' : cur && cur.parent === prev ? 'from-r' : pp && pp.parent === S.cur ? 'from-l' : pi >= 0 && ni >= 0 && pi !== ni ? (ni > pi ? 'from-r' : 'from-l') : '';
-      $all(':scope > *', content).forEach(function (c, i) { c.style.setProperty('--i', Math.min(i, 8)); });
       content.classList.add('pg-in');
       if (dir) content.classList.add(dir);
       setTimeout(function () { content.classList.remove('pg-in', 'from-r', 'from-l'); }, 1000);
