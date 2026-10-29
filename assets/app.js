@@ -401,16 +401,21 @@
       var pi = -1, ni = -1, pp = prev && Front.pageById(S.env, prev);
       rs.forEach(function (p, i) { if (pp && (p.id === prev || p.id === (pp.parent || ''))) pi = i; if (rootOf && p.id === rootOf.id) ni = i; });
       var dir = !enter || !prev ? '' : cur && cur.parent === prev ? 'from-r' : pp && pp.parent === S.cur ? 'from-l' : pi >= 0 && ni >= 0 && pi !== ni ? (ni > pi ? 'from-r' : 'from-l') : '';
+      var flipped = [], last = 0;
       $all(':scope > *', content).forEach(function (c, i) {
         c.style.setProperty('--i', Math.min(i, 8));
         if (!F.cardFlip || side !== 'student' || c.classList.contains('calm') || !isFlipCard(c)) return;
         c.style.setProperty('--fi', Math.min(i, 8));
         c.classList.add('flip');
-        setTimeout(function () { c.classList.remove('flip'); }, 750 + Math.min(i, 8) * 70);
+        flipped.push(c); last = Math.min(i, 8);
       });
       if (F.slide) content.classList.add('pg-in');
       if (F.slide && dir) content.classList.add(dir);
-      setTimeout(function () { content.classList.remove('pg-in', 'from-r', 'from-l'); }, 1000);
+      // 翻牌和滑入一起收尾：翻完的卡片如果先拿掉 flip、還在 pg-in 裡，會被重新套一次滑入（翻完又往上滑一下）
+      setTimeout(function () {
+        content.classList.remove('pg-in', 'from-r', 'from-l');
+        flipped.forEach(function (c) { c.classList.remove('flip'); });
+      }, Math.max(1000, 750 + last * 70));
       $all('[data-count]', content).forEach(function (x) { countUp(x, 0, Number(x.dataset.count)); });
     }
     var navEl;
