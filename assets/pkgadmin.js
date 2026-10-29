@@ -742,7 +742,7 @@ var PkgAdmin = (function () {
 
   /* ---------------- 設定（各 Package 共用） ---------------- */
   function config(box) {
-    var vals = {}, times = {}, card = h('div', { class: 'card col' });
+    var vals = {}, card = h('div', { class: 'card col' });
     if (!R.configFields.length) { box.appendChild(h('div', { class: 'card empty' }, '這個 Package 沒有可以調整的設定')); return; }
     R.configFields.forEach(function (f) {
       if (f.hidden) return;
@@ -752,15 +752,12 @@ var PkgAdmin = (function () {
       else if (f.type === 'textarea') el = area(v, { rows: 5, disabled: !R.canEdit });
       else if (f.type === 'json') {
         if (R.pkg === 'emergency' && f.key === 'contacts') { var ed = contactsEditor(v || []); vals[f.key] = ed.get; card.appendChild(field('其他聯絡人', ed.el)); return; }
-        if (R.pkg === 'scoreboard' && f.key === 'tiers') { var te = tiersEditor(v || []); vals[f.key] = te.get; card.appendChild(field(f.label, te.el)); return; }
         el = area(JSON.stringify(v, null, 1), { rows: 4, disabled: !R.canEdit });
       }
       else el = inp(v, { type: f.type === 'number' ? 'number' : f.type === 'time' ? 'time' : 'text', disabled: !R.canEdit });
       vals[f.key] = function () { return el.value; };
-      if (f.type === 'time') times[f.key] = el;
       card.appendChild(field(f.label, el));
     });
-    if (R.pkg === 'emergency' && times.dawnEnd) card.appendChild(todPreview(times));
     var getCfg = function () { var cfg = {}; Object.keys(vals).forEach(function (k) { cfg[k] = vals[k](); }); return cfg; };
     if (R.canEdit) {
       var btn = h('button', { class: 'btn', onclick: function (e) {
@@ -787,55 +784,6 @@ var PkgAdmin = (function () {
     };
     draw();
     return { el: el, get: function () { return rows.filter(function (c) { return c.name || c.phone; }); } };
-  }
-
-  /** 小隊分數級距：五級，各填名稱和最低分數；每一級在學員端有不同的卡片背景動畫 */
-  function tiersEditor(list) {
-    var FX = ['微光（柔光＋閃點）', '泡泡（往上冒）', '彩帶（飄落）', '煙火（不定時綻放）', '金光（掃光＋金粉）'], DF = [0, 100, 200, 350, 500], DN = ['起步', '加溫', '火熱', '閃耀', '傳奇'];
-    var rows = [0, 1, 2, 3, 4].map(function (i) { var x = list[i] || {}; return { name: x.name || DN[i], min: x.min === undefined || x.min === '' ? DF[i] : Number(x.min) }; });
-    var warn = h('div', { class: 'small', style: { color: 'var(--bad)' } });
-    var check = function () { var bad = rows.some(function (r, i) { return i && !(r.min > rows[i - 1].min); }); warn.textContent = bad ? '最低分數要一級比一級高' : ''; };
-    var el = h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'hint' }, '小隊分數到了哪一級，學員端的「團隊積分」卡片就換成那一級的背景動畫，另外顯示「Lv.幾 名稱」和距離下一級還差幾分。'));
-    rows.forEach(function (r, i) {
-      var n = inp(r.name, { placeholder: '名稱', maxlength: 12, disabled: !R.canEdit, style: { flex: '1 1 0', minWidth: '0' } }), m = inp(String(r.min), { type: 'number', disabled: !R.canEdit || i === 0, style: { width: '90px', flex: 'none' } });
-      n.oninput = function () { r.name = n.value; }; m.oninput = function () { r.min = Number(m.value) || 0; check(); };
-      var demo = h('div', { class: 'fb tier tier-' + (i + 1) + ' tier-demo' }, h('span', { class: 'tier-badge tb-' + (i + 1) }, 'Lv.' + (i + 1)));
-      demo.insertBefore(Front.tierLayer(i), demo.firstChild);
-      el.appendChild(h('div', { class: 'tier-row' }, demo, h('div', { class: 'col grow', style: { gap: '4px', minWidth: '0' } },
-        h('div', { class: 'row', style: { gap: '6px', alignItems: 'center' } }, n, i === 0 ? h('span', { class: 'small muted', style: { flex: 'none' } }, '0 分起') : m, i === 0 ? null : h('span', { class: 'small muted', style: { flex: 'none' } }, '分起')),
-        h('div', { class: 'small muted' }, '動畫：' + FX[i]))));
-    });
-    el.appendChild(warn); check();
-    return { el: el, get: function () { return rows.map(function (r, i) { return { name: String(r.name || '').trim() || DN[i], min: i === 0 ? 0 : r.min }; }); } };
-  }
-  /** 白天四種背景＋夜間的預覽，時段跟著上面填的時間即時更新 */
-  function todPreview(t) {
-    var V = function (k, d) { return t[k] && t[k].value || d; };
-    var tiles = [['dawn', '清晨', 'nightEnd', 'dawnEnd'], ['morning', '早上', 'dawnEnd', 'morningEnd'], ['noon', '中午', 'morningEnd', 'noonEnd'], ['afternoon', '午後', 'noonEnd', 'nightStart'], ['night', '夜間', 'nightStart', 'nightEnd']];
-    var DF = { nightEnd: '06:30', dawnEnd: '08:00', morningEnd: '11:00', noonEnd: '13:00', nightStart: '22:30' };
-    var labels = [], warn = h('div', { class: 'small', style: { color: 'var(--bad)' } });
-    var wrap = h('div', { class: 'tod-pv' }, tiles.map(function (x) {
-      var scene;
-      if (x[0] === 'night') {
-        scene = h('div', { class: 'sky' });
-        for (var i = 0; i < 26; i++) { var z = 1 + Math.random() * 2; scene.appendChild(h('i', { style: { left: (Math.random() * 100).toFixed(1) + '%', top: (Math.random() * 80).toFixed(1) + '%', width: z.toFixed(1) + 'px', height: z.toFixed(1) + 'px', animationDelay: (Math.random() * 4).toFixed(2) + 's' } })); }
-        scene.appendChild(h('b', { class: 'meteor' }));
-      } else {
-        scene = h('div', { class: 'amb tod-' + x[0] }, h('i'), h('i'), h('i'), h('b', { class: 'sun' }), h('b', { class: 'cloud' }), h('b', { class: 'cloud c2' }));
-        for (var j = 0; j < 6; j++) scene.appendChild(h('span', { class: 'pt', style: { left: (8 + j * 16) + '%', width: '7px', height: '7px', background: 'rgba(200, 128, 58, .4)', animationDuration: (8 + j) + 's', animationDelay: '-' + j * 1.4 + 's' } }));
-      }
-      var lb = h('div', { class: 'small muted' });
-      labels.push(function () { lb.textContent = V(x[2], DF[x[2]]) + '–' + V(x[3], DF[x[3]]); });
-      return h('div', { class: 'tod-tile' + (x[0] === 'night' ? ' is-night' : '') }, h('div', { class: 'tod-scene' }, scene), h('div', { class: 'tod-cap' }, h('b', null, x[1]), lb));
-    }));
-    var upd = function () {
-      labels.forEach(function (f) { f(); });
-      var seq = ['nightEnd', 'dawnEnd', 'morningEnd', 'noonEnd', 'nightStart'].map(function (k) { return V(k, DF[k]); });
-      warn.textContent = seq.every(function (v, i) { return !i || v > seq[i - 1]; }) ? '' : '時間要依序：夜間結束 < 清晨到 < 早上到 < 中午到 < 夜間開始';
-    };
-    Object.keys(t).forEach(function (k) { t[k].addEventListener('input', upd); });
-    upd();
-    return field('背景預覽（學員端白天四種、夜間一種）', h('div', { class: 'col', style: { gap: '6px' } }, wrap, warn));
   }
 
   /* ---------------- 各 Package ---------------- */

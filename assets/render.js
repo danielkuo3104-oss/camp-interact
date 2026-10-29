@@ -840,24 +840,24 @@ var Front = (function () {
       all: function (d, b, env, pub) { return sfView(pub, 'all', env, d); }
     },
     scoreboard: {
-      mini: function (d) {
+      mini: function (d, b, env) {
         var open = function () { if (d.mine) modal({ title: d.mine.name + ' · ' + d.mine.score + ' 分', body: sbParts(d.mine.parts) }); };
-        var fx = d.fx || {}, k = d.mine ? sbTier(fx, d.mine.score) : -1, first = d.mine && d.mine.rank === 1;
+        var fx = d.fx || (env && env.fx) || {}, k = d.mine ? sbTier(fx, d.mine.score) : -1, first = d.mine && d.mine.rank === 1;
         var el = h('div', { class: 'fb row sb-mini' + (d.mine ? ' sb-click' : ''), onclick: open, role: d.mine ? 'button' : null }, h('div', { class: 'grow' }, h('div', { class: 'small muted' }, (d.title || '團隊積分') + (d.provisional ? '（暫定）' : '')),
           d.mine ? h('div', null, first && fx.firstDeco ? crown() : null, h('b', { style: { fontSize: '18px' } }, d.mine.name), '　第 ' + d.mine.rank + ' 名 · ', h('b', { 'data-count': d.mine.score }, d.mine.score), ' 分') : h('div', { class: 'muted' }, '你還沒有分到小隊'),
           k >= 0 ? h('div', { class: 'tier-line' }, tierBadge(fx, k), tierNext(fx, k, d.mine.score)) : null),
           d.top && !first ? h('div', { class: 'sb-top' }, h('div', { class: 'small muted' }, '目前第一'), h('b', null, d.top.name), h('div', { class: 'small' }, d.top.score + ' 分')) : null);
         return tierDress(el, fx, k, first);
       },
-      team: function (d) {
+      team: function (d, b, env) {
         if (!d.mine) return card('我的隊伍分數', h('div', { class: 'muted small' }, '你還沒有分到小隊'));
-        var fx = d.fx || {}, k = sbTier(fx, d.mine.score), first = d.mine.rank === 1;
+        var fx = d.fx || (env && env.fx) || {}, k = sbTier(fx, d.mine.score), first = d.mine.rank === 1;
         var el = card(d.mine.name + ' · ' + d.mine.score + ' 分' + (d.provisional ? '（暫定）' : ''), k >= 0 ? h('div', { class: 'tier-line' }, tierBadge(fx, k), tierNext(fx, k, d.mine.score)) : null, h('div', null, sbParts(d.mine.parts), h('div', { class: 'small muted', style: { marginTop: '6px' } }, '目前第 ' + d.mine.rank + ' 名')));
         if (first && fx.firstDeco) el.querySelector('h2').insertBefore(crown(), el.querySelector('h2').firstChild);
         return tierDress(el, fx, k, first);
       },
       full: function (d, b, env) {
-        var my = env.me && env.me.squad, fx = d.fx || {};
+        var my = env.me && env.me.squad, fx = d.fx || env.fx || {};
         return card((d.title || '團隊積分') + (d.provisional ? '（暫定排名）' : ''), h('div', { class: 'board' }, (d.rows || []).map(function (r) {
           // 點一隊展開分數明細；每隊標上級距，第一名戴皇冠
           var k = sbTier(fx, r.score), first = r.rank === 1 && fx.firstDeco;

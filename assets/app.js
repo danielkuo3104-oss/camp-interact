@@ -12,7 +12,7 @@
   var camp = param('c'), side = param('s') === 'worker' ? 'worker' : 'student', preview = param('preview');
   var root = $('#root');
   var TK = 'ia_f_' + camp + '_' + side, VK = 'ia_ver_' + camp + '_' + side, BK = 'ia_boot_' + camp + '_' + side;
-  var S = { flipAt: Date.now() + 30000, boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false, scrolled: {} };
+  var S = { t0: Date.now(), flipAt: Date.now() + 30000, boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false, scrolled: {} };
   var LK = 'ia_live_' + camp + '_' + side;
   SIM_OK_ = !!preview;
 
@@ -253,6 +253,8 @@
     S.nightCfg = em || null;
     S.night = em && em.nightStart ? nightNow() : !!(em && em.night);
     S.env.night = S.night;
+    S.env.fx = fx();
+    rowFlipTimers();
     var start = (location.hash.match(/#p=([\w]+)/) || [])[1];
     var home = roots()[0];
     S.cur = start && Front.pageById(S.env, start) ? start : (home ? home.id : '');
@@ -310,26 +312,31 @@
     });
     return any;
   }
+  /** 動畫管理（管理端「動畫管理」）的設定；舊後端沒有就全部照預設 */
+  var FX_DFLT = { cardFlip: true, slide: true, rowFlip: true, rowDelay: 30, rowEvery: 3, dayBg: true, dawnEnd: '08:00', morningEnd: '11:00', noonEnd: '13:00', nightSky: true, tierFx: true, firstDeco: true };
+  function fx() { var f = (S.boot && S.boot.camp && S.boot.camp.fx) || {}, o = {}; Object.keys(FX_DFLT).forEach(function (k) { o[k] = f[k] === undefined ? FX_DFLT[k] : f[k]; }); o.tiers = f.tiers || [{ min: 0, name: '起步' }, { min: 100, name: '加溫' }, { min: 200, name: '火熱' }, { min: 350, name: '閃耀' }, { min: 500, name: '傳奇' }]; return o; }
   /** 翻牌（只有學員端）：打開 30 秒後，時程、小隊分數像時刻表一樣一列一列翻一次，之後每 3 分鐘再翻一輪；
    *  內容有變（下一項、名次、分數）就翻那一塊。一開始不翻，免得還沒看清楚就在動；緊急聯絡不翻 */
   var FLIP_SEL = '.sched > .it, .sched > .day, .board .r, .sb-mini';
   /** 這張卡片是流程或分數（翻牌）；其他卡片用滑的 */
   function isFlipCard(c) { return c.classList.contains('sb-mini') || !!c.querySelector('.sched, .board, .sb-mini'); }
   function flipRows(box) {
-    if (side !== 'student' || !box || !motionOk() || Date.now() < S.flipAt) return false;
+    if (side !== 'student' || !box || !motionOk() || !fx().rowFlip || Date.now() < S.flipAt) return false;
     var rows = $all(FLIP_SEL, box).filter(function (el) { return !el.closest('.calm') && el.offsetParent; });
     if (!rows.length) return false;
-    rows.forEach(function (el, i) {
-      el.classList.remove('flip'); void el.offsetWidth;
-      el.style.setProperty('--fi', Math.min(i, 12));
-      el.classList.add('flip');
-      setTimeout(function () { el.classList.remove('flip'); }, 900 + Math.min(i, 12) * 80);
-    });
+    // 先全部拿掉、只強制排版一次，再一起加上（每列各排一次版會卡）
+    rows.forEach(function (el) { el.classList.remove('flip'); });
+    void box.offsetWidth;
+    rows.forEach(function (el, i) { el.style.setProperty('--fi', Math.min(i, 12)); el.classList.add('flip'); });
+    setTimeout(function () { rows.forEach(function (el) { el.classList.remove('flip'); }); }, 750 + Math.min(rows.length - 1, 12) * 70);
     return true;
   }
-  if (side === 'student') {
-    setTimeout(function () { if (body && !document.hidden) flipRows(body); }, 30000);
-    setInterval(function () { if (body && !document.hidden) flipRows(body); }, 180000);
+  /** 定時翻列：打開幾秒後翻第一輪，之後每幾分鐘一輪（秒數、間隔在動畫管理設定） */
+  function rowFlipTimers() {
+    if (side !== 'student' || S.rowTimers) return;
+    var f = fx(), wait = Math.max(0, f.rowDelay * 1000 - (Date.now() - S.t0));
+    S.flipAt = S.t0 + f.rowDelay * 1000;
+    S.rowTimers = setTimeout(function tick() { if (body && !document.hidden) flipRows(body); S.rowTimers = setTimeout(tick, Math.max(1, fx().rowEvery) * 60000); }, wait);
   }
   /** 夜間的星空：隨機位置的星星一閃一閃，偶爾劃過流星（只建一次，換頁沿用） */
   function skyLayer() {
@@ -341,11 +348,10 @@
     sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' }));
     return sky;
   }
-  /** 白天分四種背景：清晨、早上、中午、午後（到夜間模式）；分界時間在管理端「緊急聯絡」設定，預設 08:00／11:00／13:00 */
+  /** 白天分四種背景：清晨、早上、中午、午後（到夜間模式）；分界時間在管理端「動畫管理」設定，預設 08:00／11:00／13:00 */
   function dayPart() {
-    var hm = taipei().hm, c = (S.boot && S.boot.ext && S.boot.ext.emergency) || {};
-    var at = function (v, d) { return /^\d\d:\d\d$/.test(v || '') ? v : d; };
-    return hm < at(c.dawnEnd, '08:00') ? 'dawn' : hm < at(c.morningEnd, '11:00') ? 'morning' : hm < at(c.noonEnd, '13:00') ? 'noon' : 'afternoon';
+    var hm = taipei().hm, c = fx();
+    return hm < c.dawnEnd ? 'dawn' : hm < c.morningEnd ? 'morning' : hm < c.noonEnd ? 'noon' : 'afternoon';
   }
   function dayTone() { if (S.amb) { var t = dayPart(); if (S.amb.dataset.tod !== t) { S.amb.className = 'amb tod-' + t; S.amb.dataset.tod = t; } } }
   onMinute(dayTone);
@@ -384,25 +390,26 @@
     Front.page(content, S.cur, S.env);
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
-    var deco = side !== 'student' ? null : S.night ? (S.sky = S.sky || skyLayer()) : hasEm ? null : (S.amb = S.amb || dayLayer());
+    var F = fx();
+    var deco = side !== 'student' ? null : S.night ? (F.nightSky ? (S.sky = S.sky || skyLayer()) : null) : hasEm || !F.dayBg ? null : (S.amb = S.amb || dayLayer());
     // 換頁動畫：區塊一個接一個淡入；切到右邊的分頁或往下一層從右邊滑進來，反過來從左邊
     var prev = S.shown, enter = prev !== S.cur;
     S.shown = S.cur;
     var flipIn = S.flipNext && side === 'student'; S.flipNext = false;
-    if ((enter || flipIn) && motionOk()) {
+    if ((enter || flipIn) && motionOk() && (F.slide || (F.cardFlip && side === 'student'))) {
       // 換頁、重新整理：卡片一張接一張滑進來（切到右邊的分頁或往下一層從右邊，反過來從左邊）；學員端的流程和分數卡片改成翻牌
       var pi = -1, ni = -1, pp = prev && Front.pageById(S.env, prev);
       rs.forEach(function (p, i) { if (pp && (p.id === prev || p.id === (pp.parent || ''))) pi = i; if (rootOf && p.id === rootOf.id) ni = i; });
       var dir = !enter || !prev ? '' : cur && cur.parent === prev ? 'from-r' : pp && pp.parent === S.cur ? 'from-l' : pi >= 0 && ni >= 0 && pi !== ni ? (ni > pi ? 'from-r' : 'from-l') : '';
       $all(':scope > *', content).forEach(function (c, i) {
         c.style.setProperty('--i', Math.min(i, 8));
-        if (side !== 'student' || c.classList.contains('calm') || !isFlipCard(c)) return;
+        if (!F.cardFlip || side !== 'student' || c.classList.contains('calm') || !isFlipCard(c)) return;
         c.style.setProperty('--fi', Math.min(i, 8));
         c.classList.add('flip');
-        setTimeout(function () { c.classList.remove('flip'); }, 900 + Math.min(i, 8) * 80);
+        setTimeout(function () { c.classList.remove('flip'); }, 750 + Math.min(i, 8) * 70);
       });
-      content.classList.add('pg-in');
-      if (dir) content.classList.add(dir);
+      if (F.slide) content.classList.add('pg-in');
+      if (F.slide && dir) content.classList.add(dir);
       setTimeout(function () { content.classList.remove('pg-in', 'from-r', 'from-l'); }, 1000);
       $all('[data-count]', content).forEach(function (x) { countUp(x, 0, Number(x.dataset.count)); });
     }
