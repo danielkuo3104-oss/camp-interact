@@ -63,6 +63,7 @@ A.navBuild = function () {
   if (A.canSide('student') || A.canSide('worker')) nav.appendChild(h('div', { class: 'grp' }, '前台編輯'));
   if (A.canSide('student')) nav.appendChild(h('a', { href: '#edit/student', 'data-r': 'edit/student' }, h('span', { class: 'side-dot' }), '學員端'));
   if (A.canSide('worker')) nav.appendChild(h('a', { href: '#edit/worker', 'data-r': 'edit/worker' }, h('span', { class: 'side-dot worker' }), '工作人員端'));
+  if (A.isAdmin()) nav.appendChild(item('fx', '動畫管理'));
   var info = A.pool.filter(function (p) { return p.category !== 'activity'; }), act = A.pool.filter(function (p) { return p.category === 'activity'; });
   if (info.length) { nav.appendChild(h('div', { class: 'grp' }, '資料')); info.forEach(function (p) { nav.appendChild(item('data/' + p.pkg, p.name + (p.maintenance ? ' 🔧' : ''))); }); }
   if (act.length) { nav.appendChild(h('div', { class: 'grp' }, '活動 Package')); act.forEach(function (p) { nav.appendChild(item('data/' + p.pkg, p.name + (p.maintenance ? ' 🔧' : ''))); }); }

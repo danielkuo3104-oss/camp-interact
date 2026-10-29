@@ -482,7 +482,7 @@ var Editor = (function () {
     var wrap = clear(nodes.phone);
     var pages = pagesArr().map(function (p) { return { id: p.id, parent: p.parent, ord: p.ord, title: p.title, icon: p.icon, fixed: p.fixed, activity: p.activity }; });
     var blocks = Object.keys(E.blocks).map(function (k) { return E.blocks[k]; }).filter(function (b) { return alive(b) && E.pages[b.page] && alive(E.pages[b.page]); });
-    var env = { pages: pages, blocks: blocks, packages: E.pkgPub, live: E.live, side: E.side, me: E.me || { name: IA.user.name }, preview: true,
+    var env = { pages: pages, blocks: blocks, packages: E.pkgPub, live: E.live, side: E.side, me: E.me || { name: IA.user.name }, preview: true, fx: A.info && A.info.fx,
       nav: function (pid) { if (E.pages[pid]) { E.sel = pid; tree(); blocks_(); preview(); } }, action: function () { return Promise.reject(new Error('預覽中不會送出')); } };
     var cur = E.pages[E.sel], rootOf = cur;
     while (rootOf && rootOf.parent && E.pages[rootOf.parent]) rootOf = E.pages[rootOf.parent];

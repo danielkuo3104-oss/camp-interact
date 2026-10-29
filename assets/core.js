@@ -116,7 +116,7 @@ function apiCached(name, args, show) {
 
 /** 操作協定：kind → [階段代碼, 預設動作] */
 var OPK = {
-  'user.password': ['member', 'update'], 'camp.create': ['camp', 'create'], 'camp.settings': ['camp', 'update'], 'camp.rehearsal.reset': ['camp', 'run'], 'camp.status': ['camp', 'update'], 'camp.upgrade': ['system', 'run'], 'system.reglink': ['system', 'update'],
+  'user.password': ['member', 'update'], 'camp.create': ['camp', 'create'], 'camp.settings': ['camp', 'update'], 'camp.fx': ['camp', 'update'], 'camp.rehearsal.reset': ['camp', 'run'], 'camp.status': ['camp', 'update'], 'camp.upgrade': ['system', 'run'], 'system.reglink': ['system', 'update'],
   'member.add': ['member', 'create'], 'member.pkgGrant': ['member', 'create'], 'member.perms': ['member', 'update'], 'member.revoke': ['member', 'delete'],
   'member.closeCollabs': ['member', 'update'], 'member.leave': ['member', 'delete'], 'invite.create': ['member', 'create'], 'invite.redeem': ['member', 'create'],
   'notify.read': ['event', 'update'], 'event.mark': ['event', 'update'],

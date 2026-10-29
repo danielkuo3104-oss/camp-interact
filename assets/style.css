@@ -887,9 +887,16 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 }
 
 /* 翻牌（學員端）：一列一列像時刻表的牌子翻過去 */
-.flip { animation: ia-flip .7s cubic-bezier(.3, .7, .3, 1) both; animation-delay: calc(var(--fi, 0) * 80ms); transform-origin: 50% 50%; backface-visibility: hidden; }
+/* 翻牌：每一段各自的緩動（前半加速翻到側面、瞬間換面、後半減速落定），中間不會停一下；翻的期間交給 GPU 合成 */
+.flip { animation: ia-flip .62s linear both; animation-delay: calc(var(--fi, 0) * 70ms); transform-origin: 50% 50%; will-change: transform; }
+.flip .tfx { visibility: hidden; }
 /* 只轉不改透明度：已經結束的（變暗的）項目翻完還是暗的，不會先亮一下 */
-@keyframes ia-flip { 0% { transform: perspective(600px) rotateX(0); } 45% { transform: perspective(600px) rotateX(-88deg); } 55% { transform: perspective(600px) rotateX(88deg); } 100% { transform: perspective(600px) rotateX(0); } }
+@keyframes ia-flip {
+  0% { transform: perspective(900px) rotateX(0); animation-timing-function: cubic-bezier(.5, 0, .85, .45); }
+  48% { transform: perspective(900px) rotateX(-90deg); animation-timing-function: steps(1, end); }
+  52% { transform: perspective(900px) rotateX(90deg); animation-timing-function: cubic-bezier(.12, .6, .3, 1); }
+  100% { transform: perspective(900px) rotateX(0); }
+}
 .calm .flip { animation: none; }
 @media (prefers-reduced-motion: reduce) { .flip { animation: none; } }
 
@@ -913,9 +920,12 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .amb.tod-noon::before { background: radial-gradient(ellipse at 50% -10%, rgba(255, 226, 140, .34), rgba(255, 240, 200, .12) 45%, transparent 70%); }
 .amb.tod-noon .sun { right: auto; left: calc(50% - 170px); top: -150px; width: 340px; height: 340px; background: radial-gradient(circle, rgba(255, 214, 100, .45), rgba(255, 214, 100, .14) 45%, transparent 70%); animation-duration: 4.5s; }
 .amb.tod-noon .cloud { opacity: .5; }
-.amb.tod-afternoon::before { background: linear-gradient(200deg, rgba(255, 196, 120, .3), rgba(240, 170, 110, .14) 45%, transparent 78%); }
-.amb.tod-afternoon .sun { top: 30vh; right: -120px; background: radial-gradient(circle, rgba(255, 160, 80, .4), rgba(255, 160, 80, .12) 45%, transparent 70%); }
-.amb.tod-afternoon .cloud { background: rgba(250, 220, 190, .55); box-shadow: 50px -22px 0 6px rgba(250, 220, 190, .5), 100px 0 0 -4px rgba(250, 220, 190, .5); }
+/* 午後：右上暖橘的斜陽，往下漸漸帶紫，銜接夜間 */
+.amb.tod-afternoon::before { background: linear-gradient(200deg, rgba(255, 190, 120, .28), rgba(236, 160, 150, .16) 32%, rgba(176, 140, 220, .2) 62%, rgba(140, 120, 210, .14) 85%, rgba(140, 120, 210, .08)); }
+.amb.tod-afternoon .sun { top: 30vh; right: -120px; background: radial-gradient(circle, rgba(255, 150, 90, .38), rgba(240, 130, 150, .14) 45%, transparent 70%); }
+.amb.tod-afternoon .cloud { background: rgba(232, 208, 236, .55); box-shadow: 50px -22px 0 6px rgba(232, 208, 236, .5), 100px 0 0 -4px rgba(232, 208, 236, .5); }
+.amb.tod-afternoon i:nth-child(3) { background: radial-gradient(circle, rgba(150, 120, 210, .2), transparent 62%); }
+.amb.tod-afternoon i:nth-child(1) { background: radial-gradient(circle, rgba(190, 150, 220, .16), transparent 62%); }
 .pg-in > .flip, .pg-in.from-r > .flip, .pg-in.from-l > .flip { animation-name: ia-flip; }
 
 /* ===== 小隊分數級距：依分數常駐在卡片上的背景動畫（不同分數看到不同畫面） ===== */
@@ -1011,3 +1021,8 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .tod-scene .sky i { opacity: .6; }
 .tod-cap { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 6px 8px; }
 .tier-row { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+/* 動畫管理頁 */
+.fx-times { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.fx-demo { position: relative; padding: 12px; border-radius: 14px; background: var(--bg, #f7f4ee); border: 1px solid var(--line); min-height: 210px; overflow: hidden; }
+.fx-demo .fb { padding: 10px 12px; }
+.fx-save { position: sticky; bottom: 0; padding: 10px 0; background: var(--bg, #f7f4ee); gap: 10px; align-items: center; }
