@@ -228,7 +228,12 @@
   }
   function logoutBtn() {
     if (preview) return null;
-    return h('button', { class: 'btn sm', onclick: function () { api('logout').catch(function () {}); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {} start(); } }, side === 'worker' ? '登出' : '離開');
+    return h('button', { class: 'btn sm', onclick: function () {
+      api('logout').catch(function () {}); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {}
+      // 共用手機：上一個人的區塊資料也清掉，下一個人登入不會先看到
+      jset(LK, null); Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
+      start();
+    } }, side === 'worker' ? '登出' : '離開');
   }
 
   function roots() {
