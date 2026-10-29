@@ -220,7 +220,7 @@
   /** 重新整理：拿最新發布的版本和資料（不用整頁重新載入） */
   function refresh() {
     try { sessionStorage.removeItem(VK); } catch (e) {}
-    S.prefetched = false; S.scrolled = {};
+    S.prefetched = false; S.scrolled = {}; S.flipNext = true;
     Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
     var rb = root.querySelector('.refresh-btn'); if (rb) rb.classList.add('spinning');
     toast('重新整理中…');
@@ -339,9 +339,16 @@
     sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' }));
     return sky;
   }
+  /** 白天分四種背景：清晨（到 08:00）、早上（到 11:00）、中午（到 13:00）、午後（到夜間模式） */
+  function dayPart() {
+    var hm = taipei().hm;
+    return hm < '08:00' ? 'dawn' : hm < '11:00' ? 'morning' : hm < '13:00' ? 'noon' : 'afternoon';
+  }
+  function dayTone() { if (S.amb) { var t = dayPart(); if (S.amb.dataset.tod !== t) { S.amb.className = 'amb tod-' + t; S.amb.dataset.tod = t; } } }
+  onMinute(dayTone);
   /** 白天的背景：慢慢飄的光暈、右上角呼吸的陽光、兩朵飄過的雲、往上飄的小光點（只建一次，換頁沿用） */
   function dayLayer() {
-    var amb = h('div', { class: 'amb', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('b', { class: 'sun' }), h('b', { class: 'cloud' }), h('b', { class: 'cloud c2' }));
+    var t0 = dayPart(), amb = h('div', { class: 'amb tod-' + t0, 'data-tod': t0, 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('b', { class: 'sun' }), h('b', { class: 'cloud' }), h('b', { class: 'cloud c2' }));
     var cols = ['63, 122, 128', '200, 128, 58', '119, 112, 138', '224, 163, 94'];
     for (var i = 0; i < 16; i++) {
       var sz = 5 + Math.random() * 8, dur = 16 + Math.random() * 14;
@@ -378,7 +385,17 @@
     // 換頁動畫：區塊一個接一個淡入；切到右邊的分頁或往下一層從右邊滑進來，反過來從左邊
     var prev = S.shown, enter = prev !== S.cur;
     S.shown = S.cur;
-    if (enter && motionOk()) {
+    var flipIn = S.flipNext; S.flipNext = false;
+    if ((enter || flipIn) && side === 'student' && motionOk()) {
+      // 學員端：進入一頁、重新整理時，卡片一張一張翻一次
+      $all(':scope > *', content).forEach(function (c, i) {
+        if (c.classList.contains('calm')) return;
+        c.style.setProperty('--fi', Math.min(i, 8));
+        c.classList.add('flip');
+        setTimeout(function () { c.classList.remove('flip'); }, 900 + Math.min(i, 8) * 80);
+      });
+      $all('[data-count]', content).forEach(function (x) { countUp(x, 0, Number(x.dataset.count)); });
+    } else if (enter && motionOk()) {
       var pi = -1, ni = -1, pp = prev && Front.pageById(S.env, prev);
       rs.forEach(function (p, i) { if (pp && (p.id === prev || p.id === (pp.parent || ''))) pi = i; if (rootOf && p.id === rootOf.id) ni = i; });
       var dir = !prev ? '' : cur && cur.parent === prev ? 'from-r' : pp && pp.parent === S.cur ? 'from-l' : pi >= 0 && ni >= 0 && pi !== ni ? (ni > pi ? 'from-r' : 'from-l') : '';
