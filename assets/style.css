@@ -945,7 +945,13 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .tb-5 { background: linear-gradient(90deg, #f7d978, #f2b84b); color: #5a3a00; box-shadow: 0 0 0 1px rgba(168, 120, 26, .35) inset; }
 .tier-bar { height: 6px; border-radius: 6px; background: rgba(120, 130, 150, .18); overflow: hidden; margin-bottom: 3px; }
 .tier-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), #6fb3b8); transition: width .8s var(--ease-out); }
+/* 進度條跟著等級換色（和 Lv 徽章同色系） */
+.tier-1 .tier-bar > span { background: linear-gradient(90deg, #7f9cc0, #b3c7e0); }
+.tier-2 .tier-bar > span { background: linear-gradient(90deg, #2f95a8, #7fd0dc); }
+.tier-3 .tier-bar > span { background: linear-gradient(90deg, #d24f8c, #f3a0c4); }
+.tier-4 .tier-bar > span { background: linear-gradient(90deg, #6b47c2, #b39ef0); }
 .tier-5 .tier-bar > span { background: linear-gradient(90deg, #e9a93a, #f7d978); }
+.tier-1 .tier-bar { background: rgba(127, 156, 192, .18); } .tier-2 .tier-bar { background: rgba(47, 149, 168, .15); } .tier-3 .tier-bar { background: rgba(210, 79, 140, .14); } .tier-4 .tier-bar { background: rgba(107, 71, 194, .14); } .tier-5 .tier-bar { background: rgba(233, 169, 58, .18); }
 
 /* Lv1 微光：柔光呼吸 + 零星閃點 */
 .tfx-1 { background: radial-gradient(120% 90% at 85% 0%, rgba(120, 160, 210, .16), transparent 60%); animation: tf-breathe 6s ease-in-out infinite; }
