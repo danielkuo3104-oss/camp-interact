@@ -24,7 +24,9 @@ var NO_TOKEN_ = { login: 1, forgotPassword: 1, registerWithInvite: 1, workerLogi
  * 很多人同時用時，Apps Script 會回「忙碌」（同時執行數上限、寫入排隊太久）：隨機等一下再重送（最多 4 次），大家錯開不會又擠在一起。
  */
 var BUSY_RE_ = /系統忙碌中|too many|simultaneous|invoked too many|Service .*(timed out|unavailable|error)|Exceeded maximum|請稍後再試/i;
-var API_Q_ = { busy: 0, wait: [] };
+var API_Q_ = { busy: 0, quiet: 0, wait: [] };
+/** 背景一直在跑的請求（遊戲同步）：不顯示右下角的轉圈 */
+var QUIET_FNS_ = { sync: 1 };
 function apiSlot_() { return new Promise(function (ok) { if (API_Q_.busy < 3) { API_Q_.busy++; netState_(); ok(); } else API_Q_.wait.push(ok); }); }
 function apiFree_() { var n = API_Q_.wait.shift(); if (n) n(); else API_Q_.busy--; netState_(); }
 /** 右下角的小轉圈：有請求在跑就顯示，讓人知道系統還在動 */
@@ -33,7 +35,7 @@ function netState_() {
   if (!el && document.body) { el = document.createElement('div'); el.id = 'netBusy'; el.className = 'net-busy'; el.innerHTML = '<span class="spin"></span><span class="tx">連線中…</span>'; document.body.appendChild(el); }
   if (!el) return;
   clearTimeout(API_Q_.t);
-  if (API_Q_.busy > 0) API_Q_.t = setTimeout(function () { el.classList.add('on'); }, 250);   // 很快就回來的不閃
+  if (API_Q_.busy - API_Q_.quiet > 0) API_Q_.t = setTimeout(function () { el.classList.add('on'); }, 250);   // 很快就回來的不閃
   else el.classList.remove('on', 'retry');
 }
 function apiOnce_(url, body) {
@@ -72,8 +74,10 @@ function api(name) {
       }).then(go);
     });
   }
-  return apiSlot_().then(go).then(function (j) {
-    apiFree_();
+  var quiet = !!QUIET_FNS_[name];
+  function free() { if (quiet) API_Q_.quiet--; apiFree_(); }
+  return apiSlot_().then(function () { if (quiet) API_Q_.quiet++; }).then(go).then(function (j) {
+    free();
     var el = document.getElementById('netBusy'); if (el) el.querySelector('.tx').textContent = '連線中…';
     if (j.ok) return j.result;
     var msg = String(j.error || '發生錯誤').replace(/^(Exception|Error):\s*/, '');
@@ -82,7 +86,7 @@ function api(name) {
     if (m) err.code = m[1];
     if (err.code === 'AUTH' && IA.onAuth) { IA.onAuth(err); return new Promise(function () {}); }
     throw err;
-  }, function (e) { apiFree_(); throw e; });
+  }, function (e) { free(); throw e; });
 }
 
 /**
@@ -554,6 +558,64 @@ function signPad(o) {
       return png.length <= 40000 ? png : sm.toDataURL('image/jpeg', 0.6);
     }
   };
+}
+
+/* ---------------- 即時同步（給遊戲資源包用） ---------------- */
+/**
+ * 很多人一起玩時互相傳事件、看彼此狀態。遊戲本身在手機上算，只有要讓別人知道的才送。
+ *   var s = gameSync(campId, 'race:room3', {
+ *     onEvents: function (list) {},   // [{ c: 誰（裝置代號）, name, n, t: 伺服器時間, d: 內容 }]，照時間排好
+ *     onStates: function (map) {},    // { 裝置代號: { name, st, sv, at } }，只給有變的
+ *     onGap: function (cids) {},      // 太久沒同步、中間有事件被擠掉的人（遊戲可以改用他們的狀態補）
+ *     onError: function (err) {},
+ *     fast: 1500, slow: 8000          // 有動靜時多久同步一次；安靜時慢慢放慢到多久
+ *   });
+ *   s.send({ ... })；s.setState({ ... })；s.stop()；s.me（自己的代號）
+ * 送出的事件會先排著，下一次同步一起送（一次最多 20 個）；分頁切到背景時暫停，切回來馬上同步。
+ */
+function gameSync(campId, ch, o) {
+  o = o || {};
+  var fast = o.fast || 1500, slow = o.slow || 8000, wait = fast, cursor = null, out = [], state, hasState = false, timer = null, running = false, stopped = false;
+  var dev = '';
+  try { dev = sessionStorage.getItem('ia_dev') || ''; if (!dev) { dev = Math.random().toString(36).slice(2, 8); sessionStorage.setItem('ia_dev', dev); } } catch (e) { dev = Math.random().toString(36).slice(2, 8); }
+  var me = { me: null, send: send, setState: setState, stop: stop, now: function () { tick(0); } };
+  function send(d) { out.push(d); tick(150); }
+  function setState(st) { state = st; hasState = true; tick(150); }
+  function stop() { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', vis); }
+  function vis() { if (!document.hidden) tick(0); }
+  function tick(ms) {
+    if (stopped) return;
+    clearTimeout(timer);
+    timer = setTimeout(run, ms);
+  }
+  function run() {
+    if (stopped) return;
+    if (running) { tick(300); return; }
+    if (document.hidden) { tick(slow); return; }
+    running = true;
+    var batch = out.splice(0, 20), opts = { dev: dev };
+    if (hasState) { opts.state = state; hasState = false; }
+    var sentState = 'state' in opts;
+    api('sync', campId, ch, batch, cursor, opts).then(function (r) {
+      running = false;
+      me.me = r.me; cursor = r.cursor;
+      var busy = batch.length || r.events.length || Object.keys(r.states).length;
+      wait = busy ? fast : Math.min(slow, Math.round(wait * 1.4));
+      if (r.gaps.length && o.onGap) o.onGap(r.gaps);
+      if (r.events.length && o.onEvents) o.onEvents(r.events);
+      if (Object.keys(r.states).length && o.onStates) o.onStates(r.states);
+      tick(out.length || hasState ? 150 : wait);
+    }, function (e) {
+      running = false;
+      out = batch.concat(out);                 // 沒送出去的放回去，下次再送
+      if (sentState && !hasState) hasState = true;
+      if (o.onError) o.onError(e);
+      tick(Math.min(slow * 2, wait * 2));
+    });
+  }
+  document.addEventListener('visibilitychange', vis);
+  tick(0);
+  return me;
 }
 
 /* ---------------- 加到主畫面的名稱 ---------------- */

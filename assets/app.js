@@ -116,32 +116,37 @@
 
   function workerLogin() {
     var name = inp('', { autocomplete: 'name' }), pass = inp('', { type: 'password' });
-    // 股別：用選的（清單來自工作人員名單）；打好姓名自動帶出
-    var dept = h('select', { class: 'input' }, h('option', { value: '' }, '請選擇股別'));
+    // 股別：用選的；清單要填對通行碼才拿得到（登入頁不公開股別，也不能用名字查誰是工作人員）
+    var dept = h('select', { class: 'input', disabled: true }, h('option', { value: '' }, '先填營隊通行碼'));
     var deptTx = inp('', { placeholder: '例如：輔導、活動、總務' }), deptF = field('股別', dept), deptHint = h('span', { class: 'hint' });
     deptF.appendChild(deptHint);
-    var useText = function () { dept.replaceWith(deptTx); dept = deptTx; };
+    var useText = function () { if (dept !== deptTx) { dept.replaceWith(deptTx); dept = deptTx; } };
     var err = h('div', { class: 'err' }), title = h('h1', null, '工作人員登入');
     var passF = field('營隊通行碼', pass, '通行碼由籌辦團隊提供');
+    var lastPass = null;
+    var loadDepts = function () {
+      var p = pass.value.trim();
+      if (p === lastPass || dept.tagName !== 'SELECT') return;
+      lastPass = p;
+      api('workerDepts', camp, p).then(function (ds) {
+        if (pass.value.trim() !== p || dept.tagName !== 'SELECT') return;
+        if (!ds.length) { useText(); return; }
+        clear(dept).appendChild(h('option', { value: '' }, '請選擇股別'));
+        ds.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
+        dept.disabled = false; deptHint.textContent = '';
+      }, function (e) {
+        if (pass.value.trim() !== p) return;
+        clear(dept).appendChild(h('option', { value: '' }, '先填營隊通行碼')); dept.disabled = true;
+        deptHint.textContent = /通行碼/.test(e.message) ? e.message : '';
+      });
+    };
     api('campPublicInfo', camp).then(function (c) {
       rememberLogo(c.loadImg);
-      title.textContent = c.name; setAppName(c.name); if (c.noPass) passF.classList.add('hidden');
-      if (!(c.depts || []).length) { useText(); return; }
-      c.depts.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
+      title.textContent = c.name; setAppName(c.name);
+      if (c.noPass) { passF.classList.add('hidden'); loadDepts(); }
     }, function () { useText(); });
-    var lastName = '';
-    var detect = function () {
-      var n = name.value.trim();
-      if (!n || n === lastName || dept.tagName !== 'SELECT') return;
-      lastName = n;
-      api('workerDepts', camp, n).then(function (ds) {
-        if (name.value.trim() !== n) return;
-        if (ds.length === 1) { dept.value = ds[0]; deptHint.textContent = '已自動帶出你的股別'; }
-        else if (ds.length > 1) deptHint.textContent = '你在 ' + ds.join('、') + '，請選要登入的股別';
-        else deptHint.textContent = '名單裡找不到這個名字，請確認姓名';
-      }, function () {});
-    };
-    name.addEventListener('change', detect); name.addEventListener('blur', detect);
+    pass.addEventListener('change', loadDepts); pass.addEventListener('blur', loadDepts);
+    pass.addEventListener('input', function () { if (pass.value.trim().length >= 4) { clearTimeout(pass._t); pass._t = setTimeout(loadDepts, 600); } });
     var btn = h('button', { class: 'btn primary' }, '登入');
     var go = function () {
       err.textContent = '';
@@ -153,10 +158,10 @@
       }, function (e) { err.textContent = e.message; });
     };
     btn.addEventListener('click', go);
-    [name, deptTx, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') { if (x === name) detect(); go(); } }); });
+    [name, deptTx, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') { if (x === pass) loadDepts(); go(); } }); });
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '工作人員端'), title,
-      field('姓名', name), deptF, passF, err, btn, installTip())));
+      field('姓名', name), passF, deptF, err, btn, installTip())));
   }
 
   /* ---------- 加到主畫面（安裝成 App） ---------- */
@@ -248,7 +253,7 @@
     var snap = b.snapshot;
     S.env = { pages: snap.pages, blocks: snap.blocks.slice(), packages: snap.packages || {}, live: S.live, side: side, me: b.me, preview: !!preview, nav: nav,
       action: function (pkg, name, data) { return op('front.action', { camp: camp, target: { pkg: pkg, action: name, side: side }, data: data }); },
-      reload: function () { loadLive(); } };
+      reload: function () { loadLive(true); } };   // 按了操作（例如快速展延）：一定重拿
     var em = b.ext && b.ext.emergency;
     S.nightCfg = em || null;
     S.night = em && em.nightStart ? nightNow() : !!(em && em.night);
@@ -490,11 +495,11 @@
     chunks.reduce(function (p, list) { return p.then(function () { return api('frontLive', camp, side, list, simNow()).then(applyLive, function () {}); }); }, Promise.resolve());
   }
 
-  function loadLive() {
+  function loadLive(force) {
     if (S.offline || !S.env) return;
     var list = Front.liveBlocks(S.env, S.cur);
     // 剛打開時已經一起拿到了：20 秒內只補還沒有的（例如夜間模式加的區塊）
-    if (S.freshAt && Date.now() - S.freshAt < 20000) list = list.filter(function (b) { return S.live[b.id] === undefined; });
+    if (!force && S.freshAt && Date.now() - S.freshAt < 20000) list = list.filter(function (b) { return S.live[b.id] === undefined; });
     if (!list.length) { afterDraw(); prefetch(); return; }
     api('frontLive', camp, side, list, simNow()).then(function (r) {
       applyLive(r);
