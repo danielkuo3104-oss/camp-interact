@@ -540,6 +540,20 @@ A.views.settings = function (m) {
   };
   loadBk();
 
+  // 登入失敗紀錄：有沒有人在猜通行碼（最近 7 天、最多 60 筆）
+  var lfBox = h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'muted small' }, '載入中…'));
+  m.appendChild(h('div', { class: 'card col section' }, h('h2', null, '登入失敗紀錄'), h('div', { class: 'hint' }, '最近 7 天的登入失敗。同一個名字短時間錯很多次，可能有人在猜通行碼，可以考慮換一組通行碼。'), lfBox));
+  var WHY = { pass: '通行碼錯誤', notfound: '名單裡找不到（姓名或股別不對）', blocked: '錯太多次被暫時擋下' };
+  var lfList = function (title, rows, staff) {
+    return h('div', { class: 'col', style: { gap: '4px' } }, h('b', null, title + '（' + rows.length + '）'), rows.length ? h('div', { class: 'sched lf-list' }, rows.map(function (x) {
+      return h('div', { class: 'it' }, h('span', { class: 'tm' }, fmt(new Date(x.t).toISOString())), h('div', { class: 'grow' }, h('b', null, x.who || '（空白）'), x.dept ? h('span', { class: 'muted' }, '　' + x.dept) : null, h('div', { class: 'small muted' }, staff && x.why === 'pass' ? '密碼錯誤' : WHY[x.why] || x.why)));
+    })) : h('div', { class: 'muted small' }, '沒有紀錄'));
+  };
+  api('getLoginFails', A.camp).then(function (r) {
+    clear(lfBox).appendChild(lfList('工作人員登入', r.worker || []));
+    if (r.staff) lfBox.appendChild(lfList('編輯者登入（全系統，只有系統終端看得到）', r.staff, true));
+  }, function (e) { clear(lfBox).appendChild(h('div', { class: 'muted small' }, e.message)); });
+
   var ended = I.status === 'ended';
   m.appendChild(h('div', { class: 'card col section' }, h('h2', null, '營隊狀態'), h('div', { class: 'hint' }, ended ? '營隊已結束（回憶模式）。重新開啟後可以再修改資料。' : '營隊結束後進入回憶模式：前台保留內容、資料不能再改，未使用的邀請碼全部失效。'),
     h('div', null, h('button', { class: 'btn ' + (ended ? 'primary' : 'danger'), onclick: function () {
