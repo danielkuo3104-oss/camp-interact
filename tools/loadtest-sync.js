@@ -83,10 +83,10 @@ async function runSync(users) {
     let nextSend = Date.now() + Math.random() * EVERY;
     while (Date.now() - t0 < DUR) {
       if (Date.now() >= nextSend) { const k = p.i + '.' + (++p.seq); p.out.push({ k, at: Date.now() }); sent[k] = { at: Date.now(), room: p.room, from: p.i }; nextSend += EVERY * (0.7 + Math.random() * 0.6); }
-      const batch = p.out.splice(0, 20);
+      const batch = p.out.splice(0, 20), at = Date.now() - t0;
       const r = await call('sync', [p.u.token, CAMP, p.room, batch, p.cursor, { dev: p.dev }], st);
       const now = Date.now();
-      calls.push({ ok: r.ok, ms: r.total, srv: r.srv ? r.srv.ms : null, n: batch.length, tries: r.tries });
+      calls.push({ at, ok: r.ok, ms: r.total, srv: r.srv ? r.srv.ms : null, n: batch.length, tries: r.tries, err: r.ok ? '' : r.err });
       if (!r.ok) { p.out = batch.concat(p.out); process.stdout.write('x'); await sleep(p.wait); continue; }
       if (p.joinedAt === null) p.joinedAt = now;
       p.me = r.result.me; p.cursor = r.result.cursor; p.gaps += r.result.gaps.length;
@@ -120,7 +120,8 @@ async function runSync(users) {
     callMs: { p50: pct(ok.map(c => c.ms), 0.5), p90: pct(ok.map(c => c.ms), 0.9), max: pct(ok.map(c => c.ms), 1) },
     serverMs: { p50: pct(ok.filter(c => c.srv !== null).map(c => c.srv), 0.5), p90: pct(ok.filter(c => c.srv !== null).map(c => c.srv), 0.9) },
     events: Object.keys(sent).length, delivery: { should, got, pct: should ? Math.round(got / should * 1000) / 10 : 100 },
-    delayMs: { p50: pct(delays, 0.5), p90: pct(delays, 0.9), max: pct(delays, 1) }, gaps: people.reduce((n, p) => n + p.gaps, 0)
+    delayMs: { p50: pct(delays, 0.5), p90: pct(delays, 0.9), max: pct(delays, 1) }, gaps: people.reduce((n, p) => n + p.gaps, 0),
+    raw: { calls: calls.map(c => [c.at, c.ok ? c.ms : -1, c.tries, c.err]), delays }
   };
   console.log('\n\n==== 同步結果 ====');
   console.log(`同步 ${calls.length} 次（約每秒 ${(calls.length / (DUR / 1000)).toFixed(1)} 次）：成功 ${ok.length}（${Math.round(ok.length / Math.max(1, calls.length) * 100)}%），自動重試 ${report.retries} 次，其中系統忙碌 ${busy} 次`);
@@ -140,8 +141,9 @@ async function runWrite(users, adminTok) {
   await Promise.all(users.map(async (u, i) => {
     for (let k = 0; k < TIMES; k++) {
       await sleep(Math.random() * WINDOW / TIMES);
+      const at = Date.now() - t0;
       const r = await call('loadtestWrite', [u.token, CAMP, 'p' + i + '#' + k], st);
-      res.push({ ok: r.ok, total: r.total, tries: r.tries, wait: r.ok ? r.result.waitMs : null, write: r.ok ? r.result.writeMs : null, srv: r.srv ? r.srv.ms : null });
+      res.push({ at, err: r.ok ? '' : r.err, ok: r.ok, total: r.total, tries: r.tries, wait: r.ok ? r.result.waitMs : null, write: r.ok ? r.result.writeMs : null, srv: r.srv ? r.srv.ms : null });
       process.stdout.write(r.ok ? (r.tries > 1 ? 'r' : '.') : 'x');
     }
   }));
@@ -153,7 +155,8 @@ async function runWrite(users, adminTok) {
     totalMs: { p50: pct(ok.map(r => r.total), 0.5), p90: pct(ok.map(r => r.total), 0.9), max: pct(ok.map(r => r.total), 1) },
     lockWaitMs: { p50: pct(ok.map(r => r.wait), 0.5), p90: pct(ok.map(r => r.wait), 0.9), max: pct(ok.map(r => r.wait), 1) },
     writeMs: { p50: pct(ok.map(r => r.write), 0.5), p90: pct(ok.map(r => r.write), 0.9) },
-    rowsWritten: cl.ok ? cl.result.removed : null
+    rowsWritten: cl.ok ? cl.result.removed : null,
+    raw: { calls: res.map(r => [r.at, r.ok ? r.total : -1, r.tries, r.err]), waits: ok.map(r => r.wait) }
   };
   console.log('\n\n==== 同時寫入結果 ====');
   console.log(`寫入 ${res.length} 次：成功 ${ok.length}（${Math.round(ok.length / Math.max(1, res.length) * 100)}%），全部跑完 ${sec(all)}，自動重試 ${report.retries} 次，其中系統忙碌 ${busy} 次`);
@@ -164,6 +167,78 @@ async function runWrite(users, adminTok) {
   console.log(cl.ok ? `試算表實際多了 ${cl.result.removed} 列（應該 ${ok.length} 列），已刪掉「壓力測試」分頁` : '刪「壓力測試」分頁失敗：' + cl.err + '（請手動刪掉營隊資料庫的「壓力測試」分頁）');
   if (Object.keys(st.fails || {}).length) { console.log('失敗原因：'); Object.keys(st.fails).forEach(k => console.log('  ' + st.fails[k] + ' 次　' + k)); }
   return report;
+}
+
+// ---------- 圖表報告（一個 HTML 檔，瀏覽器打開就能看） ----------
+function htmlReport_(r) {
+  const sync = r.mode === 'sync';
+  const ok = r.raw.calls.filter(c => c[1] >= 0), okPct = Math.round(ok.length / Math.max(1, r.raw.calls.length) * 100);
+  const tiles = sync ? [
+    ['成功率', okPct + '%', `${ok.length}／${r.raw.calls.length} 次同步`],
+    ['完整度', r.delivery.pct + '%', `該收 ${r.delivery.should} 份、收到 ${r.delivery.got} 份`],
+    ['每次同步（90%）', (r.callMs.p90 / 1000).toFixed(2) + ' 秒', `中位數 ${(r.callMs.p50 / 1000).toFixed(2)} 秒`],
+    ['傳到別人（90%）', (r.delayMs.p90 / 1000).toFixed(2) + ' 秒', `中位數 ${(r.delayMs.p50 / 1000).toFixed(2)} 秒`],
+    ['系統忙碌', String(r.busy), `自動重試 ${r.retries} 次`]
+  ] : [
+    ['成功率', okPct + '%', `${ok.length}／${r.raw.calls.length} 次寫入`],
+    ['完成時間（90%）', (r.totalMs.p90 / 1000).toFixed(2) + ' 秒', `中位數 ${(r.totalMs.p50 / 1000).toFixed(2)} 秒`],
+    ['排隊等鎖（90%）', (r.lockWaitMs.p90 / 1000).toFixed(2) + ' 秒', `最久 ${(r.lockWaitMs.max / 1000).toFixed(2)} 秒`],
+    ['系統忙碌', String(r.busy), `自動重試 ${r.retries} 次`],
+    ['試算表列數', String(r.rowsWritten === null ? '—' : r.rowsWritten), `應該 ${ok.length} 列`]
+  ];
+  const title = sync ? `同步：${r.people} 人、${r.rooms} 個頻道、${r.seconds} 秒` : `同時寫入：${r.people} 人 × ${r.times} 次、${r.windowSec} 秒內送出`;
+  const fails = Object.keys(r.fails || {}).map(k => [k, r.fails[k]]);
+  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>壓力測試結果</title><style>
+:root{--surface:#fcfcfb;--page:#f9f9f7;--ink:#0b0b0b;--ink2:#52514e;--grid:#e6e5e0;--s1:#2a78d6;--bad:#d03b3b}
+@media (prefers-color-scheme:dark){:root{--surface:#1a1a19;--page:#0d0d0d;--ink:#f0efec;--ink2:#c3c2b7;--grid:#34332f;--s1:#3987e5;--bad:#e66767}}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 16px 48px}h1{font-size:20px;margin:0 0 4px}.sub{color:var(--ink2);margin:0 0 18px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px}
+.tile,.card{background:var(--surface);border:1px solid var(--grid);border-radius:12px;padding:12px 14px}.tile .k{color:var(--ink2);font-size:13px}.tile .v{font-size:26px;font-weight:650;margin:2px 0}.tile .d{color:var(--ink2);font-size:12px}
+.card{margin-bottom:14px}.card h2{font-size:15px;margin:0 0 2px}.card p{margin:0 0 8px;color:var(--ink2);font-size:13px}
+svg{width:100%;height:auto;display:block}svg text{fill:var(--ink2);font-size:11px}.ax{stroke:var(--grid)}
+#tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--grid);border-radius:8px;padding:6px 9px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.15);display:none;z-index:9}
+.lg{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-bottom:4px}.lg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{text-align:left;padding:5px 6px;border-bottom:1px solid var(--grid)}
+</style></head><body><main>
+<h1>${esc(title)}</h1><p class="sub">${new Date().toLocaleString('zh-TW')}</p>
+<div class="tiles">${tiles.map(t => `<div class="tile"><div class="k">${t[0]}</div><div class="v">${t[1]}</div><div class="d">${t[2]}</div></div>`).join('')}</div>
+<div class="card"><h2>每一次${sync ? '同步' : '寫入'}花多久（依開始時間）</h2><p>點越高越慢；紅色 ✕ 是重試後還是失敗。滑過去看細節。</p>
+<div class="lg"><span><i style="background:var(--s1)"></i>成功</span><span><i style="background:var(--bad)"></i>失敗</span></div><div id="c1"></div></div>
+<div class="card"><h2>${sync ? '每次同步' : '每次寫入（含重試）'}花多久的分布</h2><p>大部分落在左邊（快）比較好；右邊拖很長代表有人等很久。</p><div id="c2"></div></div>
+<div class="card"><h2>${sync ? '從送出到別人收到要多久' : '排隊等鎖多久'}</h2><p>${sync ? '包含同步的間隔（有動靜時每 1.5 秒同步一次），所以 1～3 秒是正常的。' : '大家排同一把鎖：人越多、後面的人等越久。'}</p><div id="c3"></div></div>
+${fails.length ? `<div class="card"><h2>失敗原因</h2><table><tr><th>次數</th><th>原因</th></tr>${fails.map(f => `<tr><td>${f[1]}</td><td>${esc(f[0])}</td></tr>`).join('')}</table></div>` : ''}
+</main><div id="tip"></div><script>
+const R=${JSON.stringify({ calls: r.raw.calls, second: sync ? r.raw.delays : r.raw.waits }).replace(/</g, '\\u003c')};
+const tip=document.getElementById('tip');
+function show(e,h){tip.innerHTML=h;tip.style.display='block';tip.style.left=Math.min(innerWidth-220,e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px'}
+function hide(){tip.style.display='none'}
+const sec=ms=>(ms/1000).toFixed(2)+' 秒', W=900, H=260, L=44, B=28, T=10, RT=10;
+function fl(m){return v=>m<2000?Math.round(v)+'ms':m<10000?(v/1000).toFixed(1)+'s':Math.round(v/1000)+'s'}
+function nice(m){const p=Math.pow(10,Math.floor(Math.log10(m||1)));return [1,2,2.5,5,10].map(x=>x*p).find(x=>x>=m/4)*4||m}
+function axes(svg,xmax,ymax,xl,yl){let g='';for(let i=0;i<=4;i++){const y=T+(H-T-B)*(1-i/4);g+=\`<line class="ax" x1="\${L}" x2="\${W-RT}" y1="\${y}" y2="\${y}"/><text x="\${L-6}" y="\${y+4}" text-anchor="end">\${yl(ymax*i/4)}</text>\`}
+for(let i=0;i<=5;i++){const x=L+(W-L-RT)*i/5;g+=\`<text x="\${x}" y="\${H-8}" text-anchor="middle">\${xl(xmax*i/5)}</text>\`}return g}
+// 1. 時間軸散佈
+(function(){const c=R.calls;if(!c.length)return;const xmax=Math.max(...c.map(x=>x[0]))||1, ymax=nice(Math.max(...c.map(x=>x[1]))||1);
+const X=v=>L+(W-L-RT)*v/xmax, Y=v=>T+(H-T-B)*(1-v/ymax);
+let s=axes(null,xmax,ymax,fl(xmax),fl(ymax));
+c.forEach((d,i)=>{if(d[1]>=0)s+=\`<circle data-i="\${i}" cx="\${X(d[0])}" cy="\${Y(d[1])}" r="3.2" fill="var(--s1)" fill-opacity=".75" stroke="var(--surface)" stroke-width="1"/>\`;
+else{const x=X(d[0]),y=T+4;s+=\`<path data-i="\${i}" d="M\${x-4} \${y-4}L\${x+4} \${y+4}M\${x+4} \${y-4}L\${x-4} \${y+4}" stroke="var(--bad)" stroke-width="2"/><rect data-i="\${i}" x="\${x-6}" y="\${y-6}" width="12" height="12" fill="transparent"/>\`}});
+const el=document.getElementById('c1');el.innerHTML=\`<svg viewBox="0 0 \${W} \${H}">\${s}</svg>\`;
+el.querySelectorAll('[data-i]').forEach(n=>{n.onmousemove=e=>{const d=c[n.dataset.i];show(e,'第 '+Math.round(d[0]/1000)+' 秒開始<br>'+(d[1]>=0?'花 '+sec(d[1]):'<b>失敗</b>：'+(d[3]||''))+(d[2]>1?'<br>重試 '+(d[2]-1)+' 次':''))};n.onmouseleave=hide})})();
+// 2、3. 分布（直方圖）
+function hist(id,vals,unit){const el=document.getElementById(id);if(!vals.length){el.innerHTML='<p>沒有資料</p>';return}
+const max=Math.max(...vals)||1, n=Math.min(24,Math.max(6,Math.ceil(Math.sqrt(vals.length)))), step=nice(max)/n, bins=Array(n).fill(0);
+vals.forEach(v=>bins[Math.min(n-1,Math.floor(v/step))]++);const ymax=Math.max(...bins), bw=(W-L-RT)/n;
+let s=axes(null,step*n,ymax,fl(step*n),v=>Math.round(v));
+bins.forEach((b,i)=>{if(!b)return;const h=(H-T-B)*b/ymax, x=L+bw*i+1, y=H-B-h, w=Math.max(1,bw-2), r=Math.min(4,w/2,h);
+s+=\`<path data-i="\${i}" d="M\${x} \${H-B}V\${y+r}Q\${x} \${y} \${x+r} \${y}H\${x+w-r}Q\${x+w} \${y} \${x+w} \${y+r}V\${H-B}Z" fill="var(--s1)"/><rect data-i="\${i}" x="\${L+bw*i}" y="\${T}" width="\${bw}" height="\${H-T-B}" fill="transparent"/>\`});
+el.innerHTML=\`<svg viewBox="0 0 \${W} \${H}">\${s}</svg>\`;
+el.querySelectorAll('rect[data-i]').forEach(n=>{const i=+n.dataset.i;n.onmousemove=e=>show(e,sec(step*i)+'～'+sec(step*(i+1))+'<br>'+bins[i]+' '+unit);n.onmouseleave=hide})}
+hist('c2',R.calls.filter(x=>x[1]>=0).map(x=>x[1]),'次');
+hist('c3',R.second,${sync ? "'份事件'" : "'次'"});
+</script></body></html>`;
 }
 
 (async () => {
@@ -193,9 +268,12 @@ async function runWrite(users, adminTok) {
   if (!probe.ok && /不支援的操作/.test(probe.err)) { console.log('後端還是舊版：請把新的 Sync.gs、WebApp.gs 貼上並部署「新版本」'); await cleanup(); process.exit(1); }
   console.log(`拿到 ${tk.result.length} 個虛擬帳號`);
   const report = MODE === 'sync' ? await runSync(tk.result) : await runWrite(tk.result, tok);
-  const file = `同步壓力測試結果-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.json`;
+  const d0 = new Date(), stamp = (MODE === 'sync' ? '同步' : '寫入') + '-' + d0.getFullYear() + String(d0.getMonth() + 1).padStart(2, '0') + String(d0.getDate()).padStart(2, '0') + '-' + String(d0.getHours()).padStart(2, '0') + String(d0.getMinutes()).padStart(2, '0') + String(d0.getSeconds()).padStart(2, '0');
+  const file = `壓力測試-${stamp}.json`, page = `壓力測試-${stamp}.html`;
   require('fs').writeFileSync(file, JSON.stringify(report, null, 2));
-  console.log('\n結果存在：' + file);
+  require('fs').writeFileSync(page, htmlReport_(report));
+  console.log('\n圖表：' + page + '（資料：' + file + '）');
+  try { require('child_process').exec((process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start ""' : 'xdg-open') + ' "' + page + '"'); } catch (e) {}
   await cleanup();
   try { await once('logout', [tok]); } catch (e) {}
 })();
