@@ -15,7 +15,6 @@
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* 動畫（滑入、雲、光點）不會把頁面撐寬；手機上輸入框字 16px，iPhone 點輸入框不會自動放大畫面 */
 html, body, .app-shell { overflow-x: clip; }
-@media (pointer: coarse) { .input, select.input, textarea.input, input, select, textarea { font-size: 16px; } }
 body { font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; min-height: 100vh; }
 a { color: var(--brand); }
 h1, h2, h3, h4 { margin: 0; font-weight: 700; }
@@ -36,6 +35,8 @@ h1 { font-size: 22px; } h2 { font-size: 17px; } h3 { font-size: 15px; }
 .btn:focus-visible, .input:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .input, select.input, textarea.input { width: 100%; height: 38px; padding: 0 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font: inherit; }
 textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: vertical; }
+/* iOS 點到小於 16px 的輸入框會自動放大、而且登入後不會縮回來：觸控裝置一律 16px（要放在 .input 的 font: inherit 後面才蓋得過） */
+@media (pointer: coarse) { .input, select.input, textarea.input, input, select, textarea, .acd-el textarea.input { font-size: 16px !important; } }
 .field { display: flex; flex-direction: column; gap: 4px; } .field > span { font-size: 12.5px; color: var(--text-2); font-weight: 500; }
 .check { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; } .check input { margin-top: 4px; }
 .hint { font-size: 12.5px; color: var(--text-2); }
