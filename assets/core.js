@@ -627,7 +627,8 @@ function gameSync(campId, ch, o) {
  * 送出要留下來的結果（集章、下注、交答案、最後分數）：不排鎖，很多人同時送也很快。
  *   gameSubmit(campId, 'bet:r1', { horse: 3, amt: 100 }).then(...)
  * 先存在這台手機（localStorage），送成功才拿掉：網路斷掉、App 關掉，下次打開（或呼叫 gameSubmit.flush()）會自動補送；
- * 每筆有固定的 id，補送不會重複算。回傳的 Promise 在送到伺服器時完成（斷網時會一直等到送出為止）。
+ * 每筆有固定的 id，補送不會重複算。回傳的 Promise 在送到伺服器時完成（斷網時會一直等到送出為止），
+ * 結果是 { id, sigOk }：內容帶 { signed, sig }（關主密鑰）時 sigOk 是伺服器驗的結果，沒有就是 null。
  */
 var GS_KEY_ = 'ia_gsq';
 function gameSubmit(campId, ch, d) {
@@ -650,9 +651,9 @@ gameSubmit.flush = function () {
   if (!q.length || !IA.token) return;
   var head = q[0], batch = q.filter(function (x) { return x.camp === head.camp && x.ch === head.ch; }).slice(0, 20);
   gameSubmit.busy_ = true;
-  api('gameSubmit', head.camp, head.ch, batch.map(function (x) { return { id: x.id, d: x.d }; })).then(function () {
+  api('gameSubmit', head.camp, head.ch, batch.map(function (x) { return { id: x.id, d: x.d }; })).then(function (r) {
     gameSubmit.busy_ = false;
-    var ids = {}; batch.forEach(function (x) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.ok(x.id); delete gameSubmit.wait_[x.id]; } });
+    var ids = {}; batch.forEach(function (x, i) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.ok({ id: x.id, sigOk: r && r.sigOk ? r.sigOk[i] : null }); delete gameSubmit.wait_[x.id]; } });
     jset(GS_KEY_, (jget(GS_KEY_, []) || []).filter(function (x) { return !ids[x.id]; }));
     gameSubmit.flush();
   }, function (e) {
