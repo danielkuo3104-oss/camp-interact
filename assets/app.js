@@ -207,6 +207,8 @@
     api('frontBoot', camp, side, ver, simNow(), { live: true }).then(function (b) {
       S.offline = false;
       if (b.camp) rememberLogo(b.camp.loadImg);
+      if (b.me) gameSubmit.who = b.me.sid ? 's' + b.me.sid : b.me.wid ? 'w' + b.me.wid : '';
+      if (!preview) setTimeout(function () { gameSubmit.flush(); }, 3000);   // 上次沒送出的遊戲結果（斷網、關掉 App）補送
       if (!b.snapshot) { msgScreen(b.camp.name, side === 'student' ? '學員端還沒有發布內容，晚點再來看看。' : '工作人員端還沒有發布內容。', logoutBtn()); return; }
       if (b.live) {
         Object.keys(b.live).forEach(function (k) { S.live[k] = b.live[k]; });

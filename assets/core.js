@@ -572,6 +572,9 @@ function signPad(o) {
  *   });
  *   s.send({ ... })；s.setState({ ... })；s.stop()；s.me（自己的代號）
  * 送出的事件會先排著，下一次同步一起送（一次最多 20 個）；分頁切到背景時暫停，切回來馬上同步。
+ * 伺服器會依整個營隊的同步量回建議間隔（r.wait）：人多時大家一起放慢，不會把 Apps Script 擠爆。
+ * 頻道範圍：sq3…（只有第 3 小隊）、w-…（只有工作人員）、in-…（學員只能送、看不到別人送的），其他名稱全營隊。
+ * 同步是「盡量送到」；要留下來的結果請用 gameSubmit。
  */
 function gameSync(campId, ch, o) {
   o = o || {};
@@ -601,10 +604,12 @@ function gameSync(campId, ch, o) {
       me.me = r.me; cursor = r.cursor;
       var busy = batch.length || r.events.length || Object.keys(r.states).length;
       wait = busy ? fast : Math.min(slow, Math.round(wait * 1.4));
+      var floor = Number(r.wait) || 0;   // 伺服器建議的最短間隔（整個營隊太多人在同步時）
+      if (wait < floor) wait = floor;
       if (r.gaps.length && o.onGap) o.onGap(r.gaps);
       if (r.events.length && o.onEvents) o.onEvents(r.events);
       if (Object.keys(r.states).length && o.onStates) o.onStates(r.states);
-      tick(out.length || hasState ? 150 : wait);
+      tick(out.length || hasState ? Math.max(150, floor) : wait);
     }, function (e) {
       running = false;
       out = batch.concat(out);                 // 沒送出去的放回去，下次再送
@@ -617,6 +622,49 @@ function gameSync(campId, ch, o) {
   tick(0);
   return me;
 }
+
+/**
+ * 送出要留下來的結果（集章、下注、交答案、最後分數）：不排鎖，很多人同時送也很快。
+ *   gameSubmit(campId, 'bet:r1', { horse: 3, amt: 100 }).then(...)
+ * 先存在這台手機（localStorage），送成功才拿掉：網路斷掉、App 關掉，下次打開（或呼叫 gameSubmit.flush()）會自動補送；
+ * 每筆有固定的 id，補送不會重複算。回傳的 Promise 在送到伺服器時完成（斷網時會一直等到送出為止）。
+ */
+var GS_KEY_ = 'ia_gsq';
+function gameSubmit(campId, ch, d) {
+  var id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  var q = jget(GS_KEY_, []); if (!Array.isArray(q)) q = [];
+  q.push({ camp: campId, ch: ch, id: id, d: d, tok: IA.token, who: gameSubmit.who || '', at: Date.now() });
+  if (q.length > 300) q = q.slice(-300);
+  jset(GS_KEY_, q);
+  return new Promise(function (ok, bad) { (gameSubmit.wait_[id] = { ok: ok, bad: bad }); gameSubmit.flush(); });
+}
+gameSubmit.wait_ = {};
+gameSubmit.who = '';   // 學員端／工作人員端打開時設成這個人（s學員代碼／w工作人員ID）
+gameSubmit.flush = function () {
+  if (gameSubmit.busy_) return;
+  var q = jget(GS_KEY_, []); if (!Array.isArray(q) || !q.length) return;
+  // 只送這個人的（重新登入換了 token 也算同一個人）；共用手機時別人的先留著，等他登入再送；放超過 4 天的丟掉
+  var old = Date.now() - 4 * 86400000, all = q.filter(function (x) { return !(x.at < old); });
+  if (all.length !== q.length) jset(GS_KEY_, all.length ? all : null);
+  q = all.filter(function (x) { return gameSubmit.who && x.who ? x.who === gameSubmit.who : x.tok === IA.token; });
+  if (!q.length || !IA.token) return;
+  var head = q[0], batch = q.filter(function (x) { return x.camp === head.camp && x.ch === head.ch; }).slice(0, 20);
+  gameSubmit.busy_ = true;
+  api('gameSubmit', head.camp, head.ch, batch.map(function (x) { return { id: x.id, d: x.d }; })).then(function () {
+    gameSubmit.busy_ = false;
+    var ids = {}; batch.forEach(function (x) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.ok(x.id); delete gameSubmit.wait_[x.id]; } });
+    jset(GS_KEY_, (jget(GS_KEY_, []) || []).filter(function (x) { return !ids[x.id]; }));
+    gameSubmit.flush();
+  }, function (e) {
+    gameSubmit.busy_ = false;
+    if (e.code === 'NET') { setTimeout(gameSubmit.flush, 5000 + Math.random() * 5000); return; }   // 網路或忙碌：等一下再送
+    // 伺服器拒收（格式、權限）：丟掉這幾筆，告訴呼叫的地方
+    var ids = {}; batch.forEach(function (x) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.bad(e); delete gameSubmit.wait_[x.id]; } });
+    jset(GS_KEY_, (jget(GS_KEY_, []) || []).filter(function (x) { return !ids[x.id]; }));
+    gameSubmit.flush();
+  });
+};
+if (typeof window !== 'undefined') window.addEventListener('online', function () { gameSubmit.flush(); });
 
 /* ---------------- 加到主畫面的名稱 ---------------- */
 /**
