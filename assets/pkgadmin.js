@@ -1620,6 +1620,11 @@ var PkgAdmin = (function () {
           var g = a.data.game || {}, cfg = JSON.parse(JSON.stringify(g.cfg || {})), fields = h('div', { class: 'col', style: { gap: '8px' } });
           var pk = sel([{ value: '', label: '（不連遊戲）' }].concat(packs.map(function (p) { return { value: p.id, label: p.name + '（' + p.id + '）' }; })).concat(g.pack && !packs.some(function (p) { return p.id === g.pack; }) ? [{ value: g.pack, label: g.pack + '（清單裡沒有）' }] : []), g.pack || '');
           var lb = inp(g.label || '', { placeholder: '按鈕文字（預設「開始遊戲」）', maxlength: '20' });
+          var gm = g.master || {}, mOn = h('input', { type: 'checkbox' }), mPass = inp(gm.pass || '', { placeholder: '不設就不用輸入', maxlength: '20', autocomplete: 'off' });
+          mOn.checked = gm.on !== false;
+          var masterBox = h('div', { class: 'grid2', style: { marginTop: '8px' } },
+            field('關主登入', h('div', { class: 'row', style: { gap: '8px', minHeight: '38px' } }, mOn, '工作人員端活動卡片顯示「🎯 關主登入」'), '關主從這裡進去產生密鑰、上傳分數'),
+            field('關主通行碼', mPass, '有設的話，工作人員第一次進關主要輸入（改了要重新輸入）'));
           var save = h('button', { class: 'btn primary' }, '儲存'), links = h('div', { class: 'small muted' });
           var drawFields = function () {
             clear(fields); clear(links);
@@ -1642,14 +1647,14 @@ var PkgAdmin = (function () {
                 fields.appendChild(field(f.label, el, f.hint));
               });
               var base = location.href.replace(/admin\.html.*$/, '') + 'game.html?c=' + encodeURIComponent(A.camp) + '&g=' + pk.value + '&a=' + a.id;
-              links.appendChild(h('div', null, '工作人員連結（關主用）：', h('code', null, base + '&s=worker')));
+              links.appendChild(h('div', null, '關主連結（也可以從工作人員端活動卡片的「關主登入」進入）：', h('code', null, base + '&s=worker')));
             }, function (e) { fields.appendChild(h('div', { class: 'fb-notice' }, e.message)); });
           };
           pk.addEventListener('change', function () { cfg = {}; drawFields(); });
           save.addEventListener('click', function () {
-            busy(save, function () { return run('activity.game', { id: a.id, game: pk.value ? { pack: pk.value, label: lb.value, cfg: cfg } : null }, { ver: a.version, msg: '已儲存「' + a.data.name + '」的遊戲設定' }); }).then(null, function () {});
+            busy(save, function () { return run('activity.game', { id: a.id, game: pk.value ? { pack: pk.value, label: lb.value, cfg: cfg, master: { on: mOn.checked, pass: mPass.value } } : null }, { ver: a.version, msg: '已儲存「' + a.data.name + '」的遊戲設定' }); }).then(null, function () {});
           });
-          if (!R.canEdit) { pk.disabled = true; lb.disabled = true; save.disabled = true; }
+          if (!R.canEdit) { pk.disabled = true; lb.disabled = true; save.disabled = true; mOn.disabled = true; mPass.disabled = true; }
           // 測試模式：玩法、計分都跟正式一樣，關掉後這次測試的資料全部歸零
           var testing = !!(g.test && g.test.on), testBox = null;
           if (g.pack) {
@@ -1672,7 +1677,7 @@ var PkgAdmin = (function () {
               testing ? h('div', { class: 'small muted' }, '學員測試連結：', h('code', null, studentLink)) : null);
           }
           list.appendChild(h('div', { class: 'card' }, h('div', { class: 'row wrap', style: { marginBottom: '8px' } }, h('h3', { class: 'grow', style: { margin: 0 } }, a.data.name), testing ? h('span', { class: 'tag warn' }, '🧪 測試中') : null, g.pack ? h('span', { class: 'tag ok' }, '🎮 ' + g.pack) : h('span', { class: 'tag' }, '沒有連遊戲')),
-            h('div', { class: 'grid2' }, field('遊戲資源包', pk), field('按鈕文字', lb)), fields, h('div', { class: 'row wrap', style: { marginTop: '10px' } }, save, h('span', { class: 'grow' })), links, testBox));
+            h('div', { class: 'grid2' }, field('遊戲資源包', pk), field('按鈕文字', lb)), fields, masterBox, h('div', { class: 'row wrap', style: { marginTop: '10px' } }, save, h('span', { class: 'grow' })), links, testBox));
           drawFields();
         });
       });

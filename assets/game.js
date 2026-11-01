@@ -20,7 +20,8 @@
  *   host.sync(ch, opts)              即時同步（gameSync），頻道範圍見 core.js
  *   host.submit(ch, d)               要留下來的結果（gameSubmit，斷網會補送）→ Promise { id, sigOk }
  *   host.inbox(ch, since)            讀送出的結果（工作人員全部；學員自己的，小隊頻道 sqN… 讀同小隊的）
- *   host.sign(text, squad)           工作人員產生關主密鑰（綁小隊，'*' 不限）→ Promise { sig }
+ *   host.sign(text, squad)           工作人員產生關主密鑰（綁小隊，'*' 不限；從活動進來也綁活動）→ Promise { sig }
+ *   關主登入：活動設了關主通行碼時，工作人員進來會先輸入一次（存在手機），host.sign、host.score 自動帶關主證明
  *   host.score({ stage, stageName, team, score })  關主端：這一隊過了這一關，分數送進「團隊計分」（從活動進來才能用）
  *                                    每個活動一個 Game（名稱＝活動名稱），每隊每關一筆，同一關重送是更新
  *   host.load(key) / host.save(key, v)  這台手機、這個人、這個資源包自己的存檔
@@ -163,11 +164,34 @@ var CampGame = (function () {
 
   var manifest;
   msg('載入中…');
-  Promise.all([getManifest(), api('gameMe', camp, actId || '')]).then(function (res) {
+  // 關主證明：活動有關主通行碼時，輸入一次後存在這支手機（改通行碼後要重新輸入）
+  var MK = 'ia_gm_' + camp + '_' + (actId || ''), ticket = store(MK) || '';
+  function masterLogin(info) {
+    var act = info.activity;
+    return new Promise(function (done) {
+      var pass = h('input', { class: 'input', type: 'password', placeholder: '關主通行碼', autocomplete: 'off' }), err = h('div', { class: 'small', style: { color: 'var(--bad)', minHeight: '1.2em' } });
+      var go = h('button', { class: 'btn primary', type: 'submit' }, '進入關主');
+      var form = h('form', { class: 'col', style: { gap: '10px' } }, pass, err, go);
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        if (!pass.value.trim()) { err.textContent = '請輸入關主通行碼'; return; }
+        go.disabled = true; err.textContent = '';
+        api('gameMaster', camp, act.id, pass.value.trim()).then(function (r) {
+          ticket = r.ticket; store(MK, ticket, true); act.master.ok = true; done(info);
+        }, function (e) { go.disabled = false; err.textContent = e.message; pass.select(); });
+      });
+      msg('🎯 關主登入', '「' + act.name + '」需要關主通行碼（問活動負責人）。', h('div', { class: 'col', style: { gap: '10px' } }, form,
+        h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動')));
+      setTimeout(function () { pass.focus(); }, 50);
+    });
+  }
+  Promise.all([getManifest(), api('gameMe', camp, actId || '', ticket)]).then(function (res) {
     manifest = res[0].m;
     var info = res[1];
     if (info.activity && info.activity.pack !== g) throw new Error('這個活動連的是另一個遊戲（' + info.activity.pack + '）');
-    return install(manifest, res[0].fresh).then(function (got) {
+    var m = info.activity && info.activity.master;
+    if (m && !m.ok) { store(MK, null); ticket = ''; }
+    return (m && !m.ok ? masterLogin(info) : Promise.resolve(info)).then(function () { return install(manifest, res[0].fresh); }).then(function (got) {
       var entry = clean(manifest.entry || 'game.js'), css = manifest.css ? clean(manifest.css) : '';
       if (got) got.files.forEach(function (f, i) { blobs[f] = URL.createObjectURL(got.blobs[i]); });
       if (css) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = blobs[css] || base + css; document.head.appendChild(l); }
@@ -195,10 +219,10 @@ var CampGame = (function () {
       sync: function (ch, o) { return gameSync(camp, ch, o); },
       submit: function (ch, data) { return gameSubmit(camp, ch, data); },
       inbox: function (ch, since) { return api('gameInbox', camp, ch, since || 0); },
-      sign: function (text, squad) { return api('gameSign', camp, text, squad); },
+      sign: function (text, squad) { return api('gameSign', camp, text, squad, act ? act.id : '', ticket); },
       score: function (o) {
         if (!act) return Promise.reject(new Error('要從活動的「開始遊戲」進來才能上傳分數'));
-        return op('front.action', { camp: camp, target: { pkg: 'scoreboard', action: 'game.stage', side: side }, data: Object.assign({ act: act.id }, o || {}) });
+        return op('front.action', { camp: camp, target: { pkg: 'scoreboard', action: 'game.stage', side: side }, data: Object.assign({ act: act.id }, o || {}, { ticket: ticket }) });
       },
       load: function (k, dflt) { var all = jget(saveKey, {}) || {}; return k in all ? all[k] : dflt; },
       save: function (k, v) { var all = jget(saveKey, {}) || {}; all[k] = v; jset(saveKey, all); },
