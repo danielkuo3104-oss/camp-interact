@@ -183,6 +183,7 @@ var Front = (function () {
         var go = e.go || 'res', label = e.text;
         if (go === 'res') { if (info.page || ctx.edit) node = btn(label || '活動資源', info.page ? function () { closeAct(); env.nav(info.page); } : null); }
         else if (go === 'map') { var q = e.q || info.place; if (q) node = btn(label || '地圖', null, 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q)); else if (ctx.edit) node = btn(label || '地圖（還沒有地點）'); }
+        else if (go === 'game') { if (info.game || ctx.edit) node = gameBtn(info, label, ctx); }
         else if (go === 'page') { if (e.page && (pageById(env, e.page) || ctx.edit)) node = btn(label || '前往', function () { closeAct(); env.nav(e.page); }); }
         else if (okUrl(e.url)) node = btn(label || '前往', null, e.url);
         else if (ctx.edit) node = btn((label || '連結') + '（還沒填網址）');
@@ -194,6 +195,19 @@ var Front = (function () {
       case 'spacer': node = h('div', { style: { height: (e.n || 16) + 'px' } }); break;
     }
     return node ? h('div', { class: 'ac-el al-' + (e.al || 'l') + (ctx.edit ? ' ed' : ''), 'data-i': ctx.i }, node) : null;
+  }
+  /** 「開始遊戲」：同一個分頁打開遊戲頁（加到主畫面的 App 開新分頁會跑到瀏覽器、登入不見）；編輯預覽不跳走 */
+  function gameBtn(info, label, ctx) {
+    var text = label || (info.game && info.game.label) || '開始遊戲';
+    var b = h('button', { type: 'button', class: 'ac-btn' }, info.game ? '🎮 ' + text : text + '（還沒連遊戲）');
+    b.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (!info.game || (ctx && ctx.edit)) return;
+      var side = document.documentElement.classList.contains('side-worker') ? 'worker' : 'student';
+      if (param('preview') || /admin\.html/.test(location.pathname)) { toast('預覽不能玩遊戲：用學員端或工作人員端打開'); return; }
+      location.href = 'game.html?c=' + encodeURIComponent(param('c')) + '&g=' + encodeURIComponent(info.game.pack) + '&a=' + encodeURIComponent(info.id) + '&s=' + side;
+    });
+    return h('div', { class: 'ac-btns' }, b);
   }
   /**
    * 活動卡片。mode：cover 封面、detail 點開的詳細、theme 現在主題（封面樣式＋「現在主題」字樣）
@@ -209,6 +223,8 @@ var Front = (function () {
     inner.appendChild(h('div', { class: 'ac-top' }, title, mode === 'detail' && t ? h('div', { class: 'ac-when' }, actTime(t, false)) : null));
     var list = (mode === 'detail' ? c.detail : c.cover) || [];
     list.forEach(function (e, i) { var n = actEl(e, info, env, { fg: fg, edit: o.edit, i: i }); if (n) inner.appendChild(n); });
+    // 活動連了遊戲資源包、卡片裡又沒放遊戲按鈕：點開後最下面自動加一顆
+    if (mode === 'detail' && info.game && !list.some(function (e) { return e.t === 'button' && e.go === 'game'; })) inner.appendChild(h('div', { class: 'ac-el al-c' }, gameBtn(info, '', { edit: o.edit })));
     if (mode === 'cover' && (t || !o.noChev)) inner.appendChild(h('div', { class: 'ac-foot' }, t ? h('span', { class: 'ac-when' }, actTime(t, false)) : null, h('span', { class: 'ac-chev' }, '›')));
     if (mode === 'theme') { if (o.prog) inner.appendChild(o.prog); inner.appendChild(h('div', { class: 'ac-foot' }, h('span', { class: 'ac-chev' }, '查看活動 ›'))); }
     el.appendChild(inner);

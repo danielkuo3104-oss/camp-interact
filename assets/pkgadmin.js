@@ -231,7 +231,7 @@ var PkgAdmin = (function () {
 
   var TABS = {
     people: [['workers', '工作人員'], ['assign', '工作分配'], ['setup', '股別與活動'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['config', '設定']],
-    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['cards', '活動卡片'], ['rotations', '活動細流'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
+    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['cards', '活動卡片'], ['rotations', '活動細流'], ['games', '遊戲資源包'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
     studentflow: [['items', '學員行程'], ['pending', '待處理變更'], ['config', '設定']],
     emergency: [['config', '聯絡與夜間設定'], ['flow', '處理流程圖'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
     courses: [['list', '課程'], ['config', '設定']],
@@ -1401,7 +1401,8 @@ var PkgAdmin = (function () {
       });
       var info = { id: a.id, name: a.data.name, summary: a.data.summary || '', page: pg ? pg.id : '',
         times: its.map(function (it) { var s = mm(it.data.time), du = Number(it.data.dur) || 0; return { date: it.data.date, time: it.data.time, end: s !== null && du ? hmOf(s + du) : '' }; }),
-        place: ((its.filter(function (it) { return String(it.data.place || '').trim(); })[0] || {}).data || {}).place || '', myrot: myrot };
+        place: ((its.filter(function (it) { return String(it.data.place || '').trim(); })[0] || {}).data || {}).place || '', myrot: myrot,
+        game: a.data.game && a.data.game.pack ? { pack: a.data.game.pack, label: a.data.game.label || '' } : null };
       var env = { pages: (D.studentPages || []).map(function (p) { return { id: p.id, title: p.title, activity: p.activity }; }), side: 'student', me: { name: '王小明', squad: sq ? sq.no : 1 }, preview: true,
         nav: function () { toast('（預覽）學員按了會到活動資源頁'); } };
       var C = JSON.parse(JSON.stringify(Front.actCardOf(Object.assign({}, info, { card: a.data.card || null }))));
@@ -1512,7 +1513,7 @@ var PkgAdmin = (function () {
         return row;
       }
       function elHint(e) {
-        var t = e.t === 'sub' ? e.text : e.t === 'text' ? String(e.md || '').split('\n')[0] : e.t === 'button' ? (e.text || { res: '活動資源', map: '地圖', url: '前往', page: '前往' }[e.go || 'res']) : '';
+        var t = e.t === 'sub' ? e.text : e.t === 'text' ? String(e.md || '').split('\n')[0] : e.t === 'button' ? (e.text || { res: '活動資源', map: '地圖', url: '前往', page: '前往', game: '開始遊戲' }[e.go || 'res']) : '';
         return t ? h('span', { class: 'muted', style: { fontWeight: 400 } }, '　' + String(t).slice(0, 24)) : null;
       }
       function elBody(e) {
@@ -1526,9 +1527,10 @@ var PkgAdmin = (function () {
         } else if (e.t === 'sub') {
           b.appendChild(live(inp(e.text || '', { placeholder: '例如：清大校園探險趣', maxlength: '80' }), function (v) { e.text = v; }));
         } else if (e.t === 'button') {
-          var go = sel([{ value: 'res', label: '活動資源包（連到這個活動的頁面）' }, { value: 'map', label: '地圖（Google 地圖）' }, { value: 'url', label: '網址' }, { value: 'page', label: '學員端其他頁面' }], e.go || 'res');
+          var go = sel([{ value: 'res', label: '活動資源包（連到這個活動的頁面）' }, { value: 'map', label: '地圖（Google 地圖）' }, { value: 'url', label: '網址' }, { value: 'page', label: '學員端其他頁面' }, { value: 'game', label: '開始遊戲（這個活動連的遊戲資源包）' }], e.go || 'res');
           go.addEventListener('change', function () { e.go = go.value; draw(); });
-          b.appendChild(h('div', { class: 'grid2' }, field('按鈕文字', live(inp(e.text || '', { placeholder: { res: '活動資源', map: '地圖', url: '前往', page: '前往' }[e.go || 'res'], maxlength: '30' }), function (v) { e.text = v; })), field('按了之後', go)));
+          b.appendChild(h('div', { class: 'grid2' }, field('按鈕文字', live(inp(e.text || '', { placeholder: { res: '活動資源', map: '地圖', url: '前往', page: '前往', game: '開始遊戲' }[e.go || 'res'], maxlength: '30' }), function (v) { e.text = v; })), field('按了之後', go)));
+          if (e.go === 'game') b.appendChild(h('div', { class: 'hint' }, info.game ? '打開這個活動連的遊戲（' + info.game.pack + '）。不放這顆按鈕的話，點開後最下面也會自動加一顆。' : '這個活動還沒連遊戲：到「遊戲資源包」分頁設定。沒有的話學員端不顯示這個按鈕。'));
           if ((e.go || 'res') === 'res') b.appendChild(h('div', { class: 'hint' }, info.page ? '會打開學員端連到這個活動的頁面（活動資源包）。' : '學員端還沒有頁面連到這個活動：到「前台編輯 → 學員端」新增頁面，在頁面設定裡連到這個活動。沒有的話學員端不顯示這個按鈕。'));
           if (e.go === 'map') b.appendChild(field('地點', live(inp(e.q || '', { placeholder: info.place ? '不填就用流程裡的地點：' + info.place : '地點名稱或地址' }), function (v) { e.q = v; })));
           if (e.go === 'url') b.appendChild(field('網址', live(inp(e.url || '', { placeholder: 'https://' }), function (v) { e.url = v.trim(); })));
@@ -1600,6 +1602,80 @@ var PkgAdmin = (function () {
       });
       var T = track(ed, function () { return C; }, saveBtn);
       draw();
+    },
+    /** 活動連到遊戲資源包（frontend/games/ 裡的資料夾）：選資源包、按鈕文字，依資源包 manifest 的 config 填這個活動的設定 */
+    games: function (box, D) {
+      var acts = D.activities;
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '10px' } }, '每個活動可以連一個遊戲資源包。學員端、工作人員端點開活動卡片會出現「開始遊戲」，學員要等活動公開才能玩（工作人員可以先進去準備，例如產生關主密鑰）。同一個資源包用在不同活動時，進度、密鑰各自分開。要先試玩可以開「測試模式」：跟正式一樣，結束後全部歸零。資源包的說明在 games/<名稱>/README.md。'));
+      if (!acts.length) { box.appendChild(h('div', { class: 'card empty' }, '還沒有活動：先到「活動＆課程」新增活動')); return; }
+      var list = h('div', { class: 'col', style: { gap: '12px' } }, h('div', { class: 'muted' }, '讀取資源包清單…'));
+      box.appendChild(list);
+      var MAN = {};
+      var getMan = function (id) { return MAN[id] || (MAN[id] = fetch('games/' + id + '/manifest.json', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('找不到資源包 ' + id); return r.json(); })); };
+      var dtIn = function (v) { var m = String(v || '').match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/); return m ? m[1] : ''; };
+      fetch('games/index.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : { packs: [] }; }, function () { return { packs: [] }; }).then(function (idx) {
+        var packs = (idx && idx.packs) || [];
+        clear(list);
+        acts.forEach(function (a) {
+          var g = a.data.game || {}, cfg = JSON.parse(JSON.stringify(g.cfg || {})), fields = h('div', { class: 'col', style: { gap: '8px' } });
+          var pk = sel([{ value: '', label: '（不連遊戲）' }].concat(packs.map(function (p) { return { value: p.id, label: p.name + '（' + p.id + '）' }; })).concat(g.pack && !packs.some(function (p) { return p.id === g.pack; }) ? [{ value: g.pack, label: g.pack + '（清單裡沒有）' }] : []), g.pack || '');
+          var lb = inp(g.label || '', { placeholder: '按鈕文字（預設「開始遊戲」）', maxlength: '20' });
+          var save = h('button', { class: 'btn primary' }, '儲存'), links = h('div', { class: 'small muted' });
+          var drawFields = function () {
+            clear(fields); clear(links);
+            if (!pk.value) return;
+            getMan(pk.value).then(function (m) {
+              fields.appendChild(h('div', { class: 'small muted' }, m.summary || ''));
+              (m.config || []).forEach(function (f) {
+                var cur = cfg[f.key] !== undefined ? cfg[f.key] : '', el;
+                if (f.type === 'datetime') el = inp(dtIn(cur), { type: 'datetime-local' });
+                else if (f.type === 'number') el = inp(cur, { type: 'number', placeholder: f.dflt !== undefined ? '預設 ' + f.dflt : '' });
+                else if (f.type === 'textarea') el = area(typeof cur === 'string' ? cur : cur ? JSON.stringify(cur) : '');
+                else el = inp(cur, { placeholder: f.dflt !== undefined ? '預設 ' + f.dflt : '' });
+                el.addEventListener('input', function () {
+                  var v = el.value;
+                  if (f.type === 'number') v = v === '' ? undefined : Number(v);
+                  if (f.type === 'datetime') v = v ? v + ':00+08:00' : undefined;
+                  if (v === undefined || v === '') delete cfg[f.key]; else cfg[f.key] = v;
+                });
+                if (!R.canEdit) el.disabled = true;
+                fields.appendChild(field(f.label, el, f.hint));
+              });
+              var base = location.href.replace(/admin\.html.*$/, '') + 'game.html?c=' + encodeURIComponent(A.camp) + '&g=' + pk.value + '&a=' + a.id;
+              links.appendChild(h('div', null, '工作人員連結（關主用）：', h('code', null, base + '&s=worker')));
+            }, function (e) { fields.appendChild(h('div', { class: 'fb-notice' }, e.message)); });
+          };
+          pk.addEventListener('change', function () { cfg = {}; drawFields(); });
+          save.addEventListener('click', function () {
+            busy(save, function () { return run('activity.game', { id: a.id, game: pk.value ? { pack: pk.value, label: lb.value, cfg: cfg } : null }, { ver: a.version, msg: '已儲存「' + a.data.name + '」的遊戲設定' }); }).then(null, function () {});
+          });
+          if (!R.canEdit) { pk.disabled = true; lb.disabled = true; save.disabled = true; }
+          // 測試模式：玩法、計分都跟正式一樣，關掉後這次測試的資料全部歸零
+          var testing = !!(g.test && g.test.on), testBox = null;
+          if (g.pack) {
+            var tb = h('button', { class: 'btn' + (testing ? ' danger' : '') }, testing ? '結束測試並歸零' : '🧪 開始測試模式');
+            tb.addEventListener('click', function () {
+              var on = !testing;
+              confirmBox(on ? '開始測試「' + a.data.name + '」' : '結束測試並歸零',
+                on ? '測試中玩法、關主密鑰、上傳分數都跟正式一樣（分數會進排行榜，Game 名稱標「（測試）」），學員不用等活動公開就能從連結打開。結束測試時，這次測試的收件、分數會全部刪掉，手機上的進度也會歸零。'
+                  : '這次測試的遊戲收件、團隊計分的分數會全部刪掉，學員和關主手機上的進度也會歸零，不能復原。正式的資料不受影響。',
+                on ? '開始測試' : '結束並歸零', !on).then(function (yes) {
+                if (!yes) return;
+                busy(tb, function () { return run('activity.gameTest', { id: a.id, on: on }, { msg: on ? '已開始測試模式' : '已結束測試，資料已歸零' }); }).then(null, function () {});
+              });
+            });
+            if (!R.canEdit) tb.disabled = true;
+            var studentLink = location.href.replace(/admin\.html.*$/, '') + 'game.html?c=' + encodeURIComponent(A.camp) + '&g=' + g.pack + '&a=' + a.id;
+            testBox = h('div', { class: 'game-test' + (testing ? ' on' : '') },
+              h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', null, testing ? '🧪 測試中（第 ' + g.test.n + ' 次）' : '測試模式'),
+                h('div', { class: 'small muted' }, testing ? '跟正式一樣在跑，結束後這次測試的資料全部歸零。' : '開起來試玩，跟正式環境一樣；結束後全部歸零。')), tb),
+              testing ? h('div', { class: 'small muted' }, '學員測試連結：', h('code', null, studentLink)) : null);
+          }
+          list.appendChild(h('div', { class: 'card' }, h('div', { class: 'row wrap', style: { marginBottom: '8px' } }, h('h3', { class: 'grow', style: { margin: 0 } }, a.data.name), testing ? h('span', { class: 'tag warn' }, '🧪 測試中') : null, g.pack ? h('span', { class: 'tag ok' }, '🎮 ' + g.pack) : h('span', { class: 'tag' }, '沒有連遊戲')),
+            h('div', { class: 'grid2' }, field('遊戲資源包', pk), field('按鈕文字', lb)), fields, h('div', { class: 'row wrap', style: { marginTop: '10px' } }, save, h('span', { class: 'grow' })), links, testBox));
+          drawFields();
+        });
+      });
     },
     rotations: function (box, D) {
       // 直接在畫面上改，每個跑關一張卡、按「儲存」背景上傳；關卡、時段用空白分隔

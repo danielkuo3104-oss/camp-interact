@@ -617,6 +617,40 @@ A.views.packages = function (m) {
       }
       box.appendChild(card);
     });
+    gamePacks();
+  }
+  /** 遊戲資源包（frontend/games/ 裡的資料夾）：放在 GitHub Pages、不用安裝；在「營期流程與活動 → 遊戲資源包」連到活動 */
+  function gamePacks() {
+    var sec = h('div', { class: 'col', style: { gap: '12px', marginTop: '28px' } }, h('h2', null, '遊戲資源包'),
+      h('div', { class: 'muted small' }, '遊戲在學員、工作人員的手機上執行（放在前端 games/ 資料夾，不用安裝），只有需要時才送資料回來。要給學員玩：到「營期流程與活動 → 遊戲資源包」把遊戲連到活動，活動公開後活動卡片就會出現「開始遊戲」。'));
+    var list = h('div', { class: 'col', style: { gap: '12px' } }, h('div', { class: 'muted' }, '讀取中…'));
+    sec.appendChild(list); box.appendChild(sec);
+    var uses = {};
+    var actsP = api('getPkgAdmin', A.camp, 'schedule', 'games').then(function (r) {
+      ((r.data || {}).activities || []).forEach(function (a) { var g = a.data.game; if (g && g.pack) (uses[g.pack] = uses[g.pack] || []).push(a.data.name + (g.test && g.test.on ? '（🧪 測試中）' : '')); });
+    }, function () {});
+    var idxP = fetch('games/index.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : { packs: [] }; }, function () { return { packs: [] }; });
+    Promise.all([idxP, actsP]).then(function (res) {
+      var packs = (res[0] && res[0].packs) || [];
+      clear(list);
+      if (!packs.length) { list.appendChild(h('div', { class: 'card empty' }, '還沒有遊戲資源包（games/index.json 沒有列出任何資源包）')); return; }
+      packs.forEach(function (p) {
+        var u = uses[p.id] || [];
+        list.appendChild(h('div', { class: 'card col section' },
+          h('div', { class: 'row wrap' }, h('h2', { class: 'grow' }, p.name, h('span', { class: 'tag', style: { marginLeft: '6px' } }, '遊戲資源包'), p.version ? h('span', { class: 'tag ok', style: { marginLeft: '6px' } }, 'v' + p.version) : null,
+            p.test ? h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '測試用') : null)),
+          h('div', { class: 'muted small' }, p.summary || ''),
+          h('div', { class: 'small' }, u.length ? '連到的活動：' + u.join('、') : h('span', { class: 'muted' }, '還沒有活動連到這個遊戲')),
+          h('div', { class: 'row wrap' },
+            h('button', { class: 'btn sm', onclick: function () { readme(p); } }, '說明（README）'),
+            h('a', { class: 'btn sm', href: '#data/schedule/games' }, '連到活動'))));
+      });
+    });
+  }
+  function readme(p) {
+    fetch('games/' + p.id + '/README.md', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('這個資源包沒有 README.md'); return r.text(); }).then(function (t) {
+      modal({ title: p.name + '：說明', wide: true, body: h('div', { class: 'gp-readme' }, t), actions: [{ text: '關閉' }] });
+    }, fail);
   }
   function install(r) {
     var v = sel(r.versions.slice().reverse().map(function (x) { return { value: x.version, label: 'v' + x.version + (x.changelog ? '　' + x.changelog.slice(0, 30) : '') }; }), r.versions[r.versions.length - 1].version);
