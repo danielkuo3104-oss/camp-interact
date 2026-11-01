@@ -1,0 +1,31 @@
+/* 霧之校園（測試用資源包） */
+.game-root { padding: 12px 12px 40px; display: flex; flex-direction: column; gap: 12px; }
+.fm-card { padding: 14px; }
+.fm-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.fm-name { font-weight: 700; font-size: 18px; }
+.fm-t { font-weight: 700; margin-bottom: 4px; }
+.fm-count { font-size: 15px; color: var(--text-2, #555); } .fm-count b { font-size: 26px; color: var(--accent, #2f5d62); }
+.fm-map { position: relative; width: 100%; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.12); background: #333; }
+.fm-img { display: block; width: 100%; aspect-ratio: 10 / 7; }
+.fm-fog { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
+.fm-pins { position: absolute; inset: 0; pointer-events: none; }
+.fm-pin { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; animation: fm-pop .5s ease-out; }
+.fm-dot { width: 14px; height: 14px; border-radius: 50%; background: #2f5d62; border: 2px solid #fff; box-shadow: 0 0 0 3px rgba(47,93,98,.3); }
+.fm-pin.fin .fm-dot { background: #e0a35e; box-shadow: 0 0 0 4px rgba(224,163,94,.35), 0 0 14px #e0a35e; }
+.fm-lb { margin-top: 3px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,.9); color: #222; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+@keyframes fm-pop { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+.fm-fin { padding: 10px 14px; font-size: 15px; } .fm-cd { font-variant-numeric: tabular-nums; font-size: 18px; color: #c4741f; }
+.fm-code { flex: 1; text-transform: uppercase; letter-spacing: 1px; }
+.fm-list { display: flex; flex-direction: column; gap: 8px; }
+.fm-item { display: flex; gap: 10px; align-items: flex-start; background: var(--surface, #fff); border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 10px 12px; }
+.fm-item.got { border-color: #9cc6b0; background: #f1f8f3; }
+.fm-st { width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #e6e6e6; color: #777; }
+.fm-item.got .fm-st { background: #2f7d55; color: #fff; }
+.fm-it { font-weight: 700; }
+.fm-out { margin-top: 12px; }
+.fm-qr { background: #fff; padding: 10px; border-radius: 10px; }
+.fm-bigcode { font-size: 26px; font-weight: 800; letter-spacing: 2px; font-family: ui-monospace, Menlo, monospace; }
+.fm-board { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.fm-row { display: flex; align-items: center; gap: 10px; }
+.fm-sq { width: 72px; flex: none; font-weight: 600; }
+.fm-dots { display: flex; gap: 4px; } .fm-dots i { width: 14px; height: 14px; border-radius: 4px; background: #e2e2e2; } .fm-dots i.on { background: #3b4f8c; }

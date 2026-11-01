@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700">
+  <rect width="1000" height="700" fill="#e8efe2"/>
+  <g fill="#cfe0c3"><circle cx="120" cy="120" r="70"/><circle cx="900" cy="150" r="90"/><circle cx="380" cy="640" r="60"/><circle cx="950" cy="650" r="70"/></g>
+  <path d="M220 200 C 230 140, 380 140, 400 210 S 360 330, 270 310 S 200 250, 220 200 Z" fill="#a9cfe0" stroke="#88b6cb" stroke-width="3"/>
+  <g fill="none" stroke="#fffdf6" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M60 600 L 260 560 L 470 560 L 640 520 L 960 520"/>
+    <path d="M260 560 L 300 400 L 470 380 L 520 200 L 520 60"/>
+    <path d="M470 380 L 700 380 L 760 240 L 960 240"/>
+    <path d="M640 520 L 610 660"/>
+    <path d="M700 380 L 820 440"/>
+  </g>
+  <g fill="#d9cbb3" stroke="#bfae92" stroke-width="2">
+    <rect x="490" y="80" width="60" height="60" rx="4"/>
+    <rect x="640" y="250" width="120" height="70" rx="6"/>
+    <rect x="410" y="420" width="120" height="80" rx="6"/>
+    <rect x="560" y="590" width="100" height="60" rx="6"/>
+    <rect x="110" y="560" width="80" height="30" rx="4"/>
+    <rect x="300" y="430" width="70" height="50" rx="4"/>
+    <rect x="610" y="140" width="80" height="60" rx="4"/>
+  </g>
+  <ellipse cx="830" cy="560" rx="120" ry="70" fill="#d8a77d" stroke="#c08a5e" stroke-width="3"/>
+  <ellipse cx="830" cy="560" rx="80" ry="38" fill="#9fc98e"/>
+  <polygon points="285,232 315,232 300,218" fill="#b08a6a"/>
+  <text x="500" y="690" font-size="18" fill="#7a8a70" text-anchor="middle" font-family="sans-serif">測試用校園地圖（不是真的清大）</text>
+</svg>
