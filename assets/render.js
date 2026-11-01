@@ -198,8 +198,11 @@ var Front = (function () {
   }
   /** 「開始遊戲」：同一個分頁打開遊戲頁（加到主畫面的 App 開新分頁會跑到瀏覽器、登入不見）；編輯預覽不跳走 */
   function gameBtn(info, label, ctx) {
-    var text = label || (info.game && info.game.label) || '開始遊戲';
-    var b = h('button', { type: 'button', class: 'ac-btn' }, info.game ? '🎮 ' + text : text + '（還沒連遊戲）');
+    // 工作人員端：顯示「關主登入」（管理端可以關掉；有關主通行碼時進去先輸入）
+    var worker = document.documentElement.classList.contains('side-worker') && !(ctx && ctx.edit);
+    if (worker && info.game && info.game.master === false) return null;
+    var text = worker && info.game ? '關主登入' : label || (info.game && info.game.label) || '開始遊戲';
+    var b = h('button', { type: 'button', class: 'ac-btn' }, info.game ? (worker ? '🎯 ' : '🎮 ') + text : text + '（還沒連遊戲）');
     b.addEventListener('click', function (ev) {
       ev.stopPropagation();
       if (!info.game || (ctx && ctx.edit)) return;
@@ -224,7 +227,8 @@ var Front = (function () {
     var list = (mode === 'detail' ? c.detail : c.cover) || [];
     list.forEach(function (e, i) { var n = actEl(e, info, env, { fg: fg, edit: o.edit, i: i }); if (n) inner.appendChild(n); });
     // 活動連了遊戲資源包、卡片裡又沒放遊戲按鈕：點開後最下面自動加一顆
-    if (mode === 'detail' && info.game && !list.some(function (e) { return e.t === 'button' && e.go === 'game'; })) inner.appendChild(h('div', { class: 'ac-el al-c' }, gameBtn(info, '', { edit: o.edit })));
+    var gb = mode === 'detail' && info.game && !list.some(function (e) { return e.t === 'button' && e.go === 'game'; }) ? gameBtn(info, '', { edit: o.edit }) : null;
+    if (gb) inner.appendChild(h('div', { class: 'ac-el al-c' }, gb));
     if (mode === 'cover' && (t || !o.noChev)) inner.appendChild(h('div', { class: 'ac-foot' }, t ? h('span', { class: 'ac-when' }, actTime(t, false)) : null, h('span', { class: 'ac-chev' }, '›')));
     if (mode === 'theme') { if (o.prog) inner.appendChild(o.prog); inner.appendChild(h('div', { class: 'ac-foot' }, h('span', { class: 'ac-chev' }, '查看活動 ›'))); }
     el.appendChild(inner);
