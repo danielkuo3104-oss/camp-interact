@@ -1606,7 +1606,7 @@ var PkgAdmin = (function () {
     /** 活動連到遊戲資源包（frontend/games/ 裡的資料夾）：選資源包、按鈕文字，依資源包 manifest 的 config 填這個活動的設定 */
     games: function (box, D) {
       var acts = D.activities;
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '10px' } }, '每個活動可以連一個遊戲資源包。學員端、工作人員端點開活動卡片會出現「開始遊戲」，學員要等活動公開才能玩（工作人員可以先進去準備，例如產生關主密鑰）。同一個資源包用在不同活動時，進度、密鑰各自分開。資源包的說明在 games/<名稱>/README.md。'));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '10px' } }, '每個活動可以連一個遊戲資源包。學員端、工作人員端點開活動卡片會出現「開始遊戲」，學員要等活動公開才能玩（工作人員可以先進去準備，例如產生關主密鑰）。同一個資源包用在不同活動時，進度、密鑰各自分開。要先試玩可以開「測試模式」：跟正式一樣，結束後全部歸零。資源包的說明在 games/<名稱>/README.md。'));
       if (!acts.length) { box.appendChild(h('div', { class: 'card empty' }, '還沒有活動：先到「活動＆課程」新增活動')); return; }
       var list = h('div', { class: 'col', style: { gap: '12px' } }, h('div', { class: 'muted' }, '讀取資源包清單…'));
       box.appendChild(list);
@@ -1650,8 +1650,29 @@ var PkgAdmin = (function () {
             busy(save, function () { return run('activity.game', { id: a.id, game: pk.value ? { pack: pk.value, label: lb.value, cfg: cfg } : null }, { ver: a.version, msg: '已儲存「' + a.data.name + '」的遊戲設定' }); }).then(null, function () {});
           });
           if (!R.canEdit) { pk.disabled = true; lb.disabled = true; save.disabled = true; }
-          list.appendChild(h('div', { class: 'card' }, h('div', { class: 'row wrap', style: { marginBottom: '8px' } }, h('h3', { class: 'grow', style: { margin: 0 } }, a.data.name), g.pack ? h('span', { class: 'tag ok' }, '🎮 ' + g.pack) : h('span', { class: 'tag' }, '沒有連遊戲')),
-            h('div', { class: 'grid2' }, field('遊戲資源包', pk), field('按鈕文字', lb)), fields, h('div', { class: 'row wrap', style: { marginTop: '10px' } }, save, h('span', { class: 'grow' })), links));
+          // 測試模式：玩法、計分都跟正式一樣，關掉後這次測試的資料全部歸零
+          var testing = !!(g.test && g.test.on), testBox = null;
+          if (g.pack) {
+            var tb = h('button', { class: 'btn' + (testing ? ' danger' : '') }, testing ? '結束測試並歸零' : '🧪 開始測試模式');
+            tb.addEventListener('click', function () {
+              var on = !testing;
+              confirmBox(on ? '開始測試「' + a.data.name + '」' : '結束測試並歸零',
+                on ? '測試中玩法、關主密鑰、上傳分數都跟正式一樣（分數會進排行榜，Game 名稱標「（測試）」），學員不用等活動公開就能從連結打開。結束測試時，這次測試的收件、分數會全部刪掉，手機上的進度也會歸零。'
+                  : '這次測試的遊戲收件、團隊計分的分數會全部刪掉，學員和關主手機上的進度也會歸零，不能復原。正式的資料不受影響。',
+                on ? '開始測試' : '結束並歸零', !on).then(function (yes) {
+                if (!yes) return;
+                busy(tb, function () { return run('activity.gameTest', { id: a.id, on: on }, { msg: on ? '已開始測試模式' : '已結束測試，資料已歸零' }); }).then(null, function () {});
+              });
+            });
+            if (!R.canEdit) tb.disabled = true;
+            var studentLink = location.href.replace(/admin\.html.*$/, '') + 'game.html?c=' + encodeURIComponent(A.camp) + '&g=' + g.pack + '&a=' + a.id;
+            testBox = h('div', { class: 'game-test' + (testing ? ' on' : '') },
+              h('div', { class: 'row wrap' }, h('div', { class: 'grow' }, h('b', null, testing ? '🧪 測試中（第 ' + g.test.n + ' 次）' : '測試模式'),
+                h('div', { class: 'small muted' }, testing ? '跟正式一樣在跑，結束後這次測試的資料全部歸零。' : '開起來試玩，跟正式環境一樣；結束後全部歸零。')), tb),
+              testing ? h('div', { class: 'small muted' }, '學員測試連結：', h('code', null, studentLink)) : null);
+          }
+          list.appendChild(h('div', { class: 'card' }, h('div', { class: 'row wrap', style: { marginBottom: '8px' } }, h('h3', { class: 'grow', style: { margin: 0 } }, a.data.name), testing ? h('span', { class: 'tag warn' }, '🧪 測試中') : null, g.pack ? h('span', { class: 'tag ok' }, '🎮 ' + g.pack) : h('span', { class: 'tag' }, '沒有連遊戲')),
+            h('div', { class: 'grid2' }, field('遊戲資源包', pk), field('按鈕文字', lb)), fields, h('div', { class: 'row wrap', style: { marginTop: '10px' } }, save, h('span', { class: 'grow' })), links, testBox));
           drawFields();
         });
       });

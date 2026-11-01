@@ -627,7 +627,7 @@ A.views.packages = function (m) {
     sec.appendChild(list); box.appendChild(sec);
     var uses = {};
     var actsP = api('getPkgAdmin', A.camp, 'schedule', 'games').then(function (r) {
-      ((r.data || {}).activities || []).forEach(function (a) { var g = a.data.game; if (g && g.pack) (uses[g.pack] = uses[g.pack] || []).push(a.data.name); });
+      ((r.data || {}).activities || []).forEach(function (a) { var g = a.data.game; if (g && g.pack) (uses[g.pack] = uses[g.pack] || []).push(a.data.name + (g.test && g.test.on ? '（🧪 測試中）' : '')); });
     }, function () {});
     var idxP = fetch('games/index.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : { packs: [] }; }, function () { return { packs: [] }; });
     Promise.all([idxP, actsP]).then(function (res) {

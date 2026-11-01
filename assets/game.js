@@ -13,7 +13,7 @@
  * 遊戲拿到的 host（遊戲只透過它和系統溝通，不用改核心程式）：
  *   host.camp { campId, name }、host.me { kind: 'student'|'worker'|'staff', name, squad, sid, wid }、host.pack（manifest）
  *   host.data                        設定：manifest.data ＋ 這個活動在管理端填的（活動的優先）
- *   host.activity                    { id, name }（從活動進來才有）
+ *   host.activity                    { id, name, test }（從活動進來才有；test：管理端開了測試模式，資料結束後歸零）
  *   host.ch(name)                    頻道名稱加上活動（同一個資源包用在兩個活動時，進度分開）；host.scope 活動 ID 或 ''
  *   host.time(v)                     設定裡的時間（'2027-07-10T17:00' 或含時區）→ 毫秒，沒填回 null
  *   host.now()                       伺服器時間（毫秒；倒數、定時公布用，學員改手機時間沒用）
@@ -179,12 +179,12 @@ var CampGame = (function () {
     document.title = manifest.name || '營隊遊戲';
     var me = info.me, who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : 'u';
     gameSubmit.who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : '';
-    var act = info.activity, scope = act ? act.id : '';
+    var act = info.activity, scope = act ? act.scope || act.id : '';   // 測試模式：範圍是 活動ID-t第幾次，結束測試後換新的，等於歸零
     var saveKey = 'ia_g_' + camp + '_' + g + (scope ? '_' + scope : '') + '_' + who;
     var data = Object.assign({}, manifest.data || {}, act ? act.cfg || {} : {});
     var host = {
       camp: info.camp, me: me, pack: manifest, data: data, side: side,
-      activity: act ? { id: act.id, name: act.name } : null, scope: scope,
+      activity: act ? { id: act.id, name: act.name, test: !!act.test } : null, scope: scope,
       ch: function (name) { return scope ? name + ':' + scope : name; },
       time: function (v) {
         v = String(v || '').trim(); if (!v) return null;
@@ -218,7 +218,8 @@ var CampGame = (function () {
     };
     var el = h('div', { class: 'game-root' });
     var back = h('a', { class: 'game-back', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動');
-    screen(h('div', null, h('div', { class: 'game-bar' }, back, act ? h('span', { class: 'game-act' }, act.name) : null), el));
+    screen(h('div', null, h('div', { class: 'game-bar' }, back, act ? h('span', { class: 'game-act' }, act.name) : null),
+      act && act.test ? h('div', { class: 'game-testbar' }, '🧪 測試模式：跟正式一樣，結束測試後全部歸零') : null, el));
     try { d.mount(el, host); } catch (e) { msg('遊戲出錯了', e.message); return; }
     setTimeout(function () { gameSubmit.flush(); }, 2000);   // 上次沒送出的補送
   }
