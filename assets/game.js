@@ -26,6 +26,7 @@
  *                                    每個活動一個 Game（名稱＝活動名稱），每隊每關一筆，同一關重送是更新
  *   host.load(key) / host.save(key, v)  這台手機、這個人、這個資源包自己的存檔
  *   host.qr(el, text)                畫 QR code
+ *   host.scan(title)                 遊戲裡開相機掃 QR code（不會跑到別的瀏覽器）→ Promise 掃到的文字，取消是 null
  *   host.link(params)                這個遊戲頁的網址（加參數，例如給 QR code 用）
  *   host.param(k)、host.h、host.toast、host.modal、host.fail
  * 學員、工作人員要先在營隊互動 App 登入過（同一支手機、同一個瀏覽器）。
@@ -53,8 +54,8 @@ var CampGame = (function () {
   for (var i = 0; i < sides.length && !side; i++) if (store('ia_f_' + camp + '_' + sides[i])) side = sides[i];
   function needLogin() {
     var s = want === 'worker' ? 'worker' : 'student';
-    msg('請先登入', '先在營隊互動 App 登入（' + (s === 'worker' ? '工作人員端' : '學員端') + '），再回來打開這個連結。',
-      h('a', { class: 'btn primary', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + s }, '前往登入'));
+    msg('請先登入', '這個瀏覽器還沒登入營隊互動（' + (s === 'worker' ? '工作人員端' : '學員端') + '）。登入後會自動回到遊戲。下次請用遊戲裡的「📷 掃描」，就不會跑到別的瀏覽器。',
+      h('a', { class: 'btn primary', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + s + '&back=' + encodeURIComponent(location.pathname.split('/').pop() + location.search) }, '前往登入'));
   }
   if (!side) { needLogin(); return; }
   var TK = 'ia_f_' + camp + '_' + side;
@@ -162,6 +163,68 @@ var CampGame = (function () {
     });
   }
 
+  /* 遊戲裡的 QR code 掃描：不用手機相機 App（相機 App 會用別的瀏覽器打開、又要登入一次）
+   * 有 BarcodeDetector（Android Chrome）用內建的；沒有（iPhone）就載入 jsQR 一張一張解。回傳 Promise 掃到的文字（取消是 null） */
+  var JSQR = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js', JSQR_SRI = 'sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';
+  var jsqrP = null;
+  function loadJsQR() {
+    if (window.jsQR) return Promise.resolve(window.jsQR);
+    return jsqrP || (jsqrP = new Promise(function (ok, bad) {
+      var sc = document.createElement('script'); sc.src = JSQR; sc.integrity = JSQR_SRI; sc.crossOrigin = 'anonymous';
+      sc.onload = function () { ok(window.jsQR); }; sc.onerror = function () { jsqrP = null; bad(new Error('掃描元件載入失敗，請檢查網路，或改輸入代碼')); };
+      document.head.appendChild(sc);
+    }));
+  }
+  function scanQR(title) {
+    return new Promise(function (done) {
+      var md = navigator.mediaDevices;
+      if (!md || !md.getUserMedia) { toast('這個瀏覽器不能開相機，請改輸入代碼'); done(null); return; }
+      var video = h('video', { class: 'scan-video', playsinline: '', muted: '', autoplay: '' }), status = h('div', { class: 'scan-status' }, '開啟相機中…');
+      var stream = null, over = false, timer = null, canvas = document.createElement('canvas'), cx = canvas.getContext('2d', { willReadFrequently: true });
+      video.muted = true; video.setAttribute('playsinline', '');
+      var stop = function () { over = true; clearTimeout(timer); if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); };
+      var m = modal({ title: title || '掃描 QR code', body: h('div', { class: 'scan-box' }, video, h('div', { class: 'scan-frame' }), status), actions: [{ text: '取消' }], onClose: function () { stop(); done(null); } });
+      var found = function (text) { if (over || !text) return; stop(); if (navigator.vibrate) navigator.vibrate(60); done(text); m.close(); };
+      var fail2 = function (e) {
+        var n = e && e.name;
+        status.textContent = n === 'NotAllowedError' ? '沒有相機權限：請到瀏覽器設定允許使用相機，或改輸入代碼' : n === 'NotFoundError' ? '找不到相機，請改輸入代碼' : (e && e.message) || '相機打不開，請改輸入代碼';
+        status.classList.add('bad');
+      };
+      md.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
+        if (over) { st.getTracks().forEach(function (t) { t.stop(); }); return; }
+        stream = st; video.srcObject = st;
+        return video.play().then(function () {
+          status.textContent = '把 QR code 放進框裡';
+          var det = null;
+          try { if ('BarcodeDetector' in window) det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
+          var viaJs = function (jsQR) {
+            var tick = function () {
+              if (over) return;
+              var w = video.videoWidth, hh = video.videoHeight;
+              if (w && hh) {
+                var k = Math.min(1, 640 / Math.max(w, hh)); canvas.width = Math.round(w * k); canvas.height = Math.round(hh * k);
+                cx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                var r = jsQR(cx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+                if (r && r.data) { found(r.data); return; }
+              }
+              timer = setTimeout(tick, 180);
+            };
+            tick();
+          };
+          if (det) {
+            var tick2 = function () {
+              if (over) return;
+              det.detect(video).then(function (codes) { if (codes && codes[0] && codes[0].rawValue) found(codes[0].rawValue); else timer = setTimeout(tick2, 150); },
+                function () { loadJsQR().then(viaJs, fail2); });
+            };
+            tick2();
+          } else loadJsQR().then(viaJs, fail2);
+        });
+      }).catch(fail2);
+    });
+  }
+  CampGame.scan = scanQR;
+
   var manifest;
   msg('載入中…');
   // 關主證明：活動有關主通行碼時，輸入一次後存在這支手機（改通行碼後要重新輸入）
@@ -238,6 +301,7 @@ var CampGame = (function () {
         Object.keys(params || {}).forEach(function (k) { u.searchParams.set(k, params[k]); });
         return u.href;
       },
+      scan: function (title) { return scanQR(title); },
       param: param, h: h, toast: toast, modal: modal, fail: fail
     };
     var el = h('div', { class: 'game-root' });

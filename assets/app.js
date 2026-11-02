@@ -2,7 +2,7 @@
 /**
  * 學員端／工作人員端：app.html?c=營隊ID&s=student|worker
  *   學員：從報名系統學員專區按「營隊互動」進來（網址 #t= 帶一張 5 分鐘、只能用一次的入場券）
- *   工作人員：姓名＋股別＋營隊通行碼登入
+ *   工作人員：姓名＋股別＋營隊通行碼登入（股別清單打開就有，不用先填通行碼）
  *   編輯者預覽：&preview=draft（草稿）或 &preview=pub（目前發布版），用管理端的登入
  * 這次使用期間固定用進來時的發布版本（Session 版本鎖定）；重新進入才換新版。
  * 斷線時顯示上次載入的內容。
@@ -116,37 +116,23 @@
 
   function workerLogin() {
     var name = inp('', { autocomplete: 'name' }), pass = inp('', { type: 'password' });
-    // 股別：用選的；清單要填對通行碼才拿得到（登入頁不公開股別，也不能用名字查誰是工作人員）
-    var dept = h('select', { class: 'input', disabled: true }, h('option', { value: '' }, '先填營隊通行碼'));
-    var deptTx = inp('', { placeholder: '例如：輔導、活動、總務' }), deptF = field('股別', dept), deptHint = h('span', { class: 'hint' });
-    deptF.appendChild(deptHint);
+    // 股別：用選的，打開登入頁就讀清單（不用先填通行碼；通行碼登入時才檢查）
+    var dept = h('select', { class: 'input', disabled: true }, h('option', { value: '' }, '讀取股別…'));
+    var deptTx = inp('', { placeholder: '例如：輔導、活動、總務' }), deptF = field('股別', dept);
     var useText = function () { if (dept !== deptTx) { dept.replaceWith(deptTx); dept = deptTx; } };
     var err = h('div', { class: 'err' }), title = h('h1', null, '工作人員登入');
     var passF = field('營隊通行碼', pass, '通行碼由籌辦團隊提供');
-    var lastPass = null;
-    var loadDepts = function () {
-      var p = pass.value.trim();
-      if (p === lastPass || dept.tagName !== 'SELECT') return;
-      lastPass = p;
-      api('workerDepts', camp, p).then(function (ds) {
-        if (pass.value.trim() !== p || dept.tagName !== 'SELECT') return;
-        if (!ds.length) { useText(); return; }
-        clear(dept).appendChild(h('option', { value: '' }, '請選擇股別'));
-        ds.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
-        dept.disabled = false; deptHint.textContent = '';
-      }, function (e) {
-        if (pass.value.trim() !== p) return;
-        clear(dept).appendChild(h('option', { value: '' }, '先填營隊通行碼')); dept.disabled = true;
-        deptHint.textContent = /通行碼/.test(e.message) ? e.message : '';
-      });
-    };
+    api('workerDepts', camp, '').then(function (ds) {
+      if (!ds.length) { useText(); return; }
+      clear(dept).appendChild(h('option', { value: '' }, '請選擇股別'));
+      ds.forEach(function (d) { dept.appendChild(h('option', { value: d }, d)); });
+      dept.disabled = false;
+    }, function () { useText(); });
     api('campPublicInfo', camp).then(function (c) {
       rememberLogo(c.loadImg);
       title.textContent = c.name; setAppName(c.name);
-      if (c.noPass) { passF.classList.add('hidden'); loadDepts(); }
-    }, function () { useText(); });
-    pass.addEventListener('change', loadDepts); pass.addEventListener('blur', loadDepts);
-    pass.addEventListener('input', function () { if (pass.value.trim().length >= 4) { clearTimeout(pass._t); pass._t = setTimeout(loadDepts, 600); } });
+      if (c.noPass) passF.classList.add('hidden');
+    }, function () {});
     var btn = h('button', { class: 'btn primary' }, '登入');
     var go = function () {
       err.textContent = '';
@@ -158,10 +144,10 @@
       }, function (e) { err.textContent = e.message; });
     };
     btn.addEventListener('click', go);
-    [name, deptTx, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') { if (x === pass) loadDepts(); go(); } }); });
+    [name, deptTx, pass].forEach(function (x) { x.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '工作人員端'), title,
-      field('姓名', name), passF, deptF, err, btn, installTip())));
+      field('姓名', name), deptF, passF, err, btn, installTip())));
   }
 
   /* ---------- 加到主畫面（安裝成 App） ---------- */
@@ -197,7 +183,10 @@
     return h('button', { class: 'btn ghost sm install-tip', type: 'button', onclick: doInstall }, '＋ 加到主畫面' + (isIos() ? '（建議先加，再從主畫面打開登入）' : ''));
   }
 
+  /** 從遊戲頁來登入的（back=game.html?…）：登入好就回到遊戲（例如用手機相機掃了關主 QR code、跑到另一個瀏覽器） */
+  function backUrl() { var b = param('back') || ''; return /^game\.html\?[^<>"']*$/.test(b) ? b : ''; }
   function boot() {
+    if (backUrl() && store(TK) && !preview) { location.replace(backUrl()); return; }
     if (!preview) IA.token = store(TK);
     var ver = '';
     if (preview === 'draft') ver = 'draft';

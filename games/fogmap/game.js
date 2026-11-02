@@ -91,8 +91,9 @@ function student(el, host, h, D, stamps, byId) {
   var head = h('div', { class: 'fm-head' }), map = fogMap(host, D), fin = h('div', { class: 'fm-fin card' }), list = h('div', { class: 'fm-list' });
   var code = h('input', { class: 'input fm-code', placeholder: '例如 S1-ABCD2345', autocapitalize: 'characters', autocomplete: 'off' });
   var claimBox = h('div', { class: 'card fm-card' }, h('div', { class: 'fm-t' }, '輸入關主密鑰'),
-    h('div', { class: 'small muted' }, '找到關主、完成關卡後，用手機相機掃關主的 QR code，或在這裡輸入代碼。'),
-    h('div', { class: 'row', style: { gap: '8px', marginTop: '8px' } }, code, h('button', { class: 'btn primary', onclick: function () { claim(code.value); } }, '解開')));
+    h('div', { class: 'small muted' }, '找到關主、完成關卡後，按「📷 掃描」掃關主的 QR code（不要用手機的相機 App，會跑到別的瀏覽器），或在這裡輸入代碼。'),
+    h('button', { class: 'btn primary fm-scan', style: { marginTop: '8px', width: '100%' }, onclick: function () { host.scan('掃描關主的 QR code').then(function (t) { if (t) claim(t); }); } }, '📷 掃描關主 QR code'),
+    h('div', { class: 'row', style: { gap: '8px', marginTop: '8px' } }, code, h('button', { class: 'btn', onclick: function () { claim(code.value); } }, '解開')));
   el.appendChild(head); el.appendChild(map.el); el.appendChild(fin); el.appendChild(claimBox); el.appendChild(list);
 
   function render() {
@@ -145,6 +146,9 @@ function student(el, host, h, D, stamps, byId) {
     return m && byId[m[1]] ? { id: m[1], sig: m[2] } : null;
   }
   function claim(v) {
+    // 掃到的是關主 QR code 的網址（…&k=S1-XXXX）：取出代碼
+    var m = String(v || '').match(/[?&]k=([^&#]+)/);
+    if (m) { try { v = decodeURIComponent(m[1]); } catch (e) { v = m[1]; } }
     var p = parse(v);
     if (!p) { host.toast('代碼格式不對（例如 S1-ABCD2345）', true); return; }
     if (got[p.id] && !got[p.id].pending) { host.toast('這一關已經解開了'); return; }
@@ -192,7 +196,7 @@ function worker(el, host, h, D, stamps) {
     busy(gen, function () { return host.sign(sigText(host, stSel.value), sqSel.value); }).then(function (r) {
       var codeText = stSel.value + '-' + r.sig, qr = h('div', { class: 'fm-qr' });
       clear(out).appendChild(h('div', { class: 'col', style: { alignItems: 'center', gap: '8px' } }, qr,
-        h('div', { class: 'fm-bigcode' }, codeText), h('div', { class: 'small muted' }, (sqSel.value === '*' ? '任何小隊' : '只有第 ' + sqSel.value + ' 小隊') + '可以用；學員用手機相機掃，或在遊戲頁輸入代碼')));
+        h('div', { class: 'fm-bigcode' }, codeText), h('div', { class: 'small muted' }, (sqSel.value === '*' ? '任何小隊' : '只有第 ' + sqSel.value + ' 小隊') + '可以用；學員用遊戲裡的「📷 掃描」掃，或在遊戲頁輸入代碼')));
       host.qr(qr, host.link({ k: codeText, s: 'student' }), 220);
     }, function () {});
   };

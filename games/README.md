@@ -77,6 +77,7 @@
 | `host.score({ stage, stageName, team, score })` | 關主端用：這一隊過了這一關，分數送進「團隊計分」。每個活動自動有一個 Game（名稱就是活動名稱，立即發布），每隊每關一筆，同一關重送是更新、不會重複加。只有工作人員可以用，要從活動進來 |
 | `host.load(k)`、`host.save(k, v)` | 存在這支手機、這個人、這個活動的存檔 |
 | `host.qr(el, text)`、`host.link(params)` | 畫 QR code；產生這個遊戲頁的網址 |
+| `host.scan(title)` | 在遊戲裡開相機掃 QR code，回傳掃到的文字（取消是 null）。學員不要用手機相機 App 掃：相機 App 會用別的瀏覽器打開，又要重新登入 |
 | `host.h`、`host.toast`、`host.modal`、`host.fail` | 畫面小工具（和 App 同一套） |
 
 頻道範圍由伺服器檢查，學員改前端也繞不過：
