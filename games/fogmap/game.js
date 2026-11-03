@@ -16,6 +16,9 @@ CampGame.register({
   }
 });
 
+/** 解開的時間（台灣時間 月/日 時:分） */
+function when(t) { var d = new Date(Number(t) + 8 * 3600000); return (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + ' ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()); }
+
 /** 密鑰簽的內容：關卡＋活動（同一個資源包用在別的活動，密鑰不能通用） */
 function sigText(host, stampId) { return 'fog|' + stampId + (host.scope ? '|' + host.scope : ''); }
 
@@ -108,7 +111,7 @@ function student(el, host, h, D, stamps, byId) {
     stamps.forEach(function (s) {
       var g = got[s.id];
       list.appendChild(h('div', { class: 'fm-item' + (g ? ' got' : '') }, h('span', { class: 'fm-st' }, g ? '✓' : '?'),
-        h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + s.id.replace(/\D/g, '') + ' 關'), h('div', { class: 'small muted' }, g ? (g.by ? g.by + ' 解開' : '已解開') : s.hint))));
+        h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + s.id.replace(/\D/g, '') + ' 關'), h('div', { class: 'small muted' }, g ? (g.at ? when(g.at) + ' 解開' : '已解開') + (g.master ? '・關主記錄' : '') + (g.pending ? '・等網路確認' : '') : s.hint))));
     });
     renderFin();
   }
@@ -135,12 +138,13 @@ function student(el, host, h, D, stamps, byId) {
   function refresh() {
     return host.inbox(ch, 0).then(function (r) {
       var next = {};
-      r.items.forEach(function (x) { if (x.ok && x.d && byId[x.d.stamp] && !next[x.d.stamp]) next[x.d.stamp] = { by: x.name, at: x.t }; });
+      r.items.forEach(function (x) { if (x.ok && x.d && byId[x.d.stamp] && !next[x.d.stamp]) next[x.d.stamp] = { at: x.t, master: !!x.d.master }; });
       Object.keys(got).forEach(function (k) { if (!next[k] && got[k].pending) next[k] = got[k]; });   // 還在手機上等著送的保留
       got = next; host.save('got', got); render();
     }, function () {});
   }
-  var sync = host.sync(ch, { onEvents: function () { refresh(); }, fast: 3000, slow: 15000 });
+  // 大部分靠手機本地：解開馬上畫；隊友（或關主記錄）解開的，偶爾同步一次補上（不會一直連線）
+  var sync = host.sync(ch, { onEvents: function () { refresh(); }, fast: 20000, slow: 120000 });
 
   function parse(v) {
     v = String(v || '').toUpperCase().replace(/[\s]/g, '');
@@ -154,21 +158,26 @@ function student(el, host, h, D, stamps, byId) {
     var p = parse(v);
     if (!p) { host.toast('代碼格式不對（例如 S1-ABCD2345）', true); return; }
     if (got[p.id] && !got[p.id].pending) { host.toast('這一關已經解開了'); return; }
-    var done = false;
-    setTimeout(function () { if (!done) host.toast('網路不穩：密鑰已存在手機，連上網路會自動送出'); }, 6000);
+    // 先在手機上解開（沒網路也行），密鑰存著，連上網路時送伺服器確認；確認不對才收回
+    got[p.id] = { at: host.now(), pending: true }; host.save('got', got);
+    code.value = ''; render();
+    host.toast('解開「' + byId[p.id].name + '」！');
     host.submit(ch, { stamp: p.id, signed: sigText(host, p.id), sig: p.sig }).then(function (r) {
-      done = true;
       if (r.sigOk) {
-        got[p.id] = { by: host.me.name, at: host.now() }; host.save('got', got);
-        code.value = ''; render();
-        host.toast('解開「' + byId[p.id].name + '」！');
+        if (got[p.id]) delete got[p.id].pending;
+        host.save('got', got); render();
         sync.send({ unlock: p.id });
-      } else host.toast('這個密鑰不對，或不是給你們小隊的', true);
-    }, function (e) { done = true; host.fail(e); });
+      } else {
+        if (got[p.id] && got[p.id].pending) delete got[p.id];
+        host.save('got', got); render();
+        host.toast('「' + p.id + '」的密鑰不對，或不是給你們小隊的，已收回', true);
+      }
+    }, function (e) { if (got[p.id] && got[p.id].pending) { delete got[p.id]; host.save('got', got); render(); } host.fail(e); });
   }
   render();
   refresh();
-  setInterval(refresh, 60000);
+  setInterval(refresh, 180000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
   // 用相機掃 QR code 進來的：網址帶 k
   var k = host.param('k');
   if (k) { try { history.replaceState(null, '', host.link({})); } catch (e) {} claim(k); }
@@ -191,7 +200,22 @@ function worker(el, host, h, D, stamps) {
     if (!isFinite(n) || pts.value === '') { host.toast('請填分數', true); return; }
     busy(up, function () { return host.score({ stage: st.id, stageName: st.name, team: Number(sqSel.value), score: n }); }).then(function (r) {
       var t = '第 ' + sqSel.value + ' 小隊「' + st.name + '」' + n + ' 分' + (r && r.updated ? '（已更新這一關的分數）' : '');
-      upMsg.textContent = '✓ 已上傳：' + t; host.toast('已上傳團隊計分：' + t);
+      upMsg.textContent = '✓ 已上傳：' + t + '，也記錄這隊完成這關'; host.toast('已上傳團隊計分：' + t);
+      record(st.id, sqSel.value).catch(function () {});
+    }, function () {});
+  };
+  /** 記錄這一隊完成這一關：隊員就算忘了輸入，下次同步會自動補上 */
+  function record(stId, team) {
+    return host.sign(sigText(host, stId), team).then(function (r) {
+      host.submit(host.ch('sq' + team + '-fog'), { stamp: stId, signed: sigText(host, stId), sig: r.sig, master: 1 }).then(function () { load(); }, function () {});
+    });
+  }
+  var rec = h('button', { class: 'btn' }, '✓ 記錄這隊完成這關'), recMsg = h('div', { class: 'small muted' });
+  rec.onclick = function () {
+    if (sqSel.value === '*') { host.toast('要選一個小隊', true); return; }
+    var st = stamps.filter(function (s) { return s.id === stSel.value; })[0], team = sqSel.value;
+    busy(rec, function () { return record(st.id, team); }).then(function () {
+      recMsg.textContent = '✓ 已記錄第 ' + team + ' 小隊完成「' + st.name + '」，隊員同步時會自動補上' + (navigator.onLine === false ? '（現在沒網路，連上後送出）' : '');
     }, function () {});
   };
   gen.onclick = function () {
@@ -202,9 +226,19 @@ function worker(el, host, h, D, stamps) {
       host.qr(qr, host.link({ k: codeText, s: 'student' }), 220);
     }, function () {});
   };
+  // 密鑰事先寫好：一進來（有網路）就把每一關×每一隊的密鑰存在手機，到現場沒網路也能產生；QR code 的程式也先載好
+  var keyMsg = h('div', { class: 'small muted fm-keys' }, '正在把密鑰存到手機…');
+  host.qr(h('div'), 'x', 40);
+  if (host.signAll) host.signAll(stamps.map(function (s) { return sigText(host, s.id); }), sqOpts.concat(['*'])).then(function () {
+    keyMsg.textContent = '✓ ' + stamps.length + ' 關 × ' + (nSq + 1) + ' 種小隊的密鑰都存在手機了，沒網路也能產生';
+    keyMsg.className = 'small fm-keys ok';
+  }, function () { keyMsg.textContent = '密鑰還沒存到手機（需要網路），產生時會連線'; keyMsg.className = 'small fm-keys bad'; });
+  else keyMsg.textContent = '';
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-name' }, host.pack.name + '・關主'), h('div', { class: 'small muted' }, host.me.name),
     h('div', { class: 'fm-t', style: { marginTop: '10px' } }, '產生關主密鑰'),
-    h('div', { class: 'col', style: { gap: '8px' } }, stSel, sqSel, gen), out,
+    h('div', { class: 'col', style: { gap: '8px' } }, stSel, sqSel, gen, keyMsg), out,
+    h('div', { class: 'col', style: { gap: '6px', marginTop: '10px' } }, rec, recMsg,
+      h('div', { class: 'small muted' }, '隊員忘了輸入密鑰也沒關係：記錄後，那一隊的手機同步時（幾分鐘內）會自動解開。')),
     h('div', { class: 'fm-t', style: { marginTop: '14px' } }, '過關分數（團隊計分）'),
     host.activity ? h('div', { class: 'col', style: { gap: '8px' } }, h('div', { class: 'row', style: { gap: '8px' } }, pts, up), upMsg,
       h('div', { class: 'small muted' }, '選好上面的關卡和小隊，這一隊過關時按一下；同一關再按一次是改分數，不會重複加。'))

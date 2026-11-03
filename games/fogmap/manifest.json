@@ -1,7 +1,7 @@
 {
   "id": "fogmap",
   "name": "霧之校園（測試）",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "entry": "game.js",
   "css": "game.css",
   "files": [

@@ -29,3 +29,5 @@
 .fm-row { display: flex; align-items: center; gap: 10px; }
 .fm-sq { width: 72px; flex: none; font-weight: 600; }
 .fm-dots { display: flex; gap: 4px; } .fm-dots i { width: 14px; height: 14px; border-radius: 4px; background: #e2e2e2; } .fm-dots i.on { background: #3b4f8c; }
+.fm-keys.ok { color: #1a7f37; }
+.fm-keys.bad { color: #b42318; }

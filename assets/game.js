@@ -21,7 +21,8 @@
  *   host.sync(ch, opts)              即時同步（gameSync），頻道範圍見 core.js
  *   host.submit(ch, d)               要留下來的結果（gameSubmit，斷網會補送）→ Promise { id, sigOk }
  *   host.inbox(ch, since)            讀送出的結果（工作人員全部；學員自己的，小隊頻道 sqN… 讀同小隊的）
- *   host.sign(text, squad)           工作人員產生關主密鑰（綁小隊，'*' 不限；從活動進來也綁活動）→ Promise { sig }
+ *   host.sign(text, squad)           工作人員產生關主密鑰（綁小隊，'*' 不限；從活動進來也綁活動）→ Promise { sig }；先存好的不用連線
+ *   host.signAll(texts, squads)      有網路時一次拿好所有關卡×小隊的密鑰存在手機，之後 host.sign 離線也能用
  *   關主登入：活動設了關主通行碼時，工作人員進來會先輸入一次（存在手機），host.sign、host.score 自動帶關主證明
  *   host.score({ stage, stageName, team, score })  關主端：這一隊過了這一關，分數送進「團隊計分」（從活動進來才能用）
  *                                    每個活動一個 Game（名稱＝活動名稱），每隊每關一筆，同一關重送是更新
@@ -294,6 +295,7 @@ var CampGame = (function () {
     var act = info.activity, scope = act ? act.scope || act.id : '';   // 測試模式：範圍是 活動ID-t第幾次，結束測試後換新的，等於歸零
     var chScope = trial ? scope + '-p' : scope;   // 試玩的資料（頻道、存檔）另外放；關主密鑰還是照活動範圍（host.scope）
     var saveKey = 'ia_g_' + camp + '_' + g + (chScope ? '_' + chScope : '') + '_' + who;
+    var signKey = 'ia_gk_' + camp + '_' + g + (scope ? '_' + scope : '');   // 關主密鑰（照活動範圍：測試模式換一次就是新的）
     var DAY = 86400000, TW = 8 * 3600000;
     var data = Object.assign({}, manifest.data || {}, act ? act.cfg || {} : {});
     var host = {
@@ -313,7 +315,21 @@ var CampGame = (function () {
       sync: function (ch, o) { return gameSync(camp, ch, o); },
       submit: function (ch, data) { return gameSubmit(camp, ch, data); },
       inbox: function (ch, since) { return api('gameInbox', camp, ch, since || 0); },
-      sign: function (text, squad) { return api('gameSign', camp, text, squad, act ? act.id : '', ticket); },
+      // 密鑰先存在手機（signAll），產生時不用連線；沒存到的才連線拿
+      sign: function (text, squad) {
+        var all = jget(signKey, {}) || {}, have = all[text] && all[text][squad];
+        if (have) return Promise.resolve({ sig: have, squad: squad, local: true });
+        return api('gameSign', camp, text, squad, act ? act.id : '', ticket).then(function (r) {
+          all = jget(signKey, {}) || {}; (all[text] = all[text] || {})[squad] = r.sig; jset(signKey, all); return r;
+        });
+      },
+      signAll: function (texts, squads) {
+        return api('gameSign', camp, texts, squads, act ? act.id : '', ticket).then(function (r) {
+          var all = jget(signKey, {}) || {};
+          Object.keys(r.sigs || {}).forEach(function (t) { all[t] = Object.assign(all[t] || {}, r.sigs[t]); });
+          jset(signKey, all); return all;
+        });
+      },
       score: function (o) {
         if (!act) return Promise.reject(new Error('要從活動的「開始遊戲」進來才能上傳分數'));
         return op('front.action', { camp: camp, target: { pkg: 'scoreboard', action: 'game.stage', side: side }, data: Object.assign({ act: act.id }, o || {}, { ticket: ticket }) });
