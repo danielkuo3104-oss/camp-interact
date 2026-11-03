@@ -1068,3 +1068,9 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .scan-frame { position: absolute; inset: 15%; border: 3px solid rgba(255, 255, 255, .9); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .35); pointer-events: none; }
 .scan-status { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 12px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; text-align: center; }
 .scan-status.bad { background: rgba(160, 30, 30, .85); }
+.game-sq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.wk-game { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.wk-game:first-of-type { border-top: 0; }
+.wk-game-name { font-weight: 600; }
+.wk-game .ac-btns { justify-content: flex-start; }
+.wk-game .ac-btn { background: var(--brand); color: #fff; }

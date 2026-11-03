@@ -13,9 +13,10 @@
  * 遊戲拿到的 host（遊戲只透過它和系統溝通，不用改核心程式）：
  *   host.camp { campId, name }、host.me { kind: 'student'|'worker'|'staff', name, squad, sid, wid }、host.pack（manifest）
  *   host.data                        設定：manifest.data ＋ 這個活動在管理端填的（活動的優先）
+ *   host.mode                        'player'（學員、工作人員試玩）或 'master'（工作人員／關主）；host.trial 工作人員試玩（頻道、存檔另外放，host.me.squad 是選的小隊）
  *   host.activity                    { id, name, test }（從活動進來才有；test：管理端開了測試模式，資料結束後歸零）
  *   host.ch(name)                    頻道名稱加上活動（同一個資源包用在兩個活動時，進度分開）；host.scope 活動 ID 或 ''
- *   host.time(v)                     設定裡的時間（'2027-07-10T17:00' 或含時區）→ 毫秒，沒填回 null
+ *   host.time(v)                     設定裡的時間（'2027-07-10T17:00' 或含時區）→ 毫秒，沒填回 null；測試模式日期當作今天（時間照設定）
  *   host.now()                       伺服器時間（毫秒；倒數、定時公布用，學員改手機時間沒用）
  *   host.sync(ch, opts)              即時同步（gameSync），頻道範圍見 core.js
  *   host.submit(ch, d)               要留下來的結果（gameSubmit，斷網會補送）→ Promise { id, sigOk }
@@ -48,6 +49,16 @@ var CampGame = (function () {
       h('h1', null, title), text ? h('p', { class: 'muted', style: { margin: 0 } }, text) : null, extra || null)));
   }
   if (!camp || !/^[a-z0-9][a-z0-9-]{0,40}$/.test(g)) { msg('網址不完整', '請用籌辦團隊給的連結或 QR code 打開。'); return; }
+
+  // 從主畫面捷徑按進來的：網址 #h= 是一次性的交接碼，換回 App 的登入（瀏覽器和捷徑的登入是分開的）
+  var hm = location.hash.match(/[#&]h=([0-9a-f]{40})/);
+  if (hm) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    msg('登入中…', '帶入營隊互動 App 的登入');
+    api('gameHandoffUse', hm[1], camp).then(function (r) { store('ia_f_' + camp + '_' + r.side, r.token, true); location.replace(location.pathname + location.search); },
+      function () { location.replace(location.pathname + location.search); });
+    return;
+  }
 
   // 登入：用營隊互動 App 的登入（學員優先；網址指定 s=worker 就用工作人員的）
   var sides = want === 'worker' ? ['worker'] : want === 'student' ? ['student'] : ['student', 'worker'], side = null;
@@ -248,13 +259,27 @@ var CampGame = (function () {
       setTimeout(function () { pass.focus(); }, 50);
     });
   }
+  // 工作人員試玩：用玩家身分玩（先選一個小隊），資料放在「活動範圍-p」，跟正式分開
+  var trial = side === 'worker' && param('as') === 'player' && !!actId, TQ = 'ia_gp_' + camp + '_' + actId;
+  function pickSquad(info) {
+    var cfg = Object.assign({}, manifest.data || {}, info.activity.cfg || {}), n = Number(cfg.squads) || 8, have = store(TQ);
+    if (have && Number(have) >= 1 && Number(have) <= n) return Promise.resolve(have);
+    return new Promise(function (done) {
+      var grid = h('div', { class: 'game-sq' });
+      for (var i = 1; i <= n; i++) (function (q) { grid.appendChild(h('button', { class: 'btn', onclick: function () { store(TQ, String(q)); done(String(q)); } }, '第 ' + q + ' 小隊')); })(i);
+      msg('🎮 試玩「' + info.activity.name + '」', '用玩家身分試玩：選一個小隊。試玩的資料跟正式分開，不會影響學員。', h('div', { class: 'col', style: { gap: '10px' } }, grid,
+        h('a', { class: 'btn ghost', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動')));
+    });
+  }
+  var trialSq = '';
   Promise.all([getManifest(), api('gameMe', camp, actId || '', ticket)]).then(function (res) {
     manifest = res[0].m;
     var info = res[1];
     if (info.activity && info.activity.pack !== g) throw new Error('這個活動連的是另一個遊戲（' + info.activity.pack + '）');
-    var m = info.activity && info.activity.master;
+    var m = !trial && info.activity && info.activity.master;
     if (m && !m.ok) { store(MK, null); ticket = ''; }
-    return (m && !m.ok ? masterLogin(info) : Promise.resolve(info)).then(function () { return install(manifest, res[0].fresh); }).then(function (got) {
+    var gate = trial ? pickSquad(info).then(function (q) { trialSq = q; }) : m && !m.ok ? masterLogin(info) : Promise.resolve(info);
+    return gate.then(function () { return install(manifest, res[0].fresh); }).then(function (got) {
       var entry = clean(manifest.entry || 'game.js'), css = manifest.css ? clean(manifest.css) : '';
       if (got) got.files.forEach(function (f, i) { blobs[f] = URL.createObjectURL(got.blobs[i]); });
       if (css) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = blobs[css] || base + css; document.head.appendChild(l); }
@@ -264,19 +289,25 @@ var CampGame = (function () {
 
   function start(d, info) {
     document.title = manifest.name || '營隊遊戲';
-    var me = info.me, who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : 'u';
+    var me = trial ? Object.assign({}, info.me, { squad: trialSq }) : info.me, who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : 'u';
     gameSubmit.who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : '';
     var act = info.activity, scope = act ? act.scope || act.id : '';   // 測試模式：範圍是 活動ID-t第幾次，結束測試後換新的，等於歸零
-    var saveKey = 'ia_g_' + camp + '_' + g + (scope ? '_' + scope : '') + '_' + who;
+    var chScope = trial ? scope + '-p' : scope;   // 試玩的資料（頻道、存檔）另外放；關主密鑰還是照活動範圍（host.scope）
+    var saveKey = 'ia_g_' + camp + '_' + g + (chScope ? '_' + chScope : '') + '_' + who;
+    var DAY = 86400000, TW = 8 * 3600000;
     var data = Object.assign({}, manifest.data || {}, act ? act.cfg || {} : {});
     var host = {
       camp: info.camp, me: me, pack: manifest, data: data, side: side,
       activity: act ? { id: act.id, name: act.name, test: !!act.test } : null, scope: scope,
-      ch: function (name) { return scope ? name + ':' + scope : name; },
+      mode: side === 'worker' && !trial ? 'master' : 'player', trial: trial,
+      ch: function (name) { return chScope ? name + ':' + chScope : name; },
       time: function (v) {
         v = String(v || '').trim(); if (!v) return null;
         if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(v)) v += (v.length === 16 ? ':00' : '') + '+08:00';   // 沒寫時區當台灣時間
-        var t = Date.parse(v); return isFinite(t) ? t : null;
+        var t = Date.parse(v); if (!isFinite(t)) return null;
+        // 測試模式：設定裡的日期換成今天（時間照設定），例如正式 7/10 17:00 → 測試時今天 17:00
+        if (act && act.test) { var today = Math.floor((host.now() + TW) / DAY) * DAY - TW; t = today + ((t + TW) % DAY + DAY) % DAY; }
+        return t;
       },
       now: function () { return Date.now() + CLOCK_.off; },
       sync: function (ch, o) { return gameSync(camp, ch, o); },
@@ -307,7 +338,8 @@ var CampGame = (function () {
     var el = h('div', { class: 'game-root' });
     var back = h('a', { class: 'game-back', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動');
     screen(h('div', null, h('div', { class: 'game-bar' }, back, act ? h('span', { class: 'game-act' }, act.name) : null),
-      act && act.test ? h('div', { class: 'game-testbar' }, '🧪 測試模式：跟正式一樣，結束測試後全部歸零') : null, el));
+      act && act.test ? h('div', { class: 'game-testbar' }, '🧪 測試模式：跟正式一樣（日期當作今天），結束測試後全部歸零') : null,
+      trial ? h('div', { class: 'game-testbar' }, '🎮 試玩：第 ' + trialSq + ' 小隊（資料跟正式分開）　', h('a', { href: '#', onclick: function (ev) { ev.preventDefault(); store(TQ, null); location.reload(); } }, '換小隊')) : null, el));
     try { d.mount(el, host); } catch (e) { msg('遊戲出錯了', e.message); return; }
     setTimeout(function () { gameSubmit.flush(); }, 2000);   // 上次沒送出的補送
   }

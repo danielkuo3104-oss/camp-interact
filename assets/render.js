@@ -196,21 +196,44 @@ var Front = (function () {
     }
     return node ? h('div', { class: 'ac-el al-' + (e.al || 'l') + (ctx.edit ? ' ed' : ''), 'data-i': ctx.i }, node) : null;
   }
-  /** 「開始遊戲」：同一個分頁打開遊戲頁（加到主畫面的 App 開新分頁會跑到瀏覽器、登入不見）；編輯預覽不跳走 */
+  /** 遊戲按鈕：一般瀏覽器同一個分頁打開遊戲頁；加到主畫面的 App（捷徑）改用瀏覽器打開
+   *  （有些手機的捷徑不能開相機），登入用一次性的交接碼帶過去（#h=，10 分鐘、只能用一次），不用重新登入。編輯預覽不跳走
+   *  學員端：「🎮 開始遊戲」。工作人員端：「🎮 開始遊戲」（用玩家身分試玩，資料跟正式分開）＋「🎯 關主登入」（管理端可以關掉） */
   function gameBtn(info, label, ctx) {
-    // 工作人員端：顯示「關主登入」（管理端可以關掉；有關主通行碼時進去先輸入）
     var worker = document.documentElement.classList.contains('side-worker') && !(ctx && ctx.edit);
-    if (worker && info.game && info.game.master === false) return null;
-    var text = worker && info.game ? '關主登入' : label || (info.game && info.game.label) || '開始遊戲';
-    var b = h('button', { type: 'button', class: 'ac-btn' }, info.game ? (worker ? '🎯 ' : '🎮 ') + text : text + '（還沒連遊戲）');
-    b.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      if (!info.game || (ctx && ctx.edit)) return;
-      var side = document.documentElement.classList.contains('side-worker') ? 'worker' : 'student';
-      if (param('preview') || /admin\.html/.test(location.pathname)) { toast('預覽不能玩遊戲：用學員端或工作人員端打開'); return; }
-      location.href = 'game.html?c=' + encodeURIComponent(param('c')) + '&g=' + encodeURIComponent(info.game.pack) + '&a=' + encodeURIComponent(info.id) + '&s=' + side;
-    });
-    return h('div', { class: 'ac-btns' }, b);
+    var text = label || (info.game && info.game.label) || '開始遊戲';
+    var preview = param('preview') || /admin\.html/.test(location.pathname);
+    var shortcut = !preview && info.game && !(ctx && ctx.edit) && isStandalone();
+    // 捷徑：先拿好交接碼（按的時候要馬上開瀏覽器，不能等網路，不然會被擋），每 8 分鐘換一次
+    var hand = null, wrap = h('div', { class: 'ac-btns' });
+    var getCode = function () { api('gameHandoff', param('c')).then(function (r) { hand = r.code; }, function () { hand = null; }); };
+    if (shortcut) {
+      getCode();
+      var iv = setInterval(function () { if (!document.body.contains(wrap)) { clearInterval(iv); return; } getCode(); }, 8 * 60000);
+    }
+    var mk = function (txt, extra) {
+      var b = h('button', { type: 'button', class: 'ac-btn' }, info.game ? txt : text + '（還沒連遊戲）');
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (!info.game || (ctx && ctx.edit)) return;
+        var side = document.documentElement.classList.contains('side-worker') ? 'worker' : 'student';
+        if (preview) { toast('預覽不能玩遊戲：用學員端或工作人員端打開'); return; }
+        var url = 'game.html?c=' + encodeURIComponent(param('c')) + '&g=' + encodeURIComponent(info.game.pack) + '&a=' + encodeURIComponent(info.id) + '&s=' + side + (extra || '');
+        if (!shortcut) { location.href = url; return; }
+        var full = new URL(url, location.href).href + (hand ? '#h=' + hand : '');
+        hand = null; getCode();   // 用過了，換一個新的
+        var w = window.open(full, '_blank');
+        if (!w) location.href = full;
+        else toast('已經用瀏覽器打開遊戲');
+      });
+      wrap.appendChild(b);
+    };
+    if (!worker) mk('🎮 ' + text);
+    else {
+      mk('🎮 ' + text, '&as=player');
+      if (info.game && info.game.master !== false) mk('🎯 關主登入');
+    }
+    return wrap;
   }
   /**
    * 活動卡片。mode：cover 封面、detail 點開的詳細、theme 現在主題（封面樣式＋「現在主題」字樣）
@@ -1146,6 +1169,6 @@ var Front = (function () {
       .map(function (b) { return { id: b.id, pkg: b.data.pkg, view: b.data.view, config: b.data.config || {} }; });
   }
 
-  return { page: page, block: block, liveBlocks: liveBlocks, tierLayer: tierLayer, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, centerNow: centerNow, actColor: actColor, mapView: mapView, detailTable: detailTable, rotTable: rotTable, MAP_ANGLES: MAP_ANGLES, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard,
+  return { gameBtn: gameBtn, page: page, block: block, liveBlocks: liveBlocks, tierLayer: tierLayer, VIEWS: VIEWS, kids: kids, pageById: pageById, flowChart: flowChart, markNow: markNow, centerNow: centerNow, actColor: actColor, mapView: mapView, detailTable: detailTable, rotTable: rotTable, MAP_ANGLES: MAP_ANGLES, CELL_COLORS: CELL_COLORS, photo: photo, FRAMES: FRAMES, COURSE_LAYOUTS: COURSE_LAYOUTS, courseCard: courseCard,
     actCard: actCard, openAct: openAct, closeAct: closeAct, actCardOf: actCardOf, actDefault: actDefault, ACT_GRADS: ACT_GRADS, ACT_ELS: ACT_ELS, ACT_VARS: ACT_VARS };
 })();
