@@ -384,7 +384,6 @@
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
-    if (side === 'worker' && !preview && rs[0] && S.cur === rs[0].id) content.insertBefore(gamesCard(), content.firstChild);
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
     var F = fx();
@@ -431,28 +430,6 @@
     }
     window.scrollTo(0, 0);
     loadLive();
-  }
-
-  /** 工作人員主頁最上面的「遊戲」：所有連了遊戲的活動，每個都有「開始遊戲」（試玩）和「關主登入」，不用先找活動卡片 */
-  function gamesCard() {
-    var box = h('div', { class: 'fb wk-games' });
-    var draw = function (list) {
-      clear(box);
-      list = (list || []).filter(function (a) { return a.game; });
-      if (!list.length) { box.style.display = 'none'; return; }
-      box.style.display = '';
-      box.appendChild(h('h2', null, '🎮 遊戲'));
-      list.forEach(function (a) { box.appendChild(h('div', { class: 'wk-game' }, h('div', { class: 'wk-game-name' }, a.name), Front.gameBtn(a, '', {}))); });
-    };
-    if (S.games) draw(S.games);
-    else box.style.display = 'none';
-    if (!S.gamesAt || Date.now() - S.gamesAt > 60000) {
-      S.gamesAt = Date.now();
-      api('frontLive', camp, 'worker', [{ id: 'g', pkg: 'schedule', view: 'activities', config: {} }]).then(function (r) {
-        S.games = ((r.live && r.live.g) || {}).list || []; draw(S.games);
-      }, function () {});
-    }
-    return box;
   }
 
   /** 預覽可以設定模擬時間：看某個時間點的「現在主題」、目前時程、夜間模式 */

@@ -668,6 +668,7 @@ gameSubmit.flush = function () {
 if (typeof window !== 'undefined') window.addEventListener('online', function () { gameSubmit.flush(); });
 
 /** 是不是從主畫面捷徑（加到主畫面的 App）打開的 */
+function isIos_() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); }
 function isStandalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
 
 /* ---------------- 加到主畫面的名稱 ---------------- */

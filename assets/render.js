@@ -222,9 +222,13 @@ var Front = (function () {
         if (!shortcut) { location.href = url; return; }
         var full = new URL(url, location.href).href + (hand ? '#h=' + hand : '');
         hand = null; getCode();   // 用過了，換一個新的
-        var w = window.open(full, '_blank');
-        if (!w) location.href = full;
-        else toast('已經用瀏覽器打開遊戲');
+        var openTab = function () { var w = window.open(full, '_blank'); if (!w) location.href = full; else toast('已經用瀏覽器打開遊戲'); };
+        // iPhone：捷徑裡開新視窗會變成捷徑裡面的小瀏覽器（還是不能開相機），改用 x-safari- 直接叫 Safari 打開（iOS 17 以後）；
+        // 叫不起來（舊的 iOS）畫面還在，就退回開新視窗
+        if (isIos_()) {
+          location.href = 'x-safari-' + full;
+          setTimeout(function () { if (document.visibilityState === 'visible') openTab(); }, 1200);
+        } else openTab();
       });
       wrap.appendChild(b);
     };
@@ -722,6 +726,13 @@ var Front = (function () {
           if (env.side !== 'worker') return c;
           return h('div', { class: 'col', style: { gap: '4px' } }, c, h('div', { class: 'small muted', style: { padding: '0 8px' } }, (a.when ? '' : '未排入流程 · ') + (a.public ? '學員看得到' : ({ hidden: '學員看不到', auto: '自動公開（未到時間）', manual: '手動公開（尚未公開）' }[a.mode] || '學員看不到'))));
         }));
+      },
+      // 工作人員的遊戲入口：連了遊戲的活動，每個都有「開始遊戲」（試玩）和「關主登入」，不用先找活動卡片
+      games: function (d, b, env) {
+        var list = d.list || [];
+        return h('div', { class: 'fb wk-games' }, h('h2', null, '🎮 遊戲'),
+          list.length ? list.map(function (a) { return h('div', { class: 'wk-game' }, h('div', { class: 'wk-game-name' }, a.name), gameBtn(a, '', {})); })
+            : h('div', { class: 'muted small' }, '還沒有活動連遊戲（到「活動」設定裡選遊戲）'));
       },
       flow: function (d, b, env) {
         var flows = d.flows || [], cf = d.customFields || [];
