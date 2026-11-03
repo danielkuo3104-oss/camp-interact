@@ -60,6 +60,8 @@ function fogMap(host, D, onReady) {
   }
   var api = {
     el: wrap,
+    /** 全部過關：整片霧散掉 */
+    clearAll: function (on) { wrap.classList.toggle('fm-clear', !!on); },
     set: function (list, extra) {
       var had = {}; open.forEach(function (p) { had[p.id] = 1; });
       open = list.slice();
@@ -114,6 +116,21 @@ function student(el, host, h, D, stamps, byId) {
         h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + s.id.replace(/\D/g, '') + ' 關'), h('div', { class: 'small muted' }, g ? (g.at ? when(g.at) + ' 解開' : '已解開') + (g.master ? '・關主記錄' : '') + (g.pending ? '・等網路確認' : '') : s.hint))));
     });
     renderFin();
+    // 全部過關：霧全部散掉；第一次全過放慶祝動畫
+    var all = n === stamps.length && n > 0;
+    map.clearAll(all);
+    if (all && !host.load('allDone', false)) { host.save('allDone', true); celebrate(); }
+    if (!all && host.load('allDone', false)) host.save('allDone', false);
+  }
+  function celebrate() {
+    var box = h('div', { class: 'fm-party', role: 'status' }), colors = ['#e0a35e', '#2f7d55', '#3b4f8c', '#d9534f', '#f2c94c', '#56ccf2'];
+    var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!still) for (var i = 0; i < 48; i++) box.appendChild(h('i', { style: { left: (Math.random() * 100) + '%', background: colors[i % colors.length], animationDelay: (Math.random() * 0.8) + 's', animationDuration: (1.8 + Math.random() * 1.4) + 's', transform: 'rotate(' + Math.round(Math.random() * 360) + 'deg)' } }));
+    box.appendChild(h('div', { class: 'fm-party-card' }, h('div', { class: 'fm-party-big' }, '🎉 全部過關！'), h('div', null, '整張地圖都解開了，第 ' + sq + ' 小隊太強了')));
+    map.el.appendChild(box);
+    if (navigator.vibrate) navigator.vibrate([80, 60, 120]);
+    box.addEventListener('click', function () { box.remove(); });
+    setTimeout(function () { box.classList.add('out'); setTimeout(function () { box.remove(); }, 600); }, 4500);
   }
   // 終點：活動設定的 endAt／revealMinutesBefore 優先（管理端填），沒有就用 manifest 的 finale
   function finaleAt() { var f = D.finale, t = f && host.time(D.endAt || f.endAt); return f && t !== null ? t - (Number(D.revealMinutesBefore) || f.revealMinutesBefore || 30) * 60000 : null; }
@@ -193,29 +210,55 @@ function worker(el, host, h, D, stamps) {
   var gen = h('button', { class: 'btn primary' }, '產生密鑰');
   // 過關分數：預設照活動設定的每關分數，可以臨場改（例如表現好加分）
   var pts = h('input', { class: 'input', type: 'number', inputmode: 'numeric', value: String(Number(D.pointsPerStamp) || 100) });
-  var up = h('button', { class: 'btn' }, '過關，上傳分數'), upMsg = h('div', { class: 'small muted' });
-  up.onclick = function () {
-    if (sqSel.value === '*') { host.toast('上傳分數要選一個小隊', true); return; }
-    var st = stamps.filter(function (s) { return s.id === stSel.value; })[0], n = Number(pts.value);
-    if (!isFinite(n) || pts.value === '') { host.toast('請填分數', true); return; }
-    busy(up, function () { return host.score({ stage: st.id, stageName: st.name, team: Number(sqSel.value), score: n }); }).then(function (r) {
-      var t = '第 ' + sqSel.value + ' 小隊「' + st.name + '」' + n + ' 分' + (r && r.updated ? '（已更新這一關的分數）' : '');
-      upMsg.textContent = '✓ 已上傳：' + t + '，也記錄這隊完成這關'; host.toast('已上傳團隊計分：' + t);
-      record(st.id, sqSel.value).catch(function () {});
-    }, function () {});
-  };
-  /** 記錄這一隊完成這一關：隊員就算忘了輸入，下次同步會自動補上 */
+  /** 記錄這一隊完成這一關：隊員就算忘了輸入，下次同步會自動補上（用手機裡的密鑰，沒網路先存著） */
   function record(stId, team) {
     return host.sign(sigText(host, stId), team).then(function (r) {
       host.submit(host.ch('sq' + team + '-fog'), { stamp: stId, signed: sigText(host, stId), sig: r.sig, master: 1 }).then(function () { load(); }, function () {});
     });
   }
-  var rec = h('button', { class: 'btn' }, '✓ 記錄這隊完成這關'), recMsg = h('div', { class: 'small muted' });
-  rec.onclick = function () {
+  /** 分數：先排在手機裡，送得出去才拿掉（同一隊同一關只留最新的；沒網路時連上再補送） */
+  var upMsg = h('div', { class: 'small muted' });
+  function flushScores() {
+    var q = host.load('scoreQ', []); if (!q.length || flushScores.busy || navigator.onLine === false) return Promise.resolve(q.length);
+    flushScores.busy = true;
+    var x = q[0];
+    return host.score(x).then(function (r) {
+      flushScores.updated = !!(r && r.updated);
+      host.save('scoreQ', host.load('scoreQ', []).filter(function (y) { return !(y.stage === x.stage && y.team === x.team && y.score === x.score); }));
+      flushScores.busy = false;
+      if (!host.load('scoreQ', []).length) upMsg.textContent = upMsg.textContent.replace('（沒網路，分數連上後自動上傳）', '（分數已補上傳）');
+      return flushScores();
+    }, function (e) {
+      flushScores.busy = false;
+      if (e && e.code === 'NET') return q.length;
+      host.save('scoreQ', host.load('scoreQ', []).filter(function (y) { return y !== x && !(y.stage === x.stage && y.team === x.team); }));
+      host.toast('第 ' + x.team + ' 小隊「' + x.stageName + '」分數沒上傳成功：' + (e && e.message || ''), true);
+      return flushScores();
+    });
+  }
+  window.addEventListener('online', function () { flushScores(); });
+  setInterval(flushScores, 60000);
+  flushScores();
+  var up = h('button', { class: 'btn' }, '✓ 過關（記錄完成＋上傳分數）');
+  if (!host.activity) up.textContent = '✓ 記錄這隊完成這關';
+  up.onclick = function () {
     if (sqSel.value === '*') { host.toast('要選一個小隊', true); return; }
-    var st = stamps.filter(function (s) { return s.id === stSel.value; })[0], team = sqSel.value;
-    busy(rec, function () { return record(st.id, team); }).then(function () {
-      recMsg.textContent = '✓ 已記錄第 ' + team + ' 小隊完成「' + st.name + '」，隊員同步時會自動補上' + (navigator.onLine === false ? '（現在沒網路，連上後送出）' : '');
+    var st = stamps.filter(function (s) { return s.id === stSel.value; })[0], team = sqSel.value, n = Number(pts.value);
+    if (host.activity && (!isFinite(n) || pts.value === '')) { host.toast('請填分數', true); return; }
+    busy(up, function () {
+      return record(st.id, team).then(function () {
+        if (!host.activity) return -1;
+        var q = host.load('scoreQ', []).filter(function (y) { return !(y.stage === st.id && y.team === Number(team)); });
+        q.push({ stage: st.id, stageName: st.name, team: Number(team), score: n }); host.save('scoreQ', q);
+        // 沒網路不等：分數排著，連上再補傳（按鈕不會卡住）
+        if (navigator.onLine === false) return 1;
+        return Promise.race([flushScores(), new Promise(function (ok) { setTimeout(function () { ok(host.load('scoreQ', []).length); }, 5000); })]);
+      });
+    }).then(function (left) {
+      var t = '第 ' + team + ' 小隊「' + st.name + '」';
+      if (left === -1) upMsg.textContent = '✓ 已記錄' + t + '完成，隊員同步時會自動補上';
+      else upMsg.textContent = '✓ ' + t + '過關：已記錄完成，' + n + ' 分' + (left ? '（沒網路，分數連上後自動上傳）' : '已上傳' + (flushScores.updated ? '（已更新這一關的分數）' : ''));
+      host.toast(upMsg.textContent.slice(2));
     }, function () {});
   };
   gen.onclick = function () {
@@ -237,12 +280,9 @@ function worker(el, host, h, D, stamps) {
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-name' }, host.pack.name + '・關主'), h('div', { class: 'small muted' }, host.me.name),
     h('div', { class: 'fm-t', style: { marginTop: '10px' } }, '產生關主密鑰'),
     h('div', { class: 'col', style: { gap: '8px' } }, stSel, sqSel, gen, keyMsg), out,
-    h('div', { class: 'col', style: { gap: '6px', marginTop: '10px' } }, rec, recMsg,
-      h('div', { class: 'small muted' }, '隊員忘了輸入密鑰也沒關係：記錄後，那一隊的手機同步時（幾分鐘內）會自動解開。')),
-    h('div', { class: 'fm-t', style: { marginTop: '14px' } }, '過關分數（團隊計分）'),
-    host.activity ? h('div', { class: 'col', style: { gap: '8px' } }, h('div', { class: 'row', style: { gap: '8px' } }, pts, up), upMsg,
-      h('div', { class: 'small muted' }, '選好上面的關卡和小隊，這一隊過關時按一下；同一關再按一次是改分數，不會重複加。'))
-      : h('div', { class: 'small muted' }, '要從活動卡片的「開始遊戲」進來，才會連到團隊計分。')));
+    h('div', { class: 'fm-t', style: { marginTop: '14px' } }, '過關'),
+    h('div', { class: 'col', style: { gap: '8px' } }, host.activity ? h('div', { class: 'row', style: { gap: '8px', alignItems: 'center' } }, h('span', { class: 'small', style: { flex: 'none', whiteSpace: 'nowrap' } }, '這一關分數'), pts) : null, up, upMsg,
+      h('div', { class: 'small muted' }, '選好上面的關卡和小隊，這一隊過關時按一下：記錄這隊完成（隊員忘了輸入也會自動解開）' + (host.activity ? '，同時上傳團隊計分；同一關再按一次是改分數，不會重複加。沒網路也可以按，連上後自動補傳。' : '。要從活動卡片的「開始遊戲」進來，才會連到團隊計分。')))));
   var rf = h('button', { class: 'btn sm' }, '重新整理');
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'row', style: { justifyContent: 'space-between' } }, h('div', { class: 'fm-t' }, '各小隊進度'), rf), board));
   function load() {

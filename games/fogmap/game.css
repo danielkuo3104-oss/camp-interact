@@ -31,3 +31,15 @@
 .fm-dots { display: flex; gap: 4px; } .fm-dots i { width: 14px; height: 14px; border-radius: 4px; background: #e2e2e2; } .fm-dots i.on { background: #3b4f8c; }
 .fm-keys.ok { color: #1a7f37; }
 .fm-keys.bad { color: #b42318; }
+/* 全部過關：霧散掉＋慶祝 */
+.fm-fog { transition: opacity 2.4s ease; }
+.fm-map.fm-clear .fm-fog { opacity: 0; }
+.fm-party { position: absolute; inset: 0; overflow: hidden; display: grid; place-items: center; background: rgba(0,0,0,.18); animation: fm-fade .4s ease-out; transition: opacity .6s; }
+.fm-party.out { opacity: 0; }
+.fm-party i { position: absolute; top: -12px; width: 8px; height: 12px; border-radius: 2px; animation: fm-fall linear forwards; }
+.fm-party-card { position: relative; background: #fff; color: #222; border-radius: 16px; padding: 14px 20px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.25); animation: fm-bounce .7s cubic-bezier(.2,1.6,.4,1); }
+.fm-party-big { font-size: 24px; font-weight: 800; color: #c4741f; margin-bottom: 4px; }
+@keyframes fm-fall { to { top: 105%; transform: rotate(540deg) translateX(30px); } }
+@keyframes fm-bounce { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes fm-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fm-fog { transition: none; } .fm-party, .fm-party-card { animation: none; } }
