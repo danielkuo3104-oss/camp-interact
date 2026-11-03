@@ -43,3 +43,6 @@
 @keyframes fm-bounce { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes fm-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .fm-fog { transition: none; } .fm-party, .fm-party-card { animation: none; } }
+/* 產生密鑰後問要不要標示完成 */
+.fm-ask { width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 12px; background: #fff6e5; border: 1px solid #f0d29c; color: #5a3b00; font-size: 14px; }
+.fm-ask.done { background: #f1f8f3; border-color: #9cc6b0; color: #1a5a35; }
