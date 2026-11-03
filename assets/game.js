@@ -175,6 +175,16 @@ var CampGame = (function () {
     });
   }
 
+  /** 相機權限被擋時教怎麼打開：iPhone（Safari）／Android（Chrome）各自的步驟 */
+  function camHelp() {
+    var ua = navigator.userAgent, ios = isIos_(), android = /Android/i.test(ua);
+    var steps = ios ? ['打開手機的「設定」App', '往下找到「App」→「Safari」（舊版 iOS 直接在設定裡找「Safari」）', '在「網站設定」裡點「相機」，改成「允許」', '回到這一頁，重新整理後再按一次掃描']
+      : android ? ['點網址列左邊的圖示（鎖頭或「⚙」）→「權限」→「相機」，改成「允許」', '如果那裡沒有：Chrome 右上「⋮」→「設定」→「網站設定」→「相機」，把這個網站從「已封鎖」改成「允許」', '還是不行：打開手機的「設定」→「應用程式」→「Chrome」→「權限」→「相機」，改成「允許」', '回到這一頁，重新整理後再按一次掃描']
+      : ['點網址列左邊的圖示，把「相機」改成「允許」', '回到這一頁，重新整理後再按一次掃描'];
+    return h('div', null, h('b', null, ios ? 'iPhone 打開相機權限' : android ? 'Android 打開相機權限' : '打開相機權限'),
+      h('ol', null, steps.map(function (t) { return h('li', null, t); })),
+      h('div', { class: 'small muted' }, '打不開也沒關係：關掉這個視窗，直接輸入關主給的代碼。'));
+  }
   /* 遊戲裡的 QR code 掃描：不用手機相機 App（相機 App 會用別的瀏覽器打開、又要登入一次）
    * 有 BarcodeDetector（Android Chrome）用內建的；沒有（iPhone）就載入 jsQR 一張一張解。回傳 Promise 掃到的文字（取消是 null） */
   var JSQR = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js', JSQR_SRI = 'sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';
@@ -195,11 +205,13 @@ var CampGame = (function () {
       var stream = null, over = false, timer = null, canvas = document.createElement('canvas'), cx = canvas.getContext('2d', { willReadFrequently: true });
       video.muted = true; video.setAttribute('playsinline', '');
       var stop = function () { over = true; clearTimeout(timer); if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); };
-      var m = modal({ title: title || '掃描 QR code', body: h('div', { class: 'scan-box' }, video, h('div', { class: 'scan-frame' }), status), actions: [{ text: '取消' }], onClose: function () { stop(); done(null); } });
+      var help = h('div', { class: 'cam-help', style: { display: 'none' } });
+      var m = modal({ title: title || '掃描 QR code', body: h('div', null, h('div', { class: 'scan-box' }, video, h('div', { class: 'scan-frame' }), status), help), actions: [{ text: '取消' }], onClose: function () { stop(); done(null); } });
       var found = function (text) { if (over || !text) return; stop(); if (navigator.vibrate) navigator.vibrate(60); done(text); m.close(); };
       var fail2 = function (e) {
         var n = e && e.name;
-        status.textContent = n === 'NotAllowedError' ? '沒有相機權限：請到瀏覽器設定允許使用相機，或改輸入代碼' : n === 'NotFoundError' ? '找不到相機，請改輸入代碼' : (e && e.message) || '相機打不開，請改輸入代碼';
+        if (n === 'NotAllowedError' || n === 'SecurityError') { clear(help).appendChild(camHelp()); help.style.display = ''; }
+        status.textContent = n === 'NotAllowedError' || n === 'SecurityError' ? '沒有相機權限：照下面的步驟打開，或改輸入代碼' : n === 'NotFoundError' ? '找不到相機，請改輸入代碼' : (e && e.message) || '相機打不開，請改輸入代碼';
         status.classList.add('bad');
       };
       md.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
