@@ -4,8 +4,9 @@
  *   學員：地圖一開始整片是霧，提示只給謎語不給地點；找到關主、拿到密鑰（掃 QR code 或輸入代碼）後，那一關附近的霧散開。
  *         同一小隊共用進度（集章存在伺服器的小隊頻道 sqN-fog，隊友即時收到通知）。終點在結束前 N 分鐘自動公布（照伺服器時間）。
  *   工作人員：選關卡＋小隊產生關主密鑰（QR code／代碼，綁小隊：A 隊拿去給 B 隊用驗不過），看各小隊進度；
- *             這一隊過關時按「過關，上傳分數」，分數送進團隊計分（每隊每關一筆，重送是更新）。
- * 計算（霧、倒數、進度）都在手機上；只有集章送到伺服器，斷網會先存手機、連上自動補送。
+ *             這一隊過關時按「過關」，記錄完成並把分數送進團隊計分（每隊每關一筆，重送是更新）；產生過的密鑰有紀錄，可以撤回或補標完成。
+ * 密鑰寫死在資源包裡（keyOf：關卡＋小隊＋活動算出來），關主產生、學員驗證都在手機上，不用連線；
+ * 伺服器只用來讓同一小隊互相補齊（集章送到小隊頻道，斷網先存手機、連上自動補送）。
  */
 CampGame.register({
   mount: function (el, host) {
@@ -19,8 +20,36 @@ CampGame.register({
 /** 解開的時間（台灣時間 月/日 時:分） */
 function when(t) { var d = new Date(Number(t) + 8 * 3600000); return (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + ' ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()); }
 
-/** 密鑰簽的內容：關卡＋活動（同一個資源包用在別的活動，密鑰不能通用） */
-function sigText(host, stampId) { return 'fog|' + stampId + (host.scope ? '|' + host.scope : ''); }
+/* ---------------- 密鑰（寫死在資源包裡，不用連線） ----------------
+ * 密鑰 = 雜湊（資源包鹽＋活動範圍＋關卡＋小隊）轉成 8 個好輸入的字（沒有 0/O、1/I）。
+ * 同一個資源包用在別的活動（或測試模式換一次）密鑰就不一樣；小隊 '*' 是哪一隊都能用。 */
+var KEY_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function keyOf(host, D, stampId, squad) {
+  var str = 'fog|' + (D.keySalt || 'fogmap') + '|' + (host.scope || '') + '|' + stampId + '|' + squad;
+  var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (var i = 0; i < str.length; i++) { var c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  var a = h1 >>> 0, b = h2 >>> 0, out = '';
+  for (var j = 0; j < 8; j++) out += KEY_ABC[(j < 4 ? a >>> (j * 6) : b >>> ((j - 4) * 6)) & 31];
+  return out;
+}
+function keyOk(host, D, stampId, key, squad) {
+  key = String(key || '').toUpperCase();
+  return !!key && (key === keyOf(host, D, stampId, String(squad)) || key === keyOf(host, D, stampId, '*'));
+}
+/** 小隊頻道的紀錄 → 解開了哪些關（照時間：解開／關主撤回），密鑰在手機上驗；舊版有伺服器簽章的（x.ok）也算 */
+function teamState(host, D, byId, items, squad) {
+  var got = {}, revokedAt = {}, bad = 0;
+  items.slice().sort(function (x, y) { return x.t - y.t; }).forEach(function (x) {
+    var d = x.d; if (!d || !byId[d.stamp]) return;
+    var ok = d.key ? keyOk(host, D, d.stamp, d.key, squad) : x.ok === true;
+    if (!ok) { if (!d.revoke) bad++; return; }
+    if (d.revoke) { delete got[d.stamp]; revokedAt[d.stamp] = x.t; }
+    else if (!got[d.stamp]) got[d.stamp] = { at: x.t, master: !!d.master };
+  });
+  return { got: got, revokedAt: revokedAt, bad: bad };
+}
 
 /* ---------------- 地圖＋霧 ---------------- */
 function fogMap(host, D, onReady) {
@@ -113,7 +142,7 @@ function student(el, host, h, D, stamps, byId) {
     stamps.forEach(function (s) {
       var g = got[s.id];
       list.appendChild(h('div', { class: 'fm-item' + (g ? ' got' : '') }, h('span', { class: 'fm-st' }, g ? '✓' : '?'),
-        h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + s.id.replace(/\D/g, '') + ' 關'), h('div', { class: 'small muted' }, g ? (g.at ? when(g.at) + ' 解開' : '已解開') + (g.master ? '・關主記錄' : '') + (g.pending ? '・等網路確認' : '') : s.hint))));
+        h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + s.id.replace(/\D/g, '') + ' 關'), h('div', { class: 'small muted' }, g ? (g.at ? when(g.at) + ' 解開' : '已解開') + (g.master ? '・關主記錄' : '') : s.hint))));
     });
     renderFin();
     // 全部過關：霧全部散掉；第一次全過放慶祝動畫
@@ -151,12 +180,11 @@ function student(el, host, h, D, stamps, byId) {
   var wasOpen = finaleOpen();
   setInterval(function () { var o = finaleOpen(); if (o !== wasOpen) { wasOpen = o; render(); } else renderFin(); }, 1000);
 
-  /** 伺服器上的小隊集章（驗過簽章的才算） */
+  /** 跟小隊頻道對一下：補上隊友、關主記錄的；手機上自己解開的保留（除非關主之後撤回） */
   function refresh() {
     return host.inbox(ch, 0).then(function (r) {
-      var next = {};
-      r.items.forEach(function (x) { if (x.ok && x.d && byId[x.d.stamp] && !next[x.d.stamp]) next[x.d.stamp] = { at: x.t, master: !!x.d.master }; });
-      Object.keys(got).forEach(function (k) { if (!next[k] && got[k].pending) next[k] = got[k]; });   // 還在手機上等著送的保留
+      var st = teamState(host, D, byId, r.items, sq), next = st.got;
+      Object.keys(got).forEach(function (k) { if (!next[k] && !(st.revokedAt[k] > (got[k].at || 0))) next[k] = got[k]; });
       got = next; host.save('got', got); render();
     }, function () {});
   }
@@ -174,22 +202,18 @@ function student(el, host, h, D, stamps, byId) {
     if (m) { try { v = decodeURIComponent(m[1]); } catch (e) { v = m[1]; } }
     var p = parse(v);
     if (!p) { host.toast('代碼格式不對（例如 S1-ABCD2345）', true); return; }
-    if (got[p.id] && !got[p.id].pending) { host.toast('這一關已經解開了'); return; }
-    // 先在手機上解開（沒網路也行），密鑰存著，連上網路時送伺服器確認；確認不對才收回
-    got[p.id] = { at: host.now(), pending: true }; host.save('got', got);
+    // 密鑰在手機上驗（寫死在資源包裡），不用等網路
+    if (!keyOk(host, D, p.id, p.sig, sq)) {
+      host.toast('這個密鑰不對，或不是給你們小隊的', true);
+      host.submit(ch, { stamp: p.id, key: p.sig }).catch(function () {});   // 錯誤次數給關主看
+      return;
+    }
+    if (got[p.id]) { host.toast('這一關已經解開了'); return; }
+    got[p.id] = { at: host.now() }; host.save('got', got);
     code.value = ''; render();
     host.toast('解開「' + byId[p.id].name + '」！');
-    host.submit(ch, { stamp: p.id, signed: sigText(host, p.id), sig: p.sig }).then(function (r) {
-      if (r.sigOk) {
-        if (got[p.id]) delete got[p.id].pending;
-        host.save('got', got); render();
-        sync.send({ unlock: p.id });
-      } else {
-        if (got[p.id] && got[p.id].pending) delete got[p.id];
-        host.save('got', got); render();
-        host.toast('「' + p.id + '」的密鑰不對，或不是給你們小隊的，已收回', true);
-      }
-    }, function (e) { if (got[p.id] && got[p.id].pending) { delete got[p.id]; host.save('got', got); render(); } host.fail(e); });
+    // 送到小隊頻道讓隊友補上（沒網路先存手機，連上自動送）
+    host.submit(ch, { stamp: p.id, key: p.sig }).then(function () { sync.send({ unlock: p.id }); }, function () {});
   }
   render();
   refresh();
@@ -202,6 +226,7 @@ function student(el, host, h, D, stamps, byId) {
 
 /* ---------------- 工作人員（關主） ---------------- */
 function worker(el, host, h, D, stamps) {
+  var byId = {}; stamps.forEach(function (s) { byId[s.id] = s; });
   var nSq = Number(D.squads) || 8, sqOpts = [];
   for (var i = 1; i <= nSq; i++) sqOpts.push(String(i));
   var stSel = h('select', { class: 'input' }, stamps.map(function (s) { return h('option', { value: s.id }, s.id + ' ' + s.name); }));
@@ -210,11 +235,22 @@ function worker(el, host, h, D, stamps) {
   var gen = h('button', { class: 'btn primary' }, '產生密鑰');
   // 過關分數：預設照活動設定的每關分數，可以臨場改（例如表現好加分）
   var pts = h('input', { class: 'input', type: 'number', inputmode: 'numeric', value: String(Number(D.pointsPerStamp) || 100) });
-  /** 記錄這一隊完成這一關：隊員就算忘了輸入，下次同步會自動補上（用手機裡的密鑰，沒網路先存著） */
-  function record(stId, team) {
-    return host.sign(sigText(host, stId), team).then(function (r) {
-      host.submit(host.ch('sq' + team + '-fog'), { stamp: stId, signed: sigText(host, stId), sig: r.sig, master: 1 }).then(function () { load(); }, function () {});
-    });
+  /** 記錄這一隊完成這一關（或撤回）：送到那一隊的頻道，隊員同步時補上；沒網路先存著 */
+  function record(stId, team, revoke) {
+    var d = { stamp: stId, key: keyOf(host, D, stId, team), master: 1 };
+    if (revoke) d.revoke = 1;
+    var me = board_[team] || (board_[team] = {});
+    if (revoke) delete me[stId]; else me[stId] = { at: host.now(), master: true };
+    renderLog();
+    host.submit(host.ch('sq' + team + '-fog'), d).then(function () { load(); }, function () {});
+    return Promise.resolve();
+  }
+  function queueScore(st, team, n) {
+    var q = host.load('scoreQ', []).filter(function (y) { return !(y.stage === st.id && y.team === Number(team)); });
+    q.push({ stage: st.id, stageName: st.name, team: Number(team), score: n }); host.save('scoreQ', q);
+    // 沒網路不等：分數排著，連上再補傳（按鈕不會卡住）
+    if (navigator.onLine === false) return Promise.resolve(1);
+    return Promise.race([flushScores(), new Promise(function (ok) { setTimeout(function () { ok(host.load('scoreQ', []).length); }, 5000); })]);
   }
   /** 分數：先排在手機裡，送得出去才拿掉（同一隊同一關只留最新的；沒網路時連上再補送） */
   var upMsg = h('div', { class: 'small muted' });
@@ -250,14 +286,7 @@ function worker(el, host, h, D, stamps) {
     var st = stamps.filter(function (s) { return s.id === stId; })[0], n = Number(pts.value);
     if (host.activity && (!isFinite(n) || pts.value === '')) { host.toast('請填分數', true); return Promise.reject(new Error('請填分數')); }
     return busy(btn, function () {
-      return record(st.id, team).then(function () {
-        if (!host.activity) return -1;
-        var q = host.load('scoreQ', []).filter(function (y) { return !(y.stage === st.id && y.team === Number(team)); });
-        q.push({ stage: st.id, stageName: st.name, team: Number(team), score: n }); host.save('scoreQ', q);
-        // 沒網路不等：分數排著，連上再補傳（按鈕不會卡住）
-        if (navigator.onLine === false) return 1;
-        return Promise.race([flushScores(), new Promise(function (ok) { setTimeout(function () { ok(host.load('scoreQ', []).length); }, 5000); })]);
-      });
+      return record(st.id, team).then(function () { return host.activity ? queueScore(st, team, n) : -1; });
     }).then(function (left) {
       var t = '第 ' + team + ' 小隊「' + st.name + '」';
       if (left === -1) upMsg.textContent = '✓ 已記錄' + t + '完成，隊員同步時會自動補上';
@@ -266,12 +295,18 @@ function worker(el, host, h, D, stamps) {
       return upMsg.textContent;
     });
   }
-  gen.onclick = function () {
-    var stId = stSel.value, team = sqSel.value, st = stamps.filter(function (s) { return s.id === stId; })[0];
-    busy(gen, function () { return host.sign(sigText(host, stId), team); }).then(function (r) {
-      var codeText = stId + '-' + r.sig, qr = h('div', { class: 'fm-qr' });
+  gen.onclick = function () { show(stSel.value, sqSel.value, true); };
+  /** 顯示密鑰（QR code＋代碼）；log：記到「產生過的密鑰」 */
+  function show(stId, team, log) {
+    var st = byId[stId];
+    if (log) {
+      var lg = host.load('issued', []).filter(function (x) { return !(x.st === stId && x.team === team); });
+      lg.unshift({ st: stId, team: team, at: host.now() }); host.save('issued', lg.slice(0, 200)); renderLog();
+    }
+    (function () {
+      var codeText = stId + '-' + keyOf(host, D, stId, team), qr = h('div', { class: 'fm-qr' });
       // 防呆：產生密鑰時順便問要不要標示這隊完成（關主常常給完密鑰就忘了按過關）
-      var ask = team === '*' ? null : h('div', { class: 'fm-ask' });
+      var ask = team === '*' || (board_[team] && board_[team][stId]) ? null : h('div', { class: 'fm-ask' });
       if (ask) {
         var yes = h('button', { class: 'btn primary' }, '✓ 標示完成'), no = h('button', { class: 'btn' }, '先不要');
         ask.appendChild(h('div', null, '第 ' + team + ' 小隊「' + st.name + '」完成了嗎？要一起標示完成' + (host.activity ? '並上傳 ' + (pts.value || 0) + ' 分' : '') + '？'));
@@ -282,34 +317,60 @@ function worker(el, host, h, D, stamps) {
       clear(out).appendChild(h('div', { class: 'col', style: { alignItems: 'center', gap: '8px' } }, qr,
         h('div', { class: 'fm-bigcode' }, codeText), h('div', { class: 'small muted' }, (team === '*' ? '任何小隊' : '只有第 ' + team + ' 小隊') + '可以用；學員用遊戲裡的「📷 掃描」掃，或在遊戲頁輸入代碼'), ask));
       host.qr(qr, host.link({ k: codeText, s: 'student' }), 220);
-    }, function () {});
-  };
-  // 密鑰事先寫好：一進來（有網路）就把每一關×每一隊的密鑰存在手機，到現場沒網路也能產生；QR code 的程式也先載好
-  var keyMsg = h('div', { class: 'small muted fm-keys' }, '正在把密鑰存到手機…');
+      out.scrollIntoView && out.scrollIntoView({ block: 'nearest' });
+    })();
+  }
+  // 密鑰寫死在資源包裡：產生、驗證都不用網路；QR code 的程式先載好
+  var keyMsg = h('div', { class: 'small fm-keys ok' }, '✓ 密鑰寫在遊戲裡，沒網路也能產生，學員也是在手機上驗');
   host.qr(h('div'), 'x', 40);
-  if (host.signAll) host.signAll(stamps.map(function (s) { return sigText(host, s.id); }), sqOpts.concat(['*'])).then(function () {
-    keyMsg.textContent = '✓ ' + stamps.length + ' 關 × ' + (nSq + 1) + ' 種小隊的密鑰都存在手機了，沒網路也能產生';
-    keyMsg.className = 'small fm-keys ok';
-  }, function () { keyMsg.textContent = '密鑰還沒存到手機（需要網路），產生時會連線'; keyMsg.className = 'small fm-keys bad'; });
-  else keyMsg.textContent = '';
+
+  /* ---- 產生過的密鑰：可以撤回（取消這隊這關完成）或補標完成 ---- */
+  var board_ = {}, logBox = h('div', { class: 'fm-log' });
+  function renderLog() {
+    var lg = host.load('issued', []);
+    clear(logBox);
+    if (!lg.length) { logBox.appendChild(h('div', { class: 'small muted' }, '還沒有產生過密鑰')); return; }
+    lg.forEach(function (x) {
+      var st = byId[x.st]; if (!st) return;
+      var done = x.team !== '*' && board_[x.team] && board_[x.team][x.st];
+      var btns = h('div', { class: 'row', style: { gap: '6px', flex: 'none' } });
+      btns.appendChild(h('button', { class: 'btn sm', onclick: function () { show(x.st, x.team, false); } }, '顯示'));
+      if (x.team !== '*') {
+        if (done) btns.appendChild(h('button', { class: 'btn sm', onclick: function () {
+          if (!window.confirm('撤回第 ' + x.team + ' 小隊「' + st.name + '」的完成？' + (host.activity ? '這一關的分數會改成 0。' : ''))) return;
+          record(x.st, x.team, true);
+          if (host.activity) queueScore(st, x.team, 0);
+          host.toast('已撤回第 ' + x.team + ' 小隊「' + st.name + '」');
+        } }, '撤回'));
+        else { var b = h('button', { class: 'btn sm primary' }, '標示完成'); b.onclick = function () { pass(x.st, x.team, b).catch(function () {}); }; btns.appendChild(b); }
+      }
+      logBox.appendChild(h('div', { class: 'fm-logrow' + (done ? ' done' : '') },
+        h('div', { class: 'grow' }, h('div', null, h('b', null, x.st + ' ' + st.name), '・' + (x.team === '*' ? '不限小隊' : '第 ' + x.team + ' 小隊')),
+          h('div', { class: 'small muted' }, when(x.at) + ' 產生・' + (x.team === '*' ? '任何小隊都能用' : done ? '✓ 已完成' : '還沒標示完成'))), btns));
+    });
+  }
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-name' }, host.pack.name + '・關主'), h('div', { class: 'small muted' }, host.me.name),
     h('div', { class: 'fm-t', style: { marginTop: '10px' } }, '產生關主密鑰'),
     h('div', { class: 'col', style: { gap: '8px' } }, stSel, sqSel, gen, keyMsg), out,
     h('div', { class: 'fm-t', style: { marginTop: '14px' } }, '過關'),
     h('div', { class: 'col', style: { gap: '8px' } }, host.activity ? h('div', { class: 'row', style: { gap: '8px', alignItems: 'center' } }, h('span', { class: 'small', style: { flex: 'none', whiteSpace: 'nowrap' } }, '這一關分數'), pts) : null, up, upMsg,
       h('div', { class: 'small muted' }, '選好上面的關卡和小隊，這一隊過關時按一下：記錄這隊完成（隊員忘了輸入也會自動解開）' + (host.activity ? '，同時上傳團隊計分；同一關再按一次是改分數，不會重複加。沒網路也可以按，連上後自動補傳。' : '。要從活動卡片的「開始遊戲」進來，才會連到團隊計分。')))));
+  el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-t' }, '產生過的密鑰'),
+    h('div', { class: 'small muted', style: { marginBottom: '6px' } }, '給錯或還沒過關就給了：按「撤回」取消這隊這關的完成；給過但忘了按過關：按「標示完成」。'), logBox));
+  renderLog();
   var rf = h('button', { class: 'btn sm' }, '重新整理');
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'row', style: { justifyContent: 'space-between' } }, h('div', { class: 'fm-t' }, '各小隊進度'), rf), board));
   function load() {
     return Promise.all(sqOpts.map(function (n) { return host.inbox(host.ch('sq' + n + '-fog'), 0); })).then(function (rs) {
       clear(board);
       rs.forEach(function (r, i) {
-        var have = {}; r.items.forEach(function (x) { if (x.ok && x.d) have[x.d.stamp] = 1; });
-        var bad = r.items.filter(function (x) { return x.ok === false; }).length;
+        var ts = teamState(host, D, byId, r.items, sqOpts[i]), have = ts.got, bad = ts.bad;
+        board_[sqOpts[i]] = have;
         board.appendChild(h('div', { class: 'fm-row' }, h('span', { class: 'fm-sq' }, '第 ' + sqOpts[i] + ' 小隊'),
           h('span', { class: 'fm-dots' }, stamps.map(function (s) { return h('i', { class: have[s.id] ? 'on' : '', title: s.name }); })),
           h('span', { class: 'small muted' }, Object.keys(have).length + '/' + stamps.length + (bad ? '・錯誤密鑰 ' + bad : ''))));
       });
+      renderLog();
     });
   }
   rf.onclick = function () { busy(rf, load); };

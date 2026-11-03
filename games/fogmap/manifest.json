@@ -1,7 +1,7 @@
 {
   "id": "fogmap",
   "name": "霧之校園（測試）",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "entry": "game.js",
   "css": "game.css",
   "files": [
@@ -91,6 +91,12 @@
       "label": "每過一關幾分（關主上傳分數的預設值）",
       "type": "number",
       "dflt": 100
+    },
+    {
+      "key": "keySalt",
+      "label": "密鑰鹽（選填）",
+      "type": "text",
+      "hint": "改了之後所有密鑰都會換掉，例如密鑰外流時；改完要重新產生"
     }
   ]
 }
