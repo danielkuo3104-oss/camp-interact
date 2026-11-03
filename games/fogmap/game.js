@@ -243,9 +243,13 @@ function worker(el, host, h, D, stamps) {
   if (!host.activity) up.textContent = '✓ 記錄這隊完成這關';
   up.onclick = function () {
     if (sqSel.value === '*') { host.toast('要選一個小隊', true); return; }
-    var st = stamps.filter(function (s) { return s.id === stSel.value; })[0], team = sqSel.value, n = Number(pts.value);
-    if (host.activity && (!isFinite(n) || pts.value === '')) { host.toast('請填分數', true); return; }
-    busy(up, function () {
+    pass(stSel.value, sqSel.value, up).catch(function () {});
+  };
+  /** 過關：記錄這隊完成這關＋上傳分數（產生密鑰後的詢問也用這個） */
+  function pass(stId, team, btn) {
+    var st = stamps.filter(function (s) { return s.id === stId; })[0], n = Number(pts.value);
+    if (host.activity && (!isFinite(n) || pts.value === '')) { host.toast('請填分數', true); return Promise.reject(new Error('請填分數')); }
+    return busy(btn, function () {
       return record(st.id, team).then(function () {
         if (!host.activity) return -1;
         var q = host.load('scoreQ', []).filter(function (y) { return !(y.stage === st.id && y.team === Number(team)); });
@@ -259,13 +263,24 @@ function worker(el, host, h, D, stamps) {
       if (left === -1) upMsg.textContent = '✓ 已記錄' + t + '完成，隊員同步時會自動補上';
       else upMsg.textContent = '✓ ' + t + '過關：已記錄完成，' + n + ' 分' + (left ? '（沒網路，分數連上後自動上傳）' : '已上傳' + (flushScores.updated ? '（已更新這一關的分數）' : ''));
       host.toast(upMsg.textContent.slice(2));
-    }, function () {});
-  };
+      return upMsg.textContent;
+    });
+  }
   gen.onclick = function () {
-    busy(gen, function () { return host.sign(sigText(host, stSel.value), sqSel.value); }).then(function (r) {
-      var codeText = stSel.value + '-' + r.sig, qr = h('div', { class: 'fm-qr' });
+    var stId = stSel.value, team = sqSel.value, st = stamps.filter(function (s) { return s.id === stId; })[0];
+    busy(gen, function () { return host.sign(sigText(host, stId), team); }).then(function (r) {
+      var codeText = stId + '-' + r.sig, qr = h('div', { class: 'fm-qr' });
+      // 防呆：產生密鑰時順便問要不要標示這隊完成（關主常常給完密鑰就忘了按過關）
+      var ask = team === '*' ? null : h('div', { class: 'fm-ask' });
+      if (ask) {
+        var yes = h('button', { class: 'btn primary' }, '✓ 標示完成'), no = h('button', { class: 'btn' }, '先不要');
+        ask.appendChild(h('div', null, '第 ' + team + ' 小隊「' + st.name + '」完成了嗎？要一起標示完成' + (host.activity ? '並上傳 ' + (pts.value || 0) + ' 分' : '') + '？'));
+        ask.appendChild(h('div', { class: 'row', style: { gap: '8px', marginTop: '8px' } }, yes, no));
+        yes.onclick = function () { no.disabled = true; pass(stId, team, yes).then(function (t) { clear(ask).appendChild(h('div', null, t)); ask.classList.add('done'); }, function () { no.disabled = false; }); };
+        no.onclick = function () { ask.remove(); };
+      }
       clear(out).appendChild(h('div', { class: 'col', style: { alignItems: 'center', gap: '8px' } }, qr,
-        h('div', { class: 'fm-bigcode' }, codeText), h('div', { class: 'small muted' }, (sqSel.value === '*' ? '任何小隊' : '只有第 ' + sqSel.value + ' 小隊') + '可以用；學員用遊戲裡的「📷 掃描」掃，或在遊戲頁輸入代碼')));
+        h('div', { class: 'fm-bigcode' }, codeText), h('div', { class: 'small muted' }, (team === '*' ? '任何小隊' : '只有第 ' + team + ' 小隊') + '可以用；學員用遊戲裡的「📷 掃描」掃，或在遊戲頁輸入代碼'), ask));
       host.qr(qr, host.link({ k: codeText, s: 'student' }), 220);
     }, function () {});
   };
