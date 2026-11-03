@@ -11,7 +11,7 @@ CampGame.register({
   mount: function (el, host) {
     var h = host.h, D = host.data, stamps = D.stamps || [], byId = {};
     stamps.forEach(function (s) { byId[s.id] = s; });
-    if (host.me.kind === 'student') student(el, host, h, D, stamps, byId);
+    if (host.mode ? host.mode === 'player' : host.me.kind === 'student') student(el, host, h, D, stamps, byId);   // 工作人員試玩也是玩家畫面
     else worker(el, host, h, D, stamps);
   }
 });
@@ -122,8 +122,10 @@ function student(el, host, h, D, stamps, byId) {
     var left = t - host.now();
     if (left <= 0) fin.appendChild(h('div', null, h('b', null, '終點公布：'), f.name, '（地圖上金色的點）'));
     else {
-      var s = Math.floor(left / 1000), hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60;
-      fin.appendChild(h('div', null, '終點公布倒數 ', h('b', { class: 'fm-cd' }, (hh ? hh + ':' : '') + pad2(mm) + ':' + pad2(ss))));
+      var s = Math.floor(left / 1000), dd = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60;
+      // 超過一天：顯示「幾天幾小時」；一天內：時:分:秒
+      var cd = dd ? dd + ' 天 ' + hh + ' 小時' : (hh ? hh + ':' : '') + pad2(mm) + ':' + pad2(ss);
+      fin.appendChild(h('div', null, '終點公布倒數 ', h('b', { class: 'fm-cd' }, cd)));
     }
   }
   var wasOpen = finaleOpen();

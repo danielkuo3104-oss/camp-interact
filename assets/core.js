@@ -15,7 +15,7 @@ function store(key, val, persist) {
 function jget(key, dflt) { try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
 function jset(key, v) { try { if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
 
-var NO_TOKEN_ = { login: 1, forgotPassword: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, studentLogin: 1, campPublicInfo: 1, workerDepts: 1 };
+var NO_TOKEN_ = { gameHandoffUse: 1, login: 1, forgotPassword: 1, registerWithInvite: 1, workerLogin: 1, studentEnter: 1, studentLogin: 1, campPublicInfo: 1, workerDepts: 1 };
 
 /**
  * 呼叫 Apps Script 後端（text/plain 避免 CORS 預檢）。錯誤帶 code：AUTH／LOCK／CONFLICT／NET
@@ -667,11 +667,14 @@ gameSubmit.flush = function () {
 };
 if (typeof window !== 'undefined') window.addEventListener('online', function () { gameSubmit.flush(); });
 
+/** 是不是從主畫面捷徑（加到主畫面的 App）打開的 */
+function isStandalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+
 /* ---------------- 加到主畫面的名稱 ---------------- */
 /**
  * 圖示都一樣，所以名稱前面放身分（學員／工作／管理），後面接營隊名稱（拿掉年份和括號，iPhone 大約只顯示 12 個字）。
  * iPhone 有 manifest 時會用 manifest 的名稱，所以 iPhone 不放 manifest，只用 apple-mobile-web-app-title；
- * 其他手機用這一頁產生的 manifest（網址就是現在這一頁，帶著營隊 ID）。
+ * 其他手機用這一頁產生的 manifest（網址就是現在這一頁，帶著營隊 ID）。範圍只到 app.html：遊戲頁 game.html 會用瀏覽器打開（捷徑有些不能開相機）。
  */
 function homeName(label, campName) {
   var short = String(campName || '').replace(/[（(《【［\[][^）)》】］\]]*[）)》】］\]]/g, '').replace(/^\s*\d{4}\s*(年)?/, '').replace(/\s+/g, '').trim() || '營隊';
@@ -683,7 +686,7 @@ function homeName(label, campName) {
   if (!ios) {
     var abs = function (p) { try { return new URL(p, location.href).href; } catch (e) { return p; } };
     var tc = document.querySelector('meta[name=theme-color]');
-    var man = { name: label + '｜' + (campName || '營隊互動'), short_name: nm, display: 'standalone', lang: 'zh-Hant', start_url: location.href.split('#')[0], scope: abs('./'), background_color: '#f4f3ee', theme_color: tc ? tc.content : '#2f5d62',
+    var man = { name: label + '｜' + (campName || '營隊互動'), short_name: nm, display: 'standalone', lang: 'zh-Hant', start_url: location.href.split('#')[0], scope: abs('app.html'), background_color: '#f4f3ee', theme_color: tc ? tc.content : '#2f5d62',
       icons: [{ src: abs('icon-192.png'), sizes: '192x192', type: 'image/png' }, { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png' }] };
     var l = document.createElement('link'); l.rel = 'manifest'; l.href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(man)); document.head.appendChild(l);
   }
