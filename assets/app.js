@@ -192,8 +192,16 @@
     if (preview === 'draft') ver = 'draft';
     else if (!preview) { try { ver = sessionStorage.getItem(VK) || ''; } catch (e) {} }
     if (!S.boot && !root.querySelector('.login-card')) waitScreen('載入中…', '');
+    // 斷網（或網路很慢）時不要一直停在「載入中」：有上次存的內容就先顯示，連上了再換成最新的
+    var saved = !preview && !S.boot && jget(BK, null), early = null;
+    if (saved) early = setTimeout(function () {
+      early = null;
+      if (S.boot) return;
+      S.offline = true; show(saved);
+    }, navigator.onLine === false ? 0 : 5000);
     // live：打開時順便把所有動態區塊的資料一起拿回來（少一次請求，很多人同時打開時不用排那麼久）
     api('frontBoot', camp, side, ver, simNow(), { live: true }).then(function (b) {
+      if (early) { clearTimeout(early); early = null; }
       S.offline = false;
       if (b.camp) rememberLogo(b.camp.loadImg);
       if (b.me) gameSubmit.who = b.me.sid ? 's' + b.me.sid : b.me.wid ? 'w' + b.me.wid : '';
@@ -207,8 +215,14 @@
       if (!preview) { try { sessionStorage.setItem(VK, b.snapshot.ver); } catch (e) {} jset(BK, Object.assign({}, b, { live: null })); }
       show(b);
     }, function (e) {
+      if (early) { clearTimeout(early); early = null; }
       var cached = !preview && jget(BK, null);
-      if (e.code === 'NET' && cached) { S.offline = true; show(cached); return; }
+      if (e.code === 'NET' && cached) {
+        // 網路回來時自動拿最新的
+        window.addEventListener('online', function again() { window.removeEventListener('online', again); if (S.offline) boot(); });
+        if (S.offline && S.boot) return;   // 已經在顯示上次的內容了，不要重畫（不會跳回首頁）
+        S.offline = true; show(cached); return;
+      }
       msgScreen('無法載入', e.message, h('button', { class: 'btn primary', onclick: boot }, '重試'));
     });
   }

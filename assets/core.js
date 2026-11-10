@@ -693,3 +693,8 @@ function homeName(label, campName) {
   }
   return nm;
 }
+
+/** 離線打開：註冊 sw.js，把網頁本身存在手機裡（資料另外由各頁存）。要 https（或 localhost）才有 */
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && window.isSecureContext !== false && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+}
