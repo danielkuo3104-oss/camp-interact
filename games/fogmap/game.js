@@ -51,46 +51,98 @@ function teamState(host, D, byId, items, squad) {
   return { got: got, revokedAt: revokedAt, bad: bad };
 }
 
-/* ---------------- 地圖＋霧 ---------------- */
-function fogMap(host, D, onReady) {
+/* ---------------- 隱藏關卡 ----------------
+ * 關卡設 hidden: true（例如第 7 關＝最後集合的地方）：學員畫面上完全不出現（不顯示、不倒數），
+ * 直到「活動結束時間」前 revealMinutesBefore 分鐘（照伺服器時間）才出現在清單和地圖上；
+ * 時間還沒到就先拿到關主密鑰的也算（解開了就看得到）。關主那邊一直看得到，可以產生密鑰、記錄過關。
+ * 時間用活動設定（管理端填）的 endAt／revealMinutesBefore，沒填用關卡自己的。沒有時間就不會自己出現。 */
+function revealAt(host, D, s) {
+  var t = host.time(D.endAt || s.endAt);
+  return t === null ? null : t - (Number(D.revealMinutesBefore) || Number(s.revealMinutesBefore) || 30) * 60000;
+}
+function revealed(host, D, s) { var t = revealAt(host, D, s); return t !== null && host.now() >= t; }
+
+/* ---------------- 地圖＋霧 ----------------
+ * 霧會慢慢飄動：兩層雲的紋理（開地圖時畫好一次）往不同方向平移，解開的地方邊緣輕輕起伏。
+ * 全部在手機上畫（canvas），不用網路，斷網照樣動。為了省電：每秒最多畫 24 次；
+ * 切到背景、地圖捲出畫面、全部過關（霧散掉）就停；手機設定「減少動態效果」只畫靜態的霧。 */
+function fogMap(host, D) {
   var h = host.h, wrap = h('div', { class: 'fm-map' }), img = h('img', { class: 'fm-img', src: host.asset(D.map), alt: '校園地圖' });
   var cv = h('canvas', { class: 'fm-fog' }), pins = h('div', { class: 'fm-pins' });
   wrap.appendChild(img); wrap.appendChild(cv); wrap.appendChild(pins);
-  var open = [], anim = {}, W = 0, H = 0, R = D.radius || 120;
+  var open = [], anim = {}, W = 0, H = 0, R = D.radius || 120, layers = [], dpr = 1;
+  var still = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var t0 = performance.now(), raf = 0, last = 0, seen = true, cleared = false, FPS = 24;
+  /** 一層雲的紋理：左右接得起來（超出邊的雲在另一邊再畫一次），平移時看不到接縫 */
+  function layer(seed, n, rMin, rMax, a) {
+    var c = document.createElement('canvas'); c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+    var x = c.getContext('2d'), k = W / 1000; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var rnd = function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (var i = 0; i < n; i++) {
+      var cx = rnd() * W, cy = rnd() * H, r = (rMin + rnd() * (rMax - rMin)) * k, al = a * (0.5 + rnd() * 0.5);
+      [cx - W, cx, cx + W].forEach(function (px) {
+        if (px + r < 0 || px - r > W) return;
+        var g = x.createRadialGradient(px, cy, 0, px, cy, r);
+        g.addColorStop(0, 'rgba(235,240,248,' + al + ')'); g.addColorStop(1, 'rgba(235,240,248,0)');
+        x.fillStyle = g; x.beginPath(); x.arc(px, cy, r, 0, 7); x.fill();
+      });
+    }
+    return c;
+  }
   function size() {
     var w = wrap.clientWidth; if (!w) return;
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(2, window.devicePixelRatio || 1);
     W = w; H = Math.round(w * 0.7);
-    cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
     cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw();
+    layers = [layer(7, 26, 60, 150, 0.10), layer(31, 34, 30, 90, 0.08)];
+    draw(performance.now());
+    loop();
   }
-  function draw() {
+  /** 一層雲往右（dir 1）或往左平移 off 像素，兩張接起來蓋滿 */
+  function slide(c, L, off, dy) {
+    off = ((off % W) + W) % W;
+    c.drawImage(L, 0, 0, L.width, L.height, off - W, dy, W, H);
+    c.drawImage(L, 0, 0, L.width, L.height, off, dy, W, H);
+  }
+  function draw(now) {
     if (!W) return;
-    var c = cv.getContext('2d'), k = W / 1000;
+    var c = cv.getContext('2d'), k = W / 1000, s = still ? 0 : (now - t0) / 1000;
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, W, H);
     var g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, 'rgba(70,80,96,.94)'); g.addColorStop(1, 'rgba(40,48,62,.96)');
     c.fillStyle = g; c.fillRect(0, 0, W, H);
-    // 霧的紋理：固定亂數，畫一些淡淡的雲
-    var seed = 7; var rnd = function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-    for (var i = 0; i < 40; i++) { c.fillStyle = 'rgba(255,255,255,' + (0.03 + rnd() * 0.04) + ')'; c.beginPath(); c.arc(rnd() * W, rnd() * H, (30 + rnd() * 90) * k, 0, 7); c.fill(); }
+    // 兩層雲：大的慢慢往右、小的往左快一點，上下也輕輕晃
+    if (layers[0]) slide(c, layers[0], s * 9 * k, Math.sin(s / 7) * 6 * k);
+    if (layers[1]) slide(c, layers[1], -s * 16 * k, Math.sin(s / 5 + 1) * 4 * k);
     c.globalCompositeOperation = 'destination-out';
-    open.forEach(function (p) {
-      var r = R * k * (anim[p.id] === undefined ? 1 : anim[p.id]);
+    open.forEach(function (p, i) {
+      var r = R * k * (anim[p.id] === undefined ? 1 : anim[p.id]) * (1 + 0.04 * Math.sin(s * 0.9 + i * 1.7));   // 邊緣輕輕起伏
       if (r <= 0) return;
       var x = p.x * k, y = p.y * k, rg = c.createRadialGradient(x, y, r * 0.35, x, y, r);
       rg.addColorStop(0, 'rgba(0,0,0,1)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
       c.fillStyle = rg; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
     });
   }
+  /** 動畫迴圈：看不到（背景、捲走、霧散了）就停，回來再開 */
+  function moving() { return !still && !cleared && seen && !document.hidden && W > 0; }
+  function loop() {
+    if (raf || !(moving() || Object.keys(anim).length)) return;
+    raf = requestAnimationFrame(function tick(now) {
+      raf = 0;
+      if (now - last >= 1000 / FPS - 2 || Object.keys(anim).length) { last = now; draw(now); api.frames++; }
+      loop();
+    });
+  }
+  document.addEventListener('visibilitychange', loop);
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { seen = es[es.length - 1].isIntersecting; loop(); }).observe(wrap);
   function pin(p, cls) {
     return h('div', { class: 'fm-pin ' + (cls || ''), style: { left: (p.x / 10) + '%', top: (p.y / 7) + '%' } }, h('span', { class: 'fm-dot' }), h('span', { class: 'fm-lb' }, p.name));
   }
   var api = {
-    el: wrap,
-    /** 全部過關：整片霧散掉 */
-    clearAll: function (on) { wrap.classList.toggle('fm-clear', !!on); },
+    el: wrap, frames: 0,
+    /** 全部過關：整片霧散掉（之後不用再動，省電） */
+    clearAll: function (on) { cleared = !!on; wrap.classList.toggle('fm-clear', cleared); if (!cleared) loop(); },
     set: function (list, extra) {
       var had = {}; open.forEach(function (p) { had[p.id] = 1; });
       open = list.slice();
@@ -98,15 +150,15 @@ function fogMap(host, D, onReady) {
       list.forEach(function (p) {
         pins.appendChild(pin(p, p.cls));
         if (!had[p.id] && api.ready) {   // 新解開的：霧慢慢散開
-          var t0 = performance.now();
+          var a0 = performance.now();
           anim[p.id] = 0;
-          var step = function (t) { var f = Math.min(1, (t - t0) / 1400); anim[p.id] = 1 - Math.pow(1 - f, 3); draw(); if (f < 1) requestAnimationFrame(step); else delete anim[p.id]; };
+          var step = function (t) { var f = Math.min(1, (t - a0) / 1400); anim[p.id] = 1 - Math.pow(1 - f, 3); if (f < 1) requestAnimationFrame(step); else delete anim[p.id]; if (still || !moving()) draw(t); };
           requestAnimationFrame(step);
         }
       });
       (extra || []).forEach(function (p) { pins.appendChild(pin(p, p.cls)); });
       api.ready = true;
-      draw();
+      draw(performance.now()); loop();
     }
   };
   img.addEventListener('load', size);
@@ -130,22 +182,25 @@ function student(el, host, h, D, stamps, byId) {
     h('div', { class: 'row', style: { gap: '8px', marginTop: '8px' } }, code, h('button', { class: 'btn', onclick: function () { claim(code.value); } }, '解開')));
   el.appendChild(head); el.appendChild(map.el); el.appendChild(fin); el.appendChild(claimBox); el.appendChild(list);
 
+  /** 現在看得到的關卡：一般關卡＋已經出現（時間到）或已經解開的隱藏關卡 */
+  function visible() { return stamps.filter(function (s) { return !s.hidden || got[s.id] || revealed(host, D, s); }); }
+  function num(s) { return s.id.replace(/\D/g, ''); }
   function render() {
-    var n = Object.keys(got).length;
+    var vis = visible(), n = vis.filter(function (s) { return got[s.id]; }).length;
     clear(head).appendChild(h('div', { class: 'fm-hd' }, h('div', null, h('div', { class: 'fm-name' }, host.pack.name), h('div', { class: 'small muted' }, '第 ' + sq + ' 小隊・' + host.me.name)),
-      h('div', { class: 'fm-count' }, h('b', null, n), ' / ' + stamps.length)));
-    var openList = stamps.filter(function (s) { return got[s.id]; }).map(function (s) { return { id: s.id, x: s.x, y: s.y, name: s.name }; });
-    var extra = [], f = D.finale;
-    if (f && finaleOpen()) { openList.push({ id: '_fin', x: f.x, y: f.y, name: f.name, cls: 'fin' }); }
-    map.set(openList, extra);
+      h('div', { class: 'fm-count' }, h('b', null, n), ' / ' + vis.length)));
+    // 解開的關卡：霧散開、標地名；出現了還沒解開的隱藏關卡：霧散開、金色的點（集合的地方）
+    var openList = vis.filter(function (s) { return got[s.id] || s.hidden; }).map(function (s) { return { id: s.id, x: s.x, y: s.y, name: got[s.id] ? s.name : '第 ' + num(s) + ' 關', cls: s.hidden ? 'fin' : '' }; });
+    map.set(openList);
     clear(list);
-    stamps.forEach(function (s) {
+    vis.forEach(function (s) {
       var g = got[s.id];
-      list.appendChild(h('div', { class: 'fm-item' + (g ? ' got' : '') }, h('span', { class: 'fm-st' }, g ? '✓' : '?'),
-        h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + s.id.replace(/\D/g, '') + ' 關'), h('div', { class: 'small muted' }, g ? (g.at ? when(g.at) + ' 解開' : '已解開') + (g.master ? '・關主記錄' : '') : s.hint))));
+      list.appendChild(h('div', { class: 'fm-item' + (g ? ' got' : '') + (s.hidden ? ' hid' : '') }, h('span', { class: 'fm-st' }, g ? '✓' : s.hidden ? '★' : '?'),
+        h('div', { class: 'grow' }, h('div', { class: 'fm-it' }, g ? s.name : '第 ' + num(s) + ' 關', s.hidden ? h('span', { class: 'fm-tag' }, '隱藏關卡') : null),
+          h('div', { class: 'small muted' }, g ? (g.at ? when(g.at) + ' 解開' : '已解開') + (g.master ? '・關主記錄' : '') : s.hint + (s.hidden ? '（地圖上金色的點）' : '')))));
     });
-    renderFin();
-    // 全部過關：霧全部散掉；第一次全過放慶祝動畫
+    renderFin(vis);
+    // 全部過關（包含隱藏關卡）：霧全部散掉；第一次全過放慶祝動畫
     var all = n === stamps.length && n > 0;
     map.clearAll(all);
     if (all && !host.load('allDone', false)) { host.save('allDone', true); celebrate(); }
@@ -161,24 +216,21 @@ function student(el, host, h, D, stamps, byId) {
     box.addEventListener('click', function () { box.remove(); });
     setTimeout(function () { box.classList.add('out'); setTimeout(function () { box.remove(); }, 600); }, 4500);
   }
-  // 終點：活動設定的 endAt／revealMinutesBefore 優先（管理端填），沒有就用 manifest 的 finale
-  function finaleAt() { var f = D.finale, t = f && host.time(D.endAt || f.endAt); return f && t !== null ? t - (Number(D.revealMinutesBefore) || f.revealMinutesBefore || 30) * 60000 : null; }
-  function finaleOpen() { var t = finaleAt(); return t !== null && host.now() >= t; }
-  function renderFin() {
-    var f = D.finale; if (!f) { fin.style.display = 'none'; return; }
-    var t = finaleAt(); clear(fin);
-    if (t === null) { fin.appendChild(h('div', null, '終點會在結束前 ' + (Number(D.revealMinutesBefore) || f.revealMinutesBefore || 30) + ' 分鐘公布')); return; }
-    var left = t - host.now();
-    if (left <= 0) fin.appendChild(h('div', null, h('b', null, '終點公布：'), f.name, '（地圖上金色的點）'));
-    else {
-      var s = Math.floor(left / 1000), dd = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60;
-      // 超過一天：顯示「幾天幾小時」；一天內：時:分:秒
-      var cd = dd ? dd + ' 天 ' + hh + ' 小時' : (hh ? hh + ':' : '') + pad2(mm) + ':' + pad2(ss);
-      fin.appendChild(h('div', null, '終點公布倒數 ', h('b', { class: 'fm-cd' }, cd)));
-    }
+  // 隱藏關卡出現時：上面跳一條提示（之前完全不顯示，也不倒數）
+  function renderFin(vis) {
+    var hid = vis.filter(function (s) { return s.hidden && !got[s.id]; });
+    fin.style.display = hid.length ? '' : 'none'; clear(fin);
+    hid.forEach(function (s) { fin.appendChild(h('div', null, h('b', null, '★ 隱藏關卡出現了：'), '第 ' + num(s) + ' 關，地圖上金色的點')); });
   }
-  var wasOpen = finaleOpen();
-  setInterval(function () { var o = finaleOpen(); if (o !== wasOpen) { wasOpen = o; render(); } else renderFin(); }, 1000);
+  // 時間到才出現：每秒看一下，出現的那一刻重畫＋提示（照伺服器時間，改手機時間沒用）
+  function timeOpen() { return stamps.filter(function (s) { return s.hidden && revealed(host, D, s); }).length; }
+  var wasOpen = timeOpen();
+  setInterval(function () {
+    var o = timeOpen(); if (o === wasOpen) return;
+    var more = o > wasOpen; wasOpen = o; render();
+    // 自己先用密鑰解開的不用再提示
+    if (more && stamps.some(function (s) { return s.hidden && revealed(host, D, s) && !got[s.id]; })) { host.toast('★ 隱藏關卡出現了！看看地圖上金色的點'); if (navigator.vibrate) navigator.vibrate([60, 40, 60]); }
+  }, 1000);
 
   /** 跟小隊頻道對一下：補上隊友、關主記錄的；手機上自己解開的保留（除非關主之後撤回） */
   function refresh() {
@@ -225,12 +277,44 @@ function student(el, host, h, D, stamps, byId) {
 }
 
 /* ---------------- 工作人員（關主） ---------------- */
+function stName(s) { return s.id + ' ' + s.name + (s.hidden ? '（隱藏關卡）' : ''); }
+/** 關主：一個人顧一關。第一次進來先選負責哪一關（存在這支手機），之後畫面只要換小隊；真的要換關卡按「換關卡」 */
 function worker(el, host, h, D, stamps) {
   var byId = {}; stamps.forEach(function (s) { byId[s.id] = s; });
+  var station = host.load('station', '');
+  if (!byId[station]) {
+    var grid = h('div', { class: 'fm-stgrid' }, stamps.map(function (s) {
+      return h('button', { class: 'btn fm-stbtn', onclick: function () { host.save('station', s.id); clear(el); worker(el, host, h, D, stamps); } },
+        h('b', null, s.id), h('span', null, s.name + (s.hidden ? '（隱藏關卡）' : '')));
+    }));
+    el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-name' }, host.pack.name + '・關主'), h('div', { class: 'small muted' }, host.me.name),
+      h('div', { class: 'fm-t', style: { marginTop: '10px' } }, '你負責哪一關？'),
+      h('div', { class: 'small muted', style: { marginBottom: '8px' } }, '選一次就好，這支手機會記住；之後只要選小隊。'), grid));
+    return;
+  }
   var nSq = Number(D.squads) || 8, sqOpts = [];
   for (var i = 1; i <= nSq; i++) sqOpts.push(String(i));
-  var stSel = h('select', { class: 'input' }, stamps.map(function (s) { return h('option', { value: s.id }, s.id + ' ' + s.name); }));
-  var sqSel = h('select', { class: 'input' }, sqOpts.map(function (n) { return h('option', { value: n }, '第 ' + n + ' 小隊'); }).concat([h('option', { value: '*' }, '不限小隊')]));
+  var stSel = { value: station }, sqSel = { value: '' };
+  var stLabel = h('b', null, stName(byId[station]));
+  /** 換關卡（少用）：跳出清單選，選了就換，下面的 QR code 收起來 */
+  function changeStation() {
+    var m = host.modal({ title: '換負責的關卡', body: h('div', { class: 'fm-stgrid' }, stamps.map(function (s) {
+      return h('button', { class: 'btn fm-stbtn' + (s.id === stSel.value ? ' on' : ''), onclick: function () {
+        stSel.value = s.id; host.save('station', s.id); stLabel.textContent = stName(s); collapse(); m.close();
+      } }, h('b', null, s.id), h('span', null, s.name + (s.hidden ? '（隱藏關卡）' : '')));
+    })), actions: [{ text: '取消' }] });
+  }
+  /** 換小隊或關卡時：上一隊的 QR code 收起來（不然會以為已經產生了新的） */
+  function collapse() { clear(out); }
+  var sqBtns = h('div', { class: 'fm-sqgrid' });
+  sqOpts.concat(['*']).forEach(function (n) {
+    var b = h('button', { class: 'btn fm-sqbtn' + (n === '*' ? ' any' : ''), 'data-sq': n, onclick: function () {
+      if (sqSel.value === n) return;
+      sqSel.value = n; collapse();
+      Array.prototype.forEach.call(sqBtns.children, function (x) { x.classList.toggle('on', x === b); });
+    } }, n === '*' ? '不限小隊' : '第 ' + n + ' 隊');
+    sqBtns.appendChild(b);
+  });
   var out = h('div', { class: 'fm-out' }), board = h('div', { class: 'fm-board' });
   var gen = h('button', { class: 'btn primary' }, '產生密鑰');
   // 過關分數：預設照活動設定的每關分數，可以臨場改（例如表現好加分）
@@ -278,7 +362,7 @@ function worker(el, host, h, D, stamps) {
   var up = h('button', { class: 'btn' }, '✓ 過關（記錄完成＋上傳分數）');
   if (!host.activity) up.textContent = '✓ 記錄這隊完成這關';
   up.onclick = function () {
-    if (sqSel.value === '*') { host.toast('要選一個小隊', true); return; }
+    if (!sqSel.value || sqSel.value === '*') { host.toast('先選一個小隊', true); return; }
     pass(stSel.value, sqSel.value, up).catch(function () {});
   };
   /** 過關：記錄這隊完成這關＋上傳分數（產生密鑰後的詢問也用這個） */
@@ -295,7 +379,7 @@ function worker(el, host, h, D, stamps) {
       return upMsg.textContent;
     });
   }
-  gen.onclick = function () { show(stSel.value, sqSel.value, true); };
+  gen.onclick = function () { if (!sqSel.value) { host.toast('先選小隊', true); return; } show(stSel.value, sqSel.value, true); };
   /** 顯示密鑰（QR code＋代碼）；log：記到「產生過的密鑰」 */
   function show(stId, team, log) {
     var st = byId[stId];
@@ -350,11 +434,13 @@ function worker(el, host, h, D, stamps) {
     });
   }
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-name' }, host.pack.name + '・關主'), h('div', { class: 'small muted' }, host.me.name),
-    h('div', { class: 'fm-t', style: { marginTop: '10px' } }, '產生關主密鑰'),
-    h('div', { class: 'col', style: { gap: '8px' } }, stSel, sqSel, gen, keyMsg), out,
+    h('div', { class: 'fm-station' }, h('span', null, '你負責：', stLabel), h('button', { class: 'btn sm ghost', onclick: changeStation }, '換關卡')),
+    h('div', { class: 'fm-t', style: { marginTop: '10px' } }, '選小隊'),
+    sqBtns,
+    h('div', { class: 'col', style: { gap: '8px', marginTop: '10px' } }, gen, keyMsg), out,
     h('div', { class: 'fm-t', style: { marginTop: '14px' } }, '過關'),
     h('div', { class: 'col', style: { gap: '8px' } }, host.activity ? h('div', { class: 'row', style: { gap: '8px', alignItems: 'center' } }, h('span', { class: 'small', style: { flex: 'none', whiteSpace: 'nowrap' } }, '這一關分數'), pts) : null, up, upMsg,
-      h('div', { class: 'small muted' }, '選好上面的關卡和小隊，這一隊過關時按一下：記錄這隊完成（隊員忘了輸入也會自動解開）' + (host.activity ? '，同時上傳團隊計分；同一關再按一次是改分數，不會重複加。沒網路也可以按，連上後自動補傳。' : '。要從活動卡片的「開始遊戲」進來，才會連到團隊計分。')))));
+      h('div', { class: 'small muted' }, '選好上面的小隊，這一隊過關時按一下：記錄這隊完成（隊員忘了輸入也會自動解開）' + (host.activity ? '，同時上傳團隊計分；同一關再按一次是改分數，不會重複加。沒網路也可以按，連上後自動補傳。' : '。要從活動卡片的「開始遊戲」進來，才會連到團隊計分。')))));
   el.appendChild(h('div', { class: 'card fm-card' }, h('div', { class: 'fm-t' }, '產生過的密鑰'),
     h('div', { class: 'small muted', style: { marginBottom: '6px' } }, '給錯或還沒過關就給了：按「撤回」取消這隊這關的完成；給過但忘了按過關：按「標示完成」。'), logBox));
   renderLog();

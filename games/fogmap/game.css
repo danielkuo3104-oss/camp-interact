@@ -50,3 +50,18 @@
 .fm-log { display: flex; flex-direction: column; gap: 6px; }
 .fm-logrow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line, #ddd); border-radius: 10px; font-size: 14px; }
 .fm-logrow.done { background: #f1f8f3; border-color: #9cc6b0; }
+/* 關主：負責的關卡（選一次）＋小隊按鈕 */
+.fm-station { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #eef4f4; border: 1px solid #c9dcdc; font-size: 15px; }
+.fm-stgrid { display: flex; flex-direction: column; gap: 8px; }
+.fm-stbtn { display: flex; gap: 10px; align-items: center; justify-content: flex-start; text-align: left; padding: 12px 14px; }
+.fm-stbtn b { flex: none; min-width: 28px; }
+.fm-stbtn.on { border-color: var(--accent, #2f5d62); background: #eef4f4; }
+.fm-sqgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.fm-sqbtn { padding: 10px 4px; font-size: 15px; }
+.fm-sqbtn.any { grid-column: 1 / -1; font-size: 13px; padding: 6px; }
+.fm-sqbtn.on { background: var(--accent, #2f5d62); border-color: var(--accent, #2f5d62); color: #fff; font-weight: 700; }
+/* 隱藏關卡 */
+.fm-tag { margin-left: 6px; font-size: 11px; font-weight: 700; color: #8a5a14; background: #fbe9c9; border-radius: 8px; padding: 1px 6px; vertical-align: 2px; }
+.fm-item.hid:not(.got) { border-color: #f0d29c; background: #fffaf0; }
+.fm-item.hid:not(.got) .fm-st { background: #e0a35e; color: #fff; }
+.fm-fin { animation: fm-fade .5s ease-out; }

@@ -56,8 +56,17 @@ var CampGame = (function () {
   if (hm) {
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     msg('登入中…', '帶入營隊互動 App 的登入');
-    api('gameHandoffUse', hm[1], camp).then(function (r) { store('ia_f_' + camp + '_' + r.side, r.token, true); location.replace(location.pathname + location.search); },
-      function () { location.replace(location.pathname + location.search); });
+    var again = location.pathname + location.search;
+    var useCode = function (tries) {
+      api('gameHandoffUse', hm[1], camp).then(function (r) { store('ia_f_' + camp + '_' + r.side, r.token, true); location.replace(again); }, function (e) {
+        if (e && e.code === 'NET' && tries < 2) { setTimeout(function () { useCode(tries + 1); }, 1500); return; }   // 網路不穩：再試
+        // 這個瀏覽器之前登入過：照樣進遊戲；沒有：說清楚是連結過期（回 App 再按一次就好，不用在這裡登入）
+        if (store('ia_f_' + camp + '_student') || store('ia_f_' + camp + '_worker')) { location.replace(again); return; }
+        msg('登入連結過期了', '回到主畫面的營隊互動 App，再按一次遊戲按鈕就會自動登入。也可以直接在這個瀏覽器登入（之後就不用再登入）。',
+          h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + (want === 'worker' ? 'worker' : 'student') + '&back=' + encodeURIComponent(again.split('/').pop()) }, '在這裡登入'));
+      });
+    };
+    useCode(0);
     return;
   }
 
