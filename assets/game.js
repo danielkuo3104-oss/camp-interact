@@ -285,14 +285,25 @@ var CampGame = (function () {
     });
   }
   var trialSq = '';
-  Promise.all([getManifest(), api('gameMe', camp, actId || '', ticket)]).then(function (res) {
+  // 我的身分與活動設定：存在手機，斷網（或網路很慢）時用上次的，遊戲照樣打得開（只認同一個登入）
+  var MEK = 'ia_gme_' + camp + '_' + g + '_' + (actId || '') + '_' + side + '_' + String(IA.token || '').slice(-12);
+  function getMe() {
+    var saved = jget(MEK, null);
+    var p = api('gameMe', camp, actId || '', ticket).then(function (r) { jset(MEK, r); return r; });
+    if (!saved) return p;
+    return new Promise(function (ok, bad) {
+      var t = setTimeout(function () { ok(saved); }, navigator.onLine === false ? 0 : 5000);
+      p.then(function (r) { clearTimeout(t); ok(r); }, function (e) { clearTimeout(t); if (e.code === 'NET') ok(saved); else bad(e); });
+    });
+  }
+  Promise.all([getManifest(), getMe()]).then(function (res) {
     manifest = res[0].m;
     var info = res[1];
     if (info.activity && info.activity.pack !== g) throw new Error('這個活動連的是另一個遊戲（' + info.activity.pack + '）');
     var m = !trial && info.activity && info.activity.master;
     if (m && !m.ok) { store(MK, null); ticket = ''; }
     var gate = trial ? pickSquad(info).then(function (q) { trialSq = q; }) : m && !m.ok ? masterLogin(info) : Promise.resolve(info);
-    return gate.then(function () { return install(manifest, res[0].fresh); }).then(function (got) {
+    return gate.then(function () { if (m && !trial) jset(MEK, info); return install(manifest, res[0].fresh); }).then(function (got) {
       var entry = clean(manifest.entry || 'game.js'), css = manifest.css ? clean(manifest.css) : '';
       if (got) got.files.forEach(function (f, i) { blobs[f] = URL.createObjectURL(got.blobs[i]); });
       if (css) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = blobs[css] || base + css; document.head.appendChild(l); }
