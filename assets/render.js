@@ -204,12 +204,22 @@ var Front = (function () {
     var text = label || (info.game && info.game.label) || '開始遊戲';
     var preview = param('preview') || /admin\.html/.test(location.pathname);
     var shortcut = !preview && info.game && !(ctx && ctx.edit) && isStandalone();
-    // 捷徑：先拿好交接碼（按的時候要馬上開瀏覽器，不能等網路，不然會被擋），每 8 分鐘換一次
-    var hand = null, wrap = h('div', { class: 'ac-btns' });
-    var getCode = function () { api('gameHandoff', param('c')).then(function (r) { hand = r.code; }, function () { hand = null; }); };
+    // 捷徑：先拿好交接碼（按的時候要馬上開瀏覽器，不能等網路，不然會被擋），每 5 分鐘換一次。
+    // 交接碼 10 分鐘就過期：手機鎖螢幕、切到別的 App 時計時器會停，回到 App 時碼可能已經過期（瀏覽器那邊就會要求再登入一次），
+    // 所以回到畫面時看一下，舊了就換新的；按的時候還是舊的（或還沒拿到），先拿新的再請他按一次「打開」
+    var hand = null, handAt = 0, wrap = h('div', { class: 'ac-btns' }), FRESH = 7 * 60000;
+    var getCode = function () {
+      return api('gameHandoff', param('c')).then(function (r) { hand = r.code; handAt = Date.now(); return hand; }, function () { hand = null; return null; });
+    };
+    var fresh = function () { return hand && Date.now() - handAt < FRESH; };
     if (shortcut) {
       getCode();
-      var iv = setInterval(function () { if (!document.body.contains(wrap)) { clearInterval(iv); return; } getCode(); }, 8 * 60000);
+      var iv = setInterval(function () { if (!document.body.contains(wrap)) { clearInterval(iv); return; } getCode(); }, 5 * 60000);
+      var wake = function () {
+        if (!document.body.contains(wrap)) { document.removeEventListener('visibilitychange', wake); window.removeEventListener('pageshow', wake); return; }
+        if (document.visibilityState === 'visible' && !fresh()) getCode();
+      };
+      document.addEventListener('visibilitychange', wake); window.addEventListener('pageshow', wake);
     }
     var mk = function (txt, extra) {
       var b = h('button', { type: 'button', class: 'ac-btn' }, info.game ? txt : text + '（還沒連遊戲）');
@@ -220,15 +230,27 @@ var Front = (function () {
         if (preview) { toast('預覽不能玩遊戲：用學員端或工作人員端打開'); return; }
         var url = 'game.html?c=' + encodeURIComponent(param('c')) + '&g=' + encodeURIComponent(info.game.pack) + '&a=' + encodeURIComponent(info.id) + '&s=' + side + (extra || '');
         if (!shortcut) { location.href = url; return; }
-        var full = new URL(url, location.href).href + (hand ? '#h=' + hand : '');
-        hand = null; getCode();   // 用過了，換一個新的
-        var openTab = function () { var w = window.open(full, '_blank'); if (!w) location.href = full; else toast('已經用瀏覽器打開遊戲'); };
-        // iPhone：捷徑裡開新視窗會變成捷徑裡面的小瀏覽器（還是不能開相機），改用 x-safari- 直接叫 Safari 打開（iOS 17 以後）；
-        // 叫不起來（舊的 iOS）畫面還在，就退回開新視窗
-        if (isIos_()) {
-          location.href = 'x-safari-' + full;
-          setTimeout(function () { if (document.visibilityState === 'visible') openTab(); }, 1200);
-        } else openTab();
+        var go = function () {
+          var full = new URL(url, location.href).href + (hand ? '#h=' + hand : '');
+          hand = null; getCode();   // 用過了，換一個新的
+          var openTab = function () { var w = window.open(full, '_blank'); if (!w) location.href = full; else toast('已經用瀏覽器打開遊戲'); };
+          // iPhone：捷徑裡開新視窗會變成捷徑裡面的小瀏覽器（還是不能開相機），改用 x-safari- 直接叫 Safari 打開（iOS 17 以後）；
+          // 叫不起來（舊的 iOS）畫面還在，就退回開新視窗
+          if (isIos_()) {
+            location.href = 'x-safari-' + full;
+            setTimeout(function () { if (document.visibilityState === 'visible') openTab(); }, 1200);
+          } else openTab();
+        };
+        if (fresh()) { go(); return; }
+        // 交接碼過期或還沒拿到：先拿新的（開瀏覽器要在「按下去」那一刻，所以拿到後請他再按一次）
+        b.disabled = true;
+        getCode().then(function (c) {
+          b.disabled = false;
+          if (!c) { go(); return; }   // 沒網路拿不到：照樣打開（瀏覽器之前登入過就不用再登入）
+          var m = modal({ title: '準備好了', body: h('p', { style: { margin: 0 } }, '按「打開遊戲」用瀏覽器開始，登入會一起帶過去。'),
+            actions: [{ text: '取消' }, { text: '打開遊戲', cls: 'primary', onClick: function (close) { close(); go(); } }] });
+          return m;
+        });
       });
       wrap.appendChild(b);
     };
