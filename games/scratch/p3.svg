@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <g id="chip">
+      <ellipse cx="0" cy="0" rx="46" ry="16" fill="#d8343f" stroke="#7d1219" stroke-width="2.5"/>
+      <g fill="#fff"><rect x="-6" y="-16" width="12" height="7"/><rect x="-6" y="9" width="12" height="7"/><rect x="-46" y="-3" width="12" height="6"/><rect x="34" y="-3" width="12" height="6"/></g>
+      <ellipse cx="0" cy="0" rx="28" ry="9" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="5 4"/>
+    </g>
+  </defs>
+  <g transform="translate(78 150)"><rect x="-46" y="-4" width="92" height="12" fill="#a51f29"/><use href="#chip"/></g>
+  <g transform="translate(78 136)"><rect x="-46" y="-4" width="92" height="12" fill="#a51f29"/><use href="#chip"/></g>
+  <g transform="translate(78 122)"><rect x="-46" y="-4" width="92" height="12" fill="#a51f29"/><use href="#chip"/></g>
+  <g transform="translate(78 108)"><use href="#chip"/></g>
+  <g transform="translate(132 156)"><rect x="-46" y="-4" width="92" height="12" fill="#1f5fa5"/><ellipse cx="0" cy="0" rx="46" ry="16" fill="#2f7fd6" stroke="#123e72" stroke-width="2.5"/><ellipse cx="0" cy="0" rx="28" ry="9" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="5 4"/></g>
+  <g transform="translate(132 142)"><ellipse cx="0" cy="0" rx="46" ry="16" fill="#2f7fd6" stroke="#123e72" stroke-width="2.5"/><ellipse cx="0" cy="0" rx="28" ry="9" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="5 4"/></g>
+  <g fill="#f2c230" stroke="#8a5a08" stroke-width="2"><circle cx="140" cy="62" r="20"/><circle cx="62" cy="58" r="14"/></g>
+  <g font-family="Georgia, serif" font-weight="700" fill="#8a5a08" text-anchor="middle"><text x="140" y="69" font-size="20">$</text><text x="62" y="63" font-size="14">$</text></g>
+</svg>

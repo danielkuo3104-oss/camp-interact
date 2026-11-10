@@ -1,0 +1,29 @@
+{
+  "id": "scratch",
+  "name": "幸運刮刮樂（測試）",
+  "version": "0.1.0",
+  "summary": "賭場用的線上刮刮樂（測試用）：系統先把序號和獎項排好，關主隨機發序號（QR code／代碼），學員在手機上用手指真的刮開銀漆，刮完放中獎動畫；兌獎處掃學員的兌獎 QR code。測試模式可以指定刮到哪個獎。",
+  "test": true,
+  "entry": "game.js",
+  "css": "game.css",
+  "files": ["card.svg", "foil.svg", "p1.svg", "p2.svg", "p3.svg", "p4.svg", "lose.svg"],
+  "data": {
+    "title": "幸運刮刮樂",
+    "total": 120,
+    "prizes": [
+      { "id": "P1", "name": "頭獎", "count": 1, "note": "籌碼 1000", "art": "p1.svg" },
+      { "id": "P2", "name": "二獎", "count": 3, "note": "籌碼 300", "art": "p2.svg" },
+      { "id": "P3", "name": "三獎", "count": 10, "note": "籌碼 100", "art": "p3.svg" },
+      { "id": "P4", "name": "幸運獎", "count": 25, "note": "籌碼 30", "art": "p4.svg" }
+    ],
+    "loseName": "銘謝惠顧",
+    "keySalt": ""
+  },
+  "config": [
+    { "key": "title", "label": "刮刮樂名稱（印在卡片上）", "type": "text", "dflt": "幸運刮刮樂" },
+    { "key": "total", "label": "總共幾張", "type": "number", "dflt": 120, "hint": "最多 2000；比獎項張數加起來少的話，用獎項張數" },
+    { "key": "prizeText", "label": "獎項（一行一個：名稱|張數|說明）", "type": "textarea", "hint": "例如「頭獎|1|籌碼 1000」，最多 4 種獎、照順序用 4 種圖。沒填用預設：頭獎 1、二獎 3、三獎 10、幸運獎 25；其餘都是銘謝惠顧" },
+    { "key": "loseName", "label": "沒中獎顯示", "type": "text", "dflt": "銘謝惠顧" },
+    { "key": "keySalt", "label": "序號鹽（選填）", "type": "text", "hint": "改了之後序號和獎項全部重排，例如序號外流時；改完要重新發" }
+  ]
+}

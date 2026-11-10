@@ -1,0 +1,82 @@
+/* 現場抽獎（測試用資源包）：hd- 開頭 */
+.hd-root { padding: 12px 12px 40px; display: flex; flex-direction: column; gap: 12px; }
+.hd-card { padding: 14px; }
+.hd-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.hd-name { font-weight: 800; font-size: 18px; }
+.hd-t { font-weight: 700; margin-bottom: 8px; }
+.hd-count { font-size: 24px; }
+.hd-in { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: #e7f5ec; color: #1a7f37; white-space: nowrap; }
+.hd-stage { display: flex; flex-direction: column; gap: 10px; }
+.hd-banner { text-align: center; min-height: 54px; }
+.hd-prize { font-size: 22px; font-weight: 900; color: #b4233c; }
+.hd-sub { font-size: 14px; color: var(--text-2, #555); margin-top: 2px; }
+.hd-cd { font-size: 15px; font-weight: 700; color: #e63946; margin-top: 4px; font-variant-numeric: tabular-nums; animation: hd-blink .8s ease-in-out infinite alternate; }
+.hd-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.hd-chip { display: inline-flex; align-items: center; gap: 3px; padding: 4px 9px; border-radius: 999px; background: var(--surface-2, #f1f1ef); border: 1.5px solid transparent; font-size: 14px; transition: background .08s, transform .08s; }
+.hd-chip i { font-style: normal; font-size: 10px; color: var(--text-3, #888); }
+.hd-grid.s .hd-chip { font-size: 12px; padding: 3px 7px; } .hd-grid.xs .hd-chip { font-size: 11px; padding: 2px 5px; }
+.hd-chip.me { border-color: #3a86ff; font-weight: 700; }
+.hd-chip.hl { background: #ffd166; color: #222; transform: scale(1.18); box-shadow: 0 0 12px #ffd166; }
+.hd-grid.done .hd-chip:not(.win) { opacity: .45; }
+.hd-chip.win { background: linear-gradient(160deg, #fff1a8, #ffb703); color: #3a2200; font-weight: 800; border-color: #ff9f1c; box-shadow: 0 0 0 3px rgba(255,183,3,.35), 0 0 18px rgba(255,183,3,.8); animation: hd-win 1s cubic-bezier(.2,1.6,.4,1), hd-glow 1.2s ease-in-out 1s infinite alternate; }
+.hd-chip.win i { color: #6b4500; }
+.hd-empty { color: var(--text-3, #888); padding: 18px; }
+.hd-wins { text-align: center; }
+.hd-wins-t { font-weight: 800; margin-bottom: 6px; }
+.hd-wins-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.hd-winner { padding: 6px 12px; border-radius: 12px; background: #fff3c4; color: #3a2200; font-weight: 800; font-size: 16px; animation: hd-win .8s cubic-bezier(.2,1.6,.4,1) both; }
+.hd-winner i { font-style: normal; font-weight: 500; font-size: 12px; margin-left: 4px; }
+.hd-winner.me { background: #ffd166; box-shadow: 0 0 0 3px #3a86ff; }
+.hd-hrow { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line, #eee); flex-wrap: wrap; }
+.hd-hrow.col { flex-direction: column; align-items: stretch; gap: 2px; }
+.hd-hrow.me b { color: #b4233c; } .hd-mine { margin-left: auto; font-weight: 800; color: #b4233c; }
+.hd-ack { font-size: 12px; color: #1d3b7a; background: #eef4ff; border-radius: 8px; padding: 4px 8px; margin-top: 2px; }
+.hd-form { display: grid; grid-template-columns: 1fr 90px; gap: 8px 10px; align-items: end; }
+.hd-form .hd-ex { grid-column: 1 / -1; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.hd-form .hd-go { grid-column: 1 / -1; font-size: 18px; padding: 12px; }
+.hd-form.compact { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.hd-form.compact .field { margin: 0; } .hd-form.compact .hd-go { font-size: 15px; padding: 8px 18px; }
+.hd-form.compact .hd-prize-in { width: 180px; } .hd-form.compact .hd-cnt { width: 70px; }
+@keyframes hd-win { from { transform: scale(.3); } to { transform: none; } }
+@keyframes hd-glow { from { box-shadow: 0 0 0 3px rgba(255,183,3,.35), 0 0 10px rgba(255,183,3,.5); } to { box-shadow: 0 0 0 4px rgba(255,183,3,.5), 0 0 26px rgba(255,183,3,1); } }
+@keyframes hd-blink { from { opacity: .5; } to { opacity: 1; } }
+
+/* 投影 */
+body.hd-showing { background: radial-gradient(ellipse at top, #0f2a4a, #050b16 70%); color: #fff; }
+body.hd-showing .app-shell { max-width: none; background: transparent; color: #fff; }
+body.hd-showing #root { display: block; }
+body.hd-showing .app-shell > * { width: 100%; }
+body.hd-showing .game-bar, body.hd-showing .game-testbar { opacity: .5; }
+body.hd-showing .game-bar a, body.hd-showing .game-act { color: #fff; }
+.hd-proj { min-height: calc(100vh - 60px); padding: 10px 2vw 110px; display: flex; flex-direction: column; gap: 2vh; }
+.hd-p-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.hd-p-title { font-size: clamp(26px, 4vw, 60px); font-weight: 900; color: #ffd166; text-shadow: 0 0 18px rgba(255,209,102,.5); }
+.hd-p-count { font-size: clamp(16px, 2vw, 30px); opacity: .85; }
+.hd-stage.big .hd-banner { min-height: 12vh; }
+.hd-stage.big .hd-prize { font-size: clamp(30px, 5vw, 80px); color: #ffd166; }
+.hd-stage.big .hd-sub, .hd-stage.big .hd-cd { font-size: clamp(16px, 2.2vw, 34px); color: #fff; }
+.hd-stage.big .hd-chip { background: rgba(255,255,255,.1); color: #fff; font-size: clamp(14px, 1.7vw, 26px); padding: .3em .8em; }
+.hd-stage.big .hd-grid.s .hd-chip { font-size: clamp(12px, 1.3vw, 20px); } .hd-stage.big .hd-grid.xs .hd-chip { font-size: clamp(11px, 1vw, 16px); }
+.hd-stage.big .hd-chip i { color: rgba(255,255,255,.6); }
+.hd-stage.big .hd-chip.hl { background: #ffd166; color: #222; }
+.hd-stage.big .hd-chip.win { color: #3a2200; }
+.hd-stage.big .hd-winner { font-size: clamp(20px, 3vw, 48px); padding: .3em .7em; }
+.hd-stage.big .hd-wins-t { font-size: clamp(18px, 2.4vw, 36px); }
+.hd-p-info { text-align: center; font-size: 14px; opacity: .7; }
+.hd-p-tools { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; justify-content: center; align-items: end; flex-wrap: wrap; padding: 10px; background: rgba(0,0,0,.45); opacity: .3; transition: opacity .2s; }
+.hd-p-tools:hover, .hd-p-tools:focus-within { opacity: 1; }
+.hd-p-tools .field span { color: #fff; }
+
+/* 中獎動畫 */
+.hd-fx { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; background: radial-gradient(circle, rgba(80,40,0,.5), rgba(0,0,0,.75)); animation: hd-fade .3s ease-out; transition: opacity .5s; cursor: pointer; }
+.hd-fx.show { background: rgba(0,0,0,.35); }
+.hd-fx.out { opacity: 0; }
+.hd-fx-cv { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hd-fx-card { position: relative; background: linear-gradient(160deg, #fff6c9, #ffd166 60%, #f4a300); color: #3a2200; border: 3px solid #fff1a8; border-radius: 20px; padding: 22px 30px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,.35); animation: hd-win .8s cubic-bezier(.2,1.6,.4,1); max-width: 86vw; }
+.hd-fx-big { font-size: 36px; font-weight: 900; }
+.hd-fx.show .hd-fx-big { font-size: clamp(36px, 6vw, 90px); }
+.hd-fx-small { font-size: 20px; margin-top: 6px; font-weight: 700; }
+.hd-fx.show .hd-fx-small { font-size: clamp(20px, 3vw, 44px); }
+.hd-fx-tap { font-size: 12px; opacity: .6; margin-top: 10px; }
+@keyframes hd-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .hd-chip, .hd-chip.win, .hd-winner, .hd-fx, .hd-fx-card, .hd-cd { animation: none !important; transition: none; } }

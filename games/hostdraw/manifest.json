@@ -1,0 +1,21 @@
+{
+  "id": "hostdraw",
+  "name": "現場抽獎（測試）",
+  "version": "0.1.0",
+  "summary": "主持人輸入獎項和人數按抽獎，打開遊戲的人都在同一個房間：大家手機和投影上的名單一起跑燈，揭曉時被抽到的名字亮起來，中獎的人手機放動畫。主持人看得到每支手機多久收到。",
+  "entry": "game.js",
+  "css": "game.css",
+  "files": [],
+  "data": {
+    "title": "現場抽獎",
+    "lead": 10,
+    "away": 75,
+    "prizes": "飲料券\n宵夜券\n神秘大獎"
+  },
+  "config": [
+    { "key": "title", "label": "名稱", "type": "text", "dflt": "現場抽獎" },
+    { "key": "lead", "label": "按抽獎後幾秒揭曉（跑燈時間）", "type": "number", "dflt": 10, "hint": "這段時間留給大家的手機收到；100 人建議 10 秒以上" },
+    { "key": "away", "label": "幾秒沒動靜算離開房間", "type": "number", "dflt": 75 },
+    { "key": "prizes", "label": "常用獎項（一行一個，主持人可以直接選）", "type": "textarea" }
+  ]
+}

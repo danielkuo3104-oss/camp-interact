@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b3122e"/><stop offset=".55" stop-color="#7a0b22"/><stop offset="1" stop-color="#4a0616"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1b8"/><stop offset=".35" stop-color="#e8b84a"/><stop offset=".7" stop-color="#b9821f"/><stop offset="1" stop-color="#ffe08a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".18" r=".7">
+      <stop offset="0" stop-color="#ffcf6b" stop-opacity=".45"/><stop offset="1" stop-color="#ffcf6b" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="11" cy="11" r="1.6" fill="#ffd77a" fill-opacity=".18"/>
+    </pattern>
+  </defs>
+  <rect x="0" y="0" width="600" height="400" rx="26" fill="url(#bg)"/>
+  <rect x="0" y="0" width="600" height="400" rx="26" fill="url(#dots)"/>
+  <rect x="0" y="0" width="600" height="400" rx="26" fill="url(#glow)"/>
+  <rect x="9" y="9" width="582" height="382" rx="20" fill="none" stroke="url(#gold)" stroke-width="5"/>
+  <rect x="18" y="18" width="564" height="364" rx="15" fill="none" stroke="#ffe08a" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="2 6"/>
+  <!-- 撲克牌花色 -->
+  <g font-family="Georgia, 'Times New Roman', serif" font-size="30" fill="#ffd77a" fill-opacity=".85">
+    <text x="34" y="62">♠</text><text x="544" y="62">♥</text>
+  </g>
+  <!-- 刮開區的外框（刮開區在 x40 y110 w520 h260） -->
+  <rect x="34" y="104" width="532" height="272" rx="18" fill="#3a0410" fill-opacity=".55"/>
+  <rect x="36" y="106" width="528" height="268" rx="16" fill="none" stroke="url(#gold)" stroke-width="4"/>
+  <g fill="#ffe08a" fill-opacity=".9">
+    <circle cx="36" cy="106" r="5"/><circle cx="564" cy="106" r="5"/><circle cx="36" cy="374" r="5"/><circle cx="564" cy="374" r="5"/>
+  </g>
+</svg>

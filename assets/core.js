@@ -569,6 +569,7 @@ function signPad(o) {
  *     onGap: function (cids) {},      // 太久沒同步、中間有事件被擠掉的人（遊戲可以改用他們的狀態補）
  *     onError: function (err) {},
  *     fast: 1500, slow: 8000          // 有動靜時多久同步一次；安靜時慢慢放慢到多久
+ *     peek: true,                     // 只看不加入（沒有要送東西時）：看開獎、看主持人狀態的人用，頻道成員不會變多
  *   });
  *   s.send({ ... })；s.setState({ ... })；s.stop()；s.me（自己的代號）
  * 送出的事件會先排著，下一次同步一起送（一次最多 20 個）；分頁切到背景時暫停，切回來馬上同步。
@@ -597,6 +598,7 @@ function gameSync(campId, ch, o) {
     if (document.hidden) { tick(slow); return; }
     running = true;
     var batch = out.splice(0, 20), opts = { dev: dev };
+    if (o.peek && !batch.length && !hasState) opts.peek = true;   // o.peek：只看不加入（例如看開獎結果），不會被算進頻道成員
     if (hasState) { opts.state = state; hasState = false; }
     var sentState = 'state' in opts;
     api('sync', campId, ch, batch, cursor, opts).then(function (r) {

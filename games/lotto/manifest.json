@@ -1,0 +1,31 @@
+{
+  "id": "lotto",
+  "name": "幸運樂透（測試）",
+  "version": "0.1.0",
+  "summary": "賭場之夜用的線上樂透：學員在手機上選號碼＋特別號下注，主持人用投影開獎，每支手機同步開球、馬上對獎，依獎項放不同動畫。測試模式可以先寫好要開出的號碼。",
+  "entry": "game.js",
+  "css": "game.css",
+  "files": [],
+  "data": {
+    "title": "幸運樂透",
+    "pick": 6,
+    "max": 38,
+    "spMax": 8,
+    "maxTickets": 5,
+    "countdown": 10,
+    "gap": 3,
+    "prizes": "6+1 頭獎\n6+0 貳獎\n5+1 參獎\n5+0 肆獎\n4+1 伍獎\n4+0 陸獎\n3+1 柒獎\n2+1 捌獎\n3+0 玖獎\n1+1 普獎",
+    "preset": "3 8 15 22 29 36 + 5"
+  },
+  "config": [
+    { "key": "title", "label": "名稱", "type": "text", "dflt": "幸運樂透" },
+    { "key": "pick", "label": "每注選幾個號碼", "type": "number", "dflt": 6 },
+    { "key": "max", "label": "號碼範圍（1～幾）", "type": "number", "dflt": 38 },
+    { "key": "spMax", "label": "特別號範圍（1～幾，0 = 不用特別號）", "type": "number", "dflt": 8 },
+    { "key": "maxTickets", "label": "每人每期最多幾注", "type": "number", "dflt": 5 },
+    { "key": "countdown", "label": "按開獎後倒數幾秒（留給手機收到）", "type": "number", "dflt": 10, "hint": "100 人時建議 10 秒以上" },
+    { "key": "gap", "label": "每顆球間隔幾秒", "type": "number", "dflt": 3 },
+    { "key": "prizes", "label": "獎項（一行一個：中幾個+特別號 獎名）", "type": "textarea", "hint": "例如「6+1 頭獎」「3+0 玖獎」；+1 要中特別號、+0 沒中特別號、不寫或 +* 不管特別號。照順序對，第一行放頭獎動畫、第 2～3 行大獎動畫、其他小獎動畫" },
+    { "key": "preset", "label": "測試模式的預設號碼", "type": "text", "hint": "只有測試模式能用，例如 3 8 15 22 29 36 + 5" }
+  ]
+}
