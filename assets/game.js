@@ -20,6 +20,7 @@
  *   host.now()                       伺服器時間（毫秒；倒數、定時公布用，學員改手機時間沒用）
  *   host.sync(ch, opts)              即時同步（gameSync），頻道範圍見 core.js
  *   host.submit(ch, d)               要留下來的結果（gameSubmit，斷網會補送）→ Promise { id, sigOk }
+ *   host.queued(ch)                  這個頻道還排在手機裡沒送出去的結果 [d, …]（伺服器還沒有的，不要當成被刪掉）
  *   host.inbox(ch, since)            讀送出的結果（工作人員全部；學員自己的，小隊頻道 sqN… 讀同小隊的）
  *   host.sign(text, squad)           工作人員產生關主密鑰（綁小隊，'*' 不限；從活動進來也綁活動）→ Promise { sig }；先存好的不用連線
  *   host.signAll(texts, squads)      有網路時一次拿好所有關卡×小隊的密鑰存在手機，之後 host.sign 離線也能用
@@ -346,6 +347,8 @@ var CampGame = (function () {
       now: function () { return Date.now() + CLOCK_.off; },
       sync: function (ch, o) { return gameSync(camp, ch, o); },
       submit: function (ch, data) { return gameSubmit(camp, ch, data); },
+      // 這個頻道還排在手機裡、還沒送出去的結果（斷網時送的）→ [d, …]
+      queued: function (ch) { var q = jget(GS_KEY_, []); return (Array.isArray(q) ? q : []).filter(function (x) { return x.camp === camp && x.ch === ch; }).map(function (x) { return x.d; }); },
       inbox: function (ch, since) { return api('gameInbox', camp, ch, since || 0); },
       // 密鑰先存在手機（signAll），產生時不用連線；沒存到的才連線拿
       sign: function (text, squad) {
