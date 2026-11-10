@@ -232,11 +232,15 @@ function student(el, host, h, D, stamps, byId) {
     if (more && stamps.some(function (s) { return s.hidden && revealed(host, D, s) && !got[s.id]; })) { host.toast('★ 隱藏關卡出現了！看看地圖上金色的點'); if (navigator.vibrate) navigator.vibrate([60, 40, 60]); }
   }, 1000);
 
-  /** 跟小隊頻道對一下：補上隊友、關主記錄的；手機上自己解開的保留（除非關主之後撤回） */
+  /** 跟小隊頻道對一下：伺服器說了算（補上隊友、關主記錄的；伺服器刪掉的資料，手機上也拿掉）。
+   *  只有自己解開、還排在手機裡沒送出去的（斷網時）先保留，送出去後伺服器就有了 */
   function refresh() {
+    var waiting = {}, mark = function () { host.queued(ch).forEach(function (d) { if (d && d.stamp && !d.revoke) waiting[d.stamp] = 1; }); };
+    mark();   // 讀伺服器前後各看一次，中間剛好送出去的也算
     return host.inbox(ch, 0).then(function (r) {
+      mark();
       var st = teamState(host, D, byId, r.items, sq), next = st.got;
-      Object.keys(got).forEach(function (k) { if (!next[k] && !(st.revokedAt[k] > (got[k].at || 0))) next[k] = got[k]; });
+      Object.keys(got).forEach(function (k) { if (!next[k] && waiting[k] && !(st.revokedAt[k] > (got[k].at || 0))) next[k] = got[k]; });
       got = next; host.save('got', got); render();
     }, function () {});
   }
