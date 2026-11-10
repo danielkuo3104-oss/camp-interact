@@ -19,7 +19,7 @@
 
 ---
 
-## #43 霧之校園：關主操作、隱藏第 7 關、霧動畫、免二次登入（2026-11-10）
+## #44 霧之校園：關主操作、隱藏第 7 關、霧動畫、免二次登入（2026-11-10）
 
 前端：`games/fogmap/`（game.js、game.css、manifest.json、README.md）、`games/index.json`、`assets/render.js`、`assets/game.js`。後端：不用改。
 資源包版本 0.4.0 → **0.5.0**（手機打開遊戲時會自動重新下載）。
