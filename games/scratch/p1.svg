@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset=".45" stop-color="#f2c230"/><stop offset="1" stop-color="#b47a10"/></linearGradient>
+    <radialGradient id="r" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffe9a0"/><stop offset="1" stop-color="#ffe9a0" stop-opacity="0"/></radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="98" fill="url(#r)"/>
+  <g fill="#ffd34d" opacity=".6">
+    <path d="M100 0 l8 70 -16 0z"/><path d="M100 200 l8 -70 -16 0z"/><path d="M0 100 l70 8 0 -16z"/><path d="M200 100 l-70 8 0 -16z"/>
+    <path d="M29 29 l55 45 -11 11z"/><path d="M171 29 l-45 55 -11 -11z"/><path d="M29 171 l45 -55 11 11z"/><path d="M171 171 l-55 -45 11 -11z"/>
+  </g>
+  <!-- 獎盃 -->
+  <path d="M62 52 h76 v18 c0 30 -16 50 -38 54 c-22 -4 -38 -24 -38 -54z" fill="url(#g)" stroke="#8a5a08" stroke-width="3"/>
+  <path d="M62 60 c-22 0 -24 30 4 36" fill="none" stroke="#b47a10" stroke-width="7" stroke-linecap="round"/>
+  <path d="M138 60 c22 0 24 30 -4 36" fill="none" stroke="#b47a10" stroke-width="7" stroke-linecap="round"/>
+  <rect x="92" y="122" width="16" height="22" fill="url(#g)" stroke="#8a5a08" stroke-width="2.5"/>
+  <rect x="70" y="142" width="60" height="16" rx="4" fill="url(#g)" stroke="#8a5a08" stroke-width="3"/>
+  <path d="M100 66 l5.5 11 12 1.8 -8.7 8.4 2 12 -10.8-5.7 -10.8 5.7 2-12 -8.7-8.4 12-1.8z" fill="#fff8d6"/>
+  <!-- 皇冠 -->
+  <path d="M74 44 l8 -20 10 12 8 -18 8 18 10 -12 8 20z" fill="url(#g)" stroke="#8a5a08" stroke-width="2.5"/>
+  <circle cx="100" cy="18" r="4" fill="#e23b4a"/>
+</svg>

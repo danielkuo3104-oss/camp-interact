@@ -1,0 +1,115 @@
+/* 幸運刮刮樂（測試用資源包） */
+.game-root { padding: 12px 12px 40px; display: flex; flex-direction: column; gap: 12px; }
+.sc-card { padding: 14px; }
+.sc-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sc-name { font-weight: 800; font-size: 18px; }
+.sc-t { font-weight: 700; margin-bottom: 4px; }
+.sc-count { font-size: 15px; color: var(--text-2, #555); text-align: right; } .sc-count b { font-size: 26px; color: #b3122e; }
+.sc-code { flex: 1; text-transform: uppercase; letter-spacing: 1px; font-family: ui-monospace, Menlo, monospace; }
+.sc-test { border: 1px dashed #c8803a; background: #fff8ec; }
+div.sc-test:not(.card) { padding: 10px; border-radius: 10px; }
+
+/* ---- 卡片 ---- */
+.sc-stage:empty { display: none; }
+.sc-stage { display: flex; flex-direction: column; gap: 10px; }
+.sc-ticket { position: relative; width: 100%; max-width: 520px; margin: 0 auto; aspect-ratio: 3 / 2; border-radius: 18px; box-shadow: 0 10px 30px rgba(80, 10, 25, .35); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; animation: sc-in .45s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes sc-in { from { transform: translateY(18px) scale(.94) rotate(-1.5deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.sc-bg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 18px; pointer-events: none; }
+.sc-title { position: absolute; left: 0; right: 0; top: 5.5%; line-height: 1.15; text-align: center; font-weight: 900; font-size: clamp(18px, 6.2vw, 30px); letter-spacing: 3px; color: #ffe08a; text-shadow: 0 2px 0 #6b0a1c, 0 0 12px rgba(255, 210, 110, .55); pointer-events: none; }
+.sc-sn { position: absolute; left: 0; right: 0; text-align: center; top: 19.5%; font: 600 clamp(9px, 2.6vw, 12px) ui-monospace, Menlo, monospace; color: #ffd77a; opacity: .85; letter-spacing: 1px; pointer-events: none; }
+.sc-zone { position: absolute; left: 6.667%; top: 27.5%; width: 86.667%; height: 65%; border-radius: 12px; overflow: hidden; }
+.sc-under { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 4%; padding: 0 5%; background: radial-gradient(circle at 50% 45%, #fffaf0, #f6e7c4); }
+.sc-under.lose { background: radial-gradient(circle at 50% 45%, #fbfbfc, #e5e8ec); }
+.sc-art { height: 78%; aspect-ratio: 1; flex: none; }
+.sc-pz { min-width: 0; }
+.sc-pzn { font-weight: 900; font-size: clamp(20px, 7.4vw, 38px); color: #9c1027; line-height: 1.1; }
+.sc-under.lose .sc-pzn { color: #5f6873; font-size: clamp(18px, 6vw, 30px); }
+.sc-pzd { font-weight: 700; font-size: clamp(12px, 3.6vw, 17px); color: #8a5a08; margin-top: 4px; }
+.sc-under.lose .sc-pzd { color: #7b847e; }
+.sc-foil { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; transition: opacity .55s ease; }
+.sc-foil.gone { opacity: 0; pointer-events: none; }
+.sc-fx { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.sc-flake { position: absolute; background: linear-gradient(135deg, #f4f6f9, #9aa3ad); border-radius: 1px; animation: sc-flake .7s ease-in forwards; }
+@keyframes sc-flake { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
+
+/* 刮開後：中獎發光、獎項跳出來；沒中搖一下變灰 */
+.sc-ticket.is-win { animation: sc-glow 1.6s ease-in-out 3; }
+.sc-ticket.is-win.t1, .sc-ticket.is-win.t2 { animation: sc-glow 1.2s ease-in-out infinite; }
+@keyframes sc-glow { 0%, 100% { box-shadow: 0 10px 30px rgba(80, 10, 25, .35); } 50% { box-shadow: 0 0 0 4px #ffe08a, 0 0 38px 10px rgba(255, 200, 70, .75); } }
+.sc-ticket.is-win .sc-art { animation: sc-pop .7s cubic-bezier(.2, 1.8, .4, 1) .25s both; }
+.sc-ticket.is-win .sc-pzn { animation: sc-pop .7s cubic-bezier(.2, 1.8, .4, 1) .4s both; }
+@keyframes sc-pop { 0% { transform: scale(.3) rotate(-12deg); } 100% { transform: none; } }
+.sc-ticket.done.is-lose { animation: sc-shake .5s ease .1s; }
+.sc-ticket.is-lose .sc-under { filter: grayscale(.4); }
+@keyframes sc-shake { 20%, 60% { transform: translateX(-6px) rotate(-.6deg); } 40%, 80% { transform: translateX(6px) rotate(.6deg); } }
+
+.sc-after { max-width: 520px; width: 100%; margin: 0 auto; }
+.sc-hint { text-align: center; }
+.sc-msg { border-radius: 12px; padding: 12px 14px; text-align: center; animation: sc-in .4s ease; }
+.sc-msg.win { background: #fff6dc; border: 1px solid #ecc76a; color: #6e4508; display: flex; flex-direction: column; align-items: center; }
+.sc-msg.lose { background: #f0f2f4; color: #5f6873; }
+.sc-msg.done { background: var(--ok-soft, #e5f3ea); color: var(--ok, #2e7d4f); font-weight: 700; }
+.sc-qr { background: #fff; padding: 8px; border-radius: 10px; display: inline-block; }
+
+/* 中獎慶祝：小獎在卡片上，頭獎／二獎全螢幕 */
+.sc-party { position: absolute; inset: 0; z-index: 5; overflow: hidden; border-radius: 18px; display: grid; place-items: center; cursor: pointer; transition: opacity .45s; }
+.sc-party.big { position: fixed; border-radius: 0; z-index: 1000; background: radial-gradient(circle, rgba(90, 10, 25, .82), rgba(20, 0, 6, .94)); }
+.sc-party.out { opacity: 0; }
+.sc-rays { position: absolute; left: 50%; top: 50%; width: 180vmax; height: 180vmax; margin: -90vmax 0 0 -90vmax; background: repeating-conic-gradient(rgba(255, 215, 110, .22) 0 9deg, transparent 9deg 18deg); animation: sc-spin 9s linear infinite; }
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+.sc-conf, .sc-coin { position: absolute; top: -20px; width: 9px; height: 14px; border-radius: 2px; animation: sc-fall 2.4s linear forwards; }
+.sc-coin { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3b0, #f2c230 45%, #a8700c); box-shadow: inset 0 0 0 2px #8a5a08; }
+@keyframes sc-fall { to { top: 110%; transform: translateX(30px) rotate(720deg); } }
+.sc-party-card { position: relative; background: linear-gradient(160deg, #fffaf0, #ffe9b0); color: #6b0a1c; border: 3px solid #e8b84a; border-radius: 18px; padding: 14px 22px; text-align: center; box-shadow: 0 12px 40px rgba(0, 0, 0, .35); animation: sc-zoom .7s cubic-bezier(.2, 1.6, .4, 1); }
+.sc-party-card img { width: 72px; height: 72px; display: block; margin: 0 auto 2px; }
+.sc-party.big .sc-party-card { padding: 24px 34px; }
+.sc-party.big .sc-party-card img { width: 140px; height: 140px; animation: sc-bob 1.4s ease-in-out infinite; }
+@keyframes sc-bob { 50% { transform: translateY(-8px) scale(1.05); } }
+@keyframes sc-zoom { from { transform: scale(.2); opacity: 0; } to { transform: none; opacity: 1; } }
+.sc-party-big { font-size: 20px; font-weight: 900; }
+.sc-party-pz { font-size: 34px; font-weight: 900; color: #b3122e; letter-spacing: 2px; }
+.sc-party.big .sc-party-pz { font-size: 52px; }
+.sc-party-note { font-weight: 700; color: #8a5a08; }
+.sc-party:not(.big) .sc-party-card { padding: 6px 16px; max-height: 92%; }
+.sc-party:not(.big) .sc-party-card img { width: 40px; height: 40px; }
+.sc-party:not(.big) .sc-party-big { font-size: 14px; }
+.sc-party:not(.big) .sc-party-pz { font-size: 24px; }
+.sc-party:not(.big) .sc-party-card .small { display: none; }
+
+/* ---- 我的刮刮樂 ---- */
+.sc-list { display: flex; flex-direction: column; gap: 8px; }
+.sc-item { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; font: inherit; color: inherit; background: var(--surface, #fff); border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 10px 12px; cursor: pointer; }
+.sc-item.win { border-color: #ecc76a; background: #fff8e6; }
+.sc-item.new { border-color: #c8803a; }
+.sc-it { font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+.sc-res { font-weight: 700; font-size: 14px; text-align: right; }
+.sc-item.win .sc-res { color: #9c1027; }
+.sc-item.lose .sc-res { color: #7b847e; }
+.grow { flex: 1; min-width: 0; }
+
+/* ---- 兌換處 ---- */
+.sc-tabs { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.sc-tab { flex: 1; min-width: 70px; font: inherit; font-size: 14px; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--line, #ddd); background: var(--surface-2, #f9faf8); cursor: pointer; }
+.sc-tab.on { background: #b3122e; border-color: #b3122e; color: #fff; font-weight: 700; }
+.sc-big { width: 100%; margin-top: 10px; padding: 14px; font-size: 18px; }
+.sc-bigcode { font-size: 30px; font-weight: 800; letter-spacing: 3px; font-family: ui-monospace, Menlo, monospace; }
+.sc-issued { animation: sc-in .35s ease; }
+.sc-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line, #eee); }
+.sc-row code { font-weight: 700; }
+.sc-row.win .sc-feed-pz { color: #9c1027; font-weight: 700; }
+.sc-feed-pz { min-width: 84px; }
+.sc-pay.win { border: 2px solid #ecc76a; }
+.sc-pay-art { width: 72px; height: 72px; flex: none; }
+.sc-pay-pz { font-size: 20px; font-weight: 800; }
+.sc-pay .sc-msg { margin-top: 10px; }
+.sc-warn { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--warn-soft, #fbf1df); color: var(--warn, #8a5a12); font-size: 14px; }
+.sc-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sc-tbl th, .sc-tbl td { padding: 6px 4px; border-bottom: 1px solid var(--line, #eee); text-align: right; }
+.sc-tbl th:first-child, .sc-tbl td:first-child { text-align: left; }
+.sc-snlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; max-height: 420px; overflow: auto; }
+.sc-sni { display: flex; gap: 6px; align-items: baseline; font-size: 13px; }
+.sc-sni.win span:first-of-type { color: #9c1027; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-ticket, .sc-ticket.is-win, .sc-ticket.done.is-lose, .sc-rays, .sc-party-card, .sc-party-card img, .sc-art, .sc-pzn { animation: none !important; }
+}
