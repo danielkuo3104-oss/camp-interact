@@ -1,0 +1,37 @@
+{
+  "id": "stampbook",
+  "name": "集章手冊（測試）",
+  "version": "0.1.0",
+  "entry": "game.js",
+  "css": "game.css",
+  "files": [
+    "stamp.svg",
+    "tent.svg",
+    "fire.svg",
+    "stump.svg",
+    "mountain.svg",
+    "microscope.svg",
+    "dna.svg",
+    "heart.svg",
+    "flask.svg"
+  ],
+  "data": {
+    "title": "一起集滿印章吧！",
+    "stamps": [
+      { "id": "A1", "name": "營地帳篷", "art": "tent.svg", "hint": "報到處旁邊的大帳篷" },
+      { "id": "A2", "name": "營火晚會", "art": "fire.svg", "hint": "晚上大家圍成一圈的地方" },
+      { "id": "A3", "name": "森林樹墩", "art": "stump.svg", "hint": "後山步道入口" },
+      { "id": "A4", "name": "登高望遠", "art": "mountain.svg", "hint": "看得最遠的那個平台" },
+      { "id": "A5", "name": "顯微鏡下", "art": "microscope.svg", "hint": "生醫實驗室" },
+      { "id": "A6", "name": "生命密碼", "art": "dna.svg", "hint": "走廊上的 DNA 模型" },
+      { "id": "A7", "name": "心跳時刻", "art": "heart.svg", "hint": "保健室門口" },
+      { "id": "A8", "name": "神奇燒瓶", "art": "flask.svg", "hint": "化學實驗課的教室" }
+    ]
+  },
+  "summary": "集章手冊（測試用）：每格印章先是灰色輪廓，到關卡掃 QR code 或輸入序號，播放蓋章動畫、蓋上彩色印章並記下時間。每個人自己集，序號寫在資源包裡，沒網路也能蓋。",
+  "test": true,
+  "config": [
+    { "key": "title", "label": "手冊標題", "type": "text", "dflt": "一起集滿印章吧！" },
+    { "key": "keySalt", "label": "序號鹽（選填）", "type": "text", "hint": "改了之後所有序號都會換掉，例如序號外流時；改完要重新印 QR code" }
+  ]
+}
