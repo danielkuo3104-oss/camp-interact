@@ -5,7 +5,8 @@
  *
  * 資源包放在 games/<資源包ID>/（完整說明見 games/README.md）：
  *   manifest.json  { id, name, version, summary, entry: 'game.js', css?: 'game.css', data: {…預設設定}, config: [{key, label, type, hint, dflt}] }
- *                  config 是管理端「遊戲資源包」分頁每個活動可以改的欄位（type：text、number、datetime、textarea）
+ *                  config 是管理端「遊戲資源包」分頁每個活動可以改的欄位（type：text、number、datetime、textarea、bool、select、json）
+ *                  scoring: true 會計分（活動連上就自動有團隊計分 Game）；presets: [{ name, hint, cfg }] 管理端「套用預設」
  *   game.js        呼叫 CampGame.register({ mount: function (el, host) {} })
  *   其他素材（圖片、音效、地圖）列在 manifest.files，用 host.asset('檔名') 拿網址
  *   進遊戲前會把 entry、css、files 全部下載到手機（Cache Storage，有下載動畫），同版本不重下載；改了檔案要把 version 加一
@@ -32,6 +33,9 @@
  *   host.scan(title)                 遊戲裡開相機掃 QR code（不會跑到別的瀏覽器）→ Promise 掃到的文字，取消是 null
  *   host.link(params)                這個遊戲頁的網址（加參數，例如給 QR code 用）
  *   host.param(k)、host.h、host.toast、host.modal、host.fail
+ *   host.api = 2；host.key(text, n) 手機上算密鑰（cyrb53）；host.every(ms, fn) 背景自動暫停的定時器
+ *   host.scoreSafe(o) 斷網先存手機、連上補送的 host.score；host.scorePending() 還沒送出的筆數
+ *   host.fx 共用動畫（confetti、flash、shake、pop、buzz、banner、glitch、count；減少動態效果時自動安靜）
  * 學員、工作人員要先在營隊互動 App 登入過（同一支手機、同一個瀏覽器）。
  */
 var CampGame = (function () {
@@ -386,6 +390,45 @@ var CampGame = (function () {
       scan: function (title) { return scanQR(title); },
       param: param, h: h, toast: toast, modal: modal, fail: fail
     };
+    /* ---- 共用工具（host.api = 2）：新資源包直接用，不用每包自己寫一份 ---- */
+    host.api = 2;
+    host.key = gameKey;   // host.key('任何文字', 8) → 8 個好輸入的字（沒有 0/O、1/I），同樣的文字每支手機算出來一樣
+    host.every = function (ms, fn, o) { return gameEvery(ms, fn, o); };
+    host.fx = GameFx;
+    /** 關主上傳分數（不怕斷網）：先存在手機，送得出去才拿掉；同隊同關只留最新。回傳 Promise { sent, queued } */
+    var SQK = 'ia_gsc_' + camp + '_' + g + '_' + scope;
+    var scoreFlush = function () {
+      var q = jget(SQK, []) || [];
+      if (!q.length || scoreFlush.busy) return Promise.resolve({ sent: 0, queued: q.length });
+      scoreFlush.busy = true;
+      var sent = 0;
+      var next = function () {
+        var cur = jget(SQK, []) || [];
+        if (!cur.length) return Promise.resolve();
+        var x = cur[0];
+        return host.score(x).then(function () {
+          var now = jget(SQK, []) || [];
+          now = now.filter(function (y) { return !(y.team === x.team && y.stage === x.stage && y.qt === x.qt); });
+          jset(SQK, now.length ? now : null); sent++;
+          return next();
+        }, function (e) {
+          if (e && e.code !== 'NET' && !/忙碌|網路|逾時|timeout/i.test(String(e.message))) {   // 伺服器明確拒絕（例如沒有這個隊伍）：拿掉，不要一直重送
+            var now = (jget(SQK, []) || []).filter(function (y) { return y.qt !== x.qt; }); jset(SQK, now.length ? now : null);
+            toast('分數沒送出：' + e.message, true);
+            return next();
+          }
+        });
+      };
+      return next().then(function () { scoreFlush.busy = false; return { sent: sent, queued: (jget(SQK, []) || []).length }; }, function () { scoreFlush.busy = false; return { sent: sent, queued: (jget(SQK, []) || []).length }; });
+    };
+    host.scoreSafe = function (o) {
+      var q = (jget(SQK, []) || []).filter(function (y) { return !(String(y.team) === String(o.team) && y.stage === o.stage); });
+      q.push(Object.assign({}, o, { qt: Date.now() }));
+      jset(SQK, q);
+      return scoreFlush();
+    };
+    host.scorePending = function () { return jget(SQK, []) || []; };
+    if (act && side === 'worker') { setTimeout(scoreFlush, 2500); gameEvery(60000, scoreFlush); window.addEventListener('online', function () { setTimeout(scoreFlush, 2000); }); }
     var el = h('div', { class: 'game-root' });
     var back = h('a', { class: 'game-back', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動');
     screen(h('div', null, h('div', { class: 'game-bar' }, back, act ? h('span', { class: 'game-act' }, act.name) : null),
@@ -394,4 +437,81 @@ var CampGame = (function () {
     try { d.mount(el, host); } catch (e) { msg('遊戲出錯了', e.message); return; }
     setTimeout(function () { gameSubmit.flush(); }, 2000);   // 上次沒送出的補送
   }
+})();
+
+/* ---------------- 共用工具（給資源包，host.key／host.every／host.fx） ---------------- */
+var GAME_KEY_ABC_ = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** cyrb53 雜湊 → n 個好輸入的字（最多 12） */
+function gameKey(str, n) {
+  str = String(str); n = Math.min(12, Math.max(4, Number(n) || 8));
+  var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (var i = 0; i < str.length; i++) { var c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  var a = h1 >>> 0, b = h2 >>> 0, out = '';
+  for (var j = 0; j < n; j++) { var src = j < 4 ? a >>> (j * 6) : j < 8 ? b >>> ((j - 4) * 6) : (a ^ b) >>> ((j - 8) * 6); out += GAME_KEY_ABC_[src & 31]; }
+  return out;
+}
+/** 定時做事，切到背景就停、回來馬上補一次（省電、省連線）；o.now 先跑一次。回傳 stop() */
+function gameEvery(ms, fn, o) {
+  var t = 0, stopped = false;
+  var run = function () { if (stopped) return; try { fn(); } catch (e) {} };
+  var arm = function () { clearInterval(t); if (!stopped && !document.hidden) t = setInterval(run, ms); };
+  var vis = function () { if (document.hidden) clearInterval(t); else { run(); arm(); } };
+  document.addEventListener('visibilitychange', vis);
+  arm(); if (o && o.now) run();
+  return function () { stopped = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); };
+}
+/** 動畫：彩帶、閃光、震動、數字跳動、故障效果；手機設定「減少動態效果」時自動變簡單 */
+var GameFx = (function () {
+  var still = function () { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); };
+  var css = function () {
+    if (document.getElementById('gfx-css')) return;
+    var st = document.createElement('style'); st.id = 'gfx-css';
+    st.textContent = '.gfx-layer{position:fixed;inset:0;pointer-events:none;z-index:9000;overflow:hidden}'
+      + '.gfx-c{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:gfxFall linear forwards}'
+      + '@keyframes gfxFall{to{transform:translate3d(var(--dx),110vh,0) rotate(var(--r));opacity:.9}}'
+      + '.gfx-flash{position:fixed;inset:0;pointer-events:none;z-index:8999;animation:gfxFlash .6s ease-out forwards}'
+      + '@keyframes gfxFlash{from{opacity:.75}to{opacity:0}}'
+      + '.gfx-shake{animation:gfxShake .45s cubic-bezier(.36,.07,.19,.97)}'
+      + '@keyframes gfxShake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}'
+      + '.gfx-pop{animation:gfxPop .5s cubic-bezier(.2,1.6,.4,1)}@keyframes gfxPop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}'
+      + '.gfx-banner{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:9001;background:rgba(20,24,28,.88);color:#fff;padding:18px 26px;border-radius:18px;font-size:22px;font-weight:800;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.35);animation:gfxBan 2.6s ease forwards;pointer-events:none;max-width:86vw}'
+      + '@keyframes gfxBan{0%{opacity:0;transform:translate(-50%,-40%) scale(.8)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.04)}20%{transform:translate(-50%,-50%) scale(1)}85%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%)}}'
+      + '.gfx-glitch{position:relative}.gfx-glitch.on{animation:gfxGl 1.2s steps(2) infinite}'
+      + '@keyframes gfxGl{0%,100%{text-shadow:2px 0 #f0f,-2px 0 #0ff;transform:none}23%{text-shadow:-3px 0 #f0f,3px 0 #0ff;transform:skewX(4deg)}47%{transform:translateX(-2px)}71%{text-shadow:1px 0 #f0f,-1px 0 #0ff;transform:skewX(-3deg)}}';
+    document.head.appendChild(st);
+  };
+  return {
+    still: still,
+    confetti: function (o) {
+      o = o || {}; css();
+      if (still()) return;
+      var layer = document.createElement('div'); layer.className = 'gfx-layer';
+      var colors = o.colors || ['#2f8f83', '#d9623b', '#f2c14e', '#3a74b8', '#7a5bb5', '#c94f7c', '#4caf50'];
+      for (var i = 0; i < (o.n || 70); i++) {
+        var c = document.createElement('i'); c.className = 'gfx-c';
+        c.style.left = Math.random() * 100 + '%'; c.style.background = colors[i % colors.length];
+        c.style.setProperty('--dx', (Math.random() * 160 - 80) + 'px'); c.style.setProperty('--r', (Math.random() * 900 - 450) + 'deg');
+        c.style.animationDuration = (1.8 + Math.random() * 1.8) + 's'; c.style.animationDelay = Math.random() * .6 + 's';
+        layer.appendChild(c);
+      }
+      document.body.appendChild(layer);
+      setTimeout(function () { layer.remove(); }, 4500);
+    },
+    flash: function (color) { css(); var f = document.createElement('div'); f.className = 'gfx-flash'; f.style.background = color || '#fff'; document.body.appendChild(f); setTimeout(function () { f.remove(); }, 700); },
+    shake: function (el) { css(); if (!el || still()) return; el.classList.remove('gfx-shake'); void el.offsetWidth; el.classList.add('gfx-shake'); },
+    pop: function (el) { css(); if (!el || still()) return; el.classList.remove('gfx-pop'); void el.offsetWidth; el.classList.add('gfx-pop'); },
+    buzz: function (ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 60); } catch (e) {} },
+    banner: function (text) { css(); var b = document.createElement('div'); b.className = 'gfx-banner'; b.textContent = text; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 2700); },
+    glitch: function (el, on) { css(); if (!el) return; el.classList.add('gfx-glitch'); el.classList.toggle('on', !!on && !still()); },
+    /** 數字從 from 跳到 to（分數、金額） */
+    count: function (el, from, to, ms) {
+      if (!el) return; from = Number(from) || 0; to = Number(to) || 0;
+      if (still() || from === to) { el.textContent = String(to); return; }
+      var t0 = performance.now(), d = ms || 700;
+      var step = function (t) { var k = Math.min(1, (t - t0) / d), e = 1 - Math.pow(1 - k, 3); el.textContent = String(Math.round(from + (to - from) * e)); if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }
+  };
 })();
