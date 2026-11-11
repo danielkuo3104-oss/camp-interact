@@ -128,6 +128,15 @@ var PkgAdmin = (function () {
     else { R = admin; R.canEdit = R.canEditReal && !LK.other; lockBar(); }
     return true;
   }
+  /** 活動有沒有計分（和後端 sbActScored_ 同一套）：勾了「計分」，或連了會計分的遊戲資源包 */
+  var SCORING_PACKS = ['fogmap', 'labescape', 'factions'];
+  function actScored(d) {
+    d = d || {};
+    if (d.scored === true || d.scored === false) return d.scored;
+    var g = d.game;
+    if (!g || !g.pack) return false;
+    return g.score === undefined ? SCORING_PACKS.indexOf(g.pack) >= 0 : !!g.score;
+  }
   function run(name, data, o) {
     o = o || {};
     var pkg = R.pkg;
@@ -416,7 +425,7 @@ var PkgAdmin = (function () {
     var colList = {};
     cols.forEach(function (c) { if (c.list) { var id = 'gl' + (++GRID_SEQ); colList[c.k] = id; lists.appendChild(h('datalist', { id: id }, c.list.map(function (v) { return h('option', { value: v }); }))); } });
     table.appendChild(h('thead', null, h('tr', null, o.select ? h('th', { class: 'g-sel', style: { width: '56px' } }, h('input', { type: 'checkbox', title: '全選', onchange: function (e) { G.rows.forEach(function (r) { if (!r.tr.classList.contains('hidden')) { r.ck.checked = e.target.checked; } }); G.selChanged(); } })) : null,
-      cols.map(function (c) { return h('th', { class: c.type === 'hidden' ? 'hidden' : null, style: { width: c.w || '160px' } }, c.label); }), ro && !o.rowActions ? null : h('th', { class: 'g-x', style: { width: o.rowActions ? '76px' : '44px' } }))));
+      cols.map(function (c) { return h('th', { class: c.type === 'hidden' ? 'hidden' : null, title: c.hint || null, style: { width: c.w || '160px' } }, c.label); }), ro && !o.rowActions ? null : h('th', { class: 'g-x', style: { width: o.rowActions ? '76px' : '44px' } }))));
     // 固定欄寬（像試算表），欄位多時整個表格可以左右捲動
     var tw = (o.select ? 56 : 0) + (ro && !o.rowActions ? 0 : o.rowActions ? 76 : 44);
     cols.forEach(function (c) { if (c.type !== 'hidden') tw += parseInt(c.w || '160', 10); });
@@ -1332,6 +1341,7 @@ var PkgAdmin = (function () {
       var G = grid(box, [
         { k: 'name', label: '活動／課程', w: '180px' },
         { k: 'pub', label: '學員看得到', type: 'switch', w: '100px' },
+        { k: 'scored', label: '🏆 計分', type: 'switch', w: '80px', hint: '打開＝團隊計分自動有這個活動的 Game（連了會計分的遊戲時預設打開）' },
         { k: 'autoAt', label: '自動公開時間', type: 'datetime', w: '200px' }
       ].concat(rhs.map(function (x) { return { k: 'rh:' + x.id, label: x.name + '時開放（' + x.start.slice(5) + '～' + x.end.slice(5) + '）', type: 'datetime', w: '210px', min: x.start + 'T00:00', max: x.end + 'T23:59' }; })).concat([
         { k: 'summary', label: '簡介（現在主題、活動列表顯示）', w: '320px', multi: true },
@@ -1344,10 +1354,10 @@ var PkgAdmin = (function () {
       ]), {
         rows: D.activities.map(function (a) {
           var d = a.data, now = Date.now(), vis = d.publicMode === 'public' || (d.publicMode === 'manual' && d.revealed) || (d.publicMode === 'auto' && Date.parse(d.autoAt) <= now);
-          return { id: a.id, ver: a.version, a: a, vals: Object.assign({ name: d.name, pub: !!vis, autoAt: d.publicMode === 'auto' && Date.parse(d.autoAt) > now ? tsLocal(d.autoAt) : '', summary: d.summary || '' }, rhVals(d)) };
+          return { id: a.id, ver: a.version, a: a, vals: Object.assign({ name: d.name, pub: !!vis, scored: actScored(d), autoAt: d.publicMode === 'auto' && Date.parse(d.autoAt) > now ? tsLocal(d.autoAt) : '', summary: d.summary || '' }, rhVals(d)) };
         }),
         saveOp: 'activity.save', delOp: 'activity.delete', addText: '＋ 新增活動', noCopy: true, empty: '還沒有活動',
-        blank: function () { return Object.assign({ name: '', pub: false, autoAt: '', summary: '' }, rhVals({})); },
+        blank: function () { return Object.assign({ name: '', pub: false, scored: false, autoAt: '', summary: '' }, rhVals({})); },
         isEmpty: function (v) { return !String(v.name || '').trim(); },
         validate: function (d, op) {
           if (op !== 'activity.save') return '';
@@ -1359,10 +1369,11 @@ var PkgAdmin = (function () {
         saveItems: function (v, r) {
           var d = r.a ? r.a.data : {}, out = [];
           var base = { id: r.id, name: v.name, summary: v.summary, autoAt: v.autoAt ? v.autoAt + ':00+08:00' : '', rhOpen: rhOpenOf(v) };
+          if (r.vals0 ? v.scored !== r.vals0.scored : v.scored) base.scored = !!v.scored;   // 只有改了才送，沒改就照連的遊戲決定
           if (d.publicMode === 'manual' && r.id && !v.autoAt) {
             // 手動公開的活動：名稱、簡介照存，開關是「公開／收回」（會記下誰、什麼時候）
             var was = r.vals0 ? r.vals0.pub : !!d.revealed;
-            if (v.name !== d.name || v.summary !== (d.summary || '') || JSON.stringify(base.rhOpen) !== JSON.stringify(rhOpenOf(rhVals(d)))) out.push({ op: 'activity.save', data: Object.assign(base, { publicMode: 'manual' }) });
+            if (base.scored !== undefined || v.name !== d.name || v.summary !== (d.summary || '') || JSON.stringify(base.rhOpen) !== JSON.stringify(rhOpenOf(rhVals(d)))) out.push({ op: 'activity.save', data: Object.assign(base, { publicMode: 'manual' }) });
             if (v.pub !== was) out.push({ op: 'activity.reveal', data: { id: r.id, revealed: v.pub } });
             return out.length ? out : [{ op: 'activity.save', data: Object.assign(base, { publicMode: 'manual' }) }];
           }
@@ -1372,7 +1383,7 @@ var PkgAdmin = (function () {
         afterSave: function (r) {
           var v = r.read(); r.vals0 = v;
           if (!r.a) r.a = { id: r.id, data: { publicMode: 'hidden' } };
-          r.a.data.name = v.name; r.a.data.summary = v.summary; r.a.data.rhOpen = rhOpenOf(v);
+          r.a.data.name = v.name; r.a.data.summary = v.summary; r.a.data.rhOpen = rhOpenOf(v); r.a.data.scored = v.scored;
           if (r.a.data.publicMode !== 'manual' || v.autoAt) r.a.data.publicMode = v.pub ? 'public' : v.autoAt ? 'auto' : 'hidden';
         }
       });
@@ -1630,9 +1641,45 @@ var PkgAdmin = (function () {
             clear(fields); clear(links);
             if (!pk.value) return;
             getMan(pk.value).then(function (m) {
-              fields.appendChild(h('div', { class: 'small muted' }, m.summary || ''));
+              fields.appendChild(h('div', { class: 'small muted' }, (m.summary || '') + '（v' + (m.version || '?') + '）　', h('a', { href: 'games/' + pk.value + '/README.md', target: '_blank', rel: 'noopener' }, '說明')));
+              fields.appendChild(h('div', { class: 'small', style: { color: m.scoring ? 'var(--ok)' : '' } }, m.scoring ? '🏆 這個遊戲會計分：儲存後「團隊計分 → Game 清單」自動有「' + a.data.name + '」，關主過關就進排行榜。' : '這個遊戲不計分（要的話到「活動＆課程」打開「🏆 計分」）。'));
+              // 預設組合（manifest.presets）：一鍵把這個活動的設定換成整組，例如「2027 清大定向越野」
+              if ((m.presets || []).length && R.canEdit) fields.appendChild(h('div', { class: 'row wrap', style: { gap: '6px' } }, h('span', { class: 'small muted' }, '套用預設：'),
+                m.presets.map(function (ps) { return h('button', { class: 'btn sm', type: 'button', title: ps.hint || '', onclick: function () {
+                  confirmBox('套用「' + ps.name + '」', (ps.hint ? ps.hint + '\n\n' : '') + '會把下面的設定換成這組預設（還沒存，按「儲存」才生效）。', '套用').then(function (yes) { if (!yes) return; cfg = JSON.parse(JSON.stringify(ps.cfg || {})); drawFields(); toast('已套用，記得按「儲存」'); });
+                } }, ps.name); })));
               (m.config || []).forEach(function (f) {
                 var cur = cfg[f.key] !== undefined ? cfg[f.key] : '', el;
+                if (f.type === 'json') {
+                  // 進階：整段 JSON（例如關卡清單），留空＝用資源包預設
+                  var dflt = (m.data || {})[f.key];
+                  el = area(cur === '' ? '' : JSON.stringify(cur, null, 1), { placeholder: dflt !== undefined ? '留空＝用預設（' + (Array.isArray(dflt) ? dflt.length + ' 筆' : '資源包內建') + '）' : '' });
+                  el.style.fontFamily = 'ui-monospace,Menlo,monospace'; el.style.fontSize = '12px'; el.rows = 6;
+                  var bad = h('div', { class: 'small', style: { color: 'var(--bad)' } });
+                  el.addEventListener('input', function () {
+                    var v = el.value.trim();
+                    if (!v) { delete cfg[f.key]; bad.textContent = ''; return; }
+                    try { cfg[f.key] = JSON.parse(v); bad.textContent = ''; } catch (e) { bad.textContent = 'JSON 格式不對，這一欄先不會存：' + e.message; }
+                  });
+                  var tools = h('div', { class: 'row', style: { gap: '6px' } }, dflt !== undefined ? h('button', { class: 'btn sm', type: 'button', onclick: function () { el.value = JSON.stringify(dflt, null, 1); el.dispatchEvent(new Event('input')); } }, '填入預設再改') : null, bad);
+                  if (!R.canEdit) el.disabled = true;
+                  fields.appendChild(field(f.label, h('div', { class: 'col', style: { gap: '4px' } }, el, tools), f.hint));
+                  return;
+                }
+                if (f.type === 'bool') {
+                  var cb = h('input', { type: 'checkbox' }); cb.checked = cur === '' ? !!f.dflt : !!cur;
+                  cb.addEventListener('change', function () { cfg[f.key] = cb.checked; });
+                  if (!R.canEdit) cb.disabled = true;
+                  fields.appendChild(field(f.label, h('label', { class: 'row', style: { gap: '8px', minHeight: '38px' } }, cb, f.text || '打開'), f.hint));
+                  return;
+                }
+                if (f.type === 'select') {
+                  el = sel([{ value: '', label: '（預設' + (f.dflt !== undefined ? '：' + f.dflt : '') + '）' }].concat((f.options || []).map(function (o) { return typeof o === 'string' ? { value: o, label: o } : o; })), cur);
+                  el.addEventListener('change', function () { if (el.value === '') delete cfg[f.key]; else cfg[f.key] = el.value; });
+                  if (!R.canEdit) el.disabled = true;
+                  fields.appendChild(field(f.label, el, f.hint));
+                  return;
+                }
                 if (f.type === 'datetime') el = inp(dtIn(cur), { type: 'datetime-local' });
                 else if (f.type === 'number') el = inp(cur, { type: 'number', placeholder: f.dflt !== undefined ? '預設 ' + f.dflt : '' });
                 else if (f.type === 'textarea') el = area(typeof cur === 'string' ? cur : cur ? JSON.stringify(cur) : '');
@@ -1652,7 +1699,11 @@ var PkgAdmin = (function () {
           };
           pk.addEventListener('change', function () { cfg = {}; drawFields(); });
           save.addEventListener('click', function () {
-            busy(save, function () { return run('activity.game', { id: a.id, game: pk.value ? { pack: pk.value, label: lb.value, cfg: cfg, master: { on: mOn.checked, pass: mPass.value } } : null }, { ver: a.version, msg: '已儲存「' + a.data.name + '」的遊戲設定' }); }).then(null, function () {});
+            busy(save, function () {
+              return (pk.value ? getMan(pk.value).then(function (m) { return !!m.scoring; }, function () { return undefined; }) : Promise.resolve(undefined)).then(function (score) {
+                return run('activity.game', { id: a.id, game: pk.value ? { pack: pk.value, label: lb.value, cfg: cfg, score: score, master: { on: mOn.checked, pass: mPass.value } } : null }, { ver: a.version, msg: score ? '已儲存，並連到團隊計分' : '已儲存「' + a.data.name + '」的遊戲設定' });
+              });
+            }).then(null, function () {});
           });
           if (!R.canEdit) { pk.disabled = true; lb.disabled = true; save.disabled = true; mOn.disabled = true; mPass.disabled = true; }
           // 測試模式：玩法、計分都跟正式一樣，關掉後這次測試的資料全部歸零
@@ -2647,14 +2698,25 @@ var PkgAdmin = (function () {
         var name = inp(g.data.name), rel = sel(Object.keys(REL).map(function (k) { return { value: k, label: REL[k] }; }), g.data.release);
         form(g.id ? '編輯 Game' : '新增 Game', [field('名稱', name), field('結果發布方式', rel)], function () { return run('game.save', { id: g.id, name: name.value, release: rel.value }, { ver: g.id ? g.version : undefined }); });
       };
-      box.appendChild(bar(addBtn('新增 Game', function () { edit(); })));
-      box.appendChild(table(['Game', '發布方式', '已收到', '狀態', ''], D.games.map(function (g) {
+      // 計分活動自動連到這裡：打開時有還沒連上的活動就自動補齊（一次）
+      var acts = D.acts || {}, pend = D.pending || [];
+      if (pend.length && R.canEdit && !VIEWS.scoreboard._synced) {
+        VIEWS.scoreboard._synced = true;
+        run('game.syncActs', {}, { action: 'run', msg: false }).then(function (x) { if (x && (x.add || x.rename)) toast('已自動把 ' + (x.add + x.rename) + ' 個計分活動連到團隊計分'); }, function () {});
+      }
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '活動有計分時（在「營期流程與活動 → 活動＆課程」打開「🏆 計分」，或連了會計分的遊戲），這裡會自動有那個活動的 Game，不用手動新增。手動新增的 Game 用在沒有活動的計分（例如小隊表演）。'));
+      box.appendChild(bar(addBtn('新增 Game', function () { edit(); }), R.canEdit ? h('button', { class: 'btn sm', onclick: function (e) {
+        busy(e.target, function () { return run('game.syncActs', {}, { action: 'run', msg: false }); }).then(function (x) { if (x) toast(x.add || x.rename || x.drop ? '新增 ' + x.add + '、改名 ' + x.rename + '、拿掉 ' + x.drop : '計分活動都已經連好了'); }, function () {});
+      } }, '🔗 從活動同步') : null));
+      box.appendChild(table(['Game', '來源', '發布方式', '已收到', '狀態', ''], D.games.map(function (g) {
         var n = D.results.filter(function (r) { return r.data.game === g.id; }).length, ok = D.board.released[g.id];
-        return h('tr', null, h('td', null, h('b', null, g.data.name)), h('td', null, REL[g.data.release]), h('td', null, n + '／' + D.teams.length + ' 隊'),
+        var ac = g.data.act ? acts[g.data.act] : null;
+        var src = g.data.act ? h('span', { class: 'tag ' + (ac ? 'info' : '') }, ac ? '🔗 ' + (g.data.test ? '測試・' : '') + ac.name + (ac.pack ? '（🎮 ' + ac.pack + '）' : '') : '活動已刪除') : h('span', { class: 'small muted' }, '手動');
+        return h('tr', null, h('td', null, h('b', null, g.data.name)), h('td', null, src), h('td', null, REL[g.data.release]), h('td', null, n + '／' + D.teams.length + ' 隊'),
           h('td', null, ok ? h('span', { class: 'tag ok' }, '已發布') : h('span', { class: 'tag' }, '未發布'), canPub && R.canEdit ? h('button', { class: 'btn sm', style: { marginLeft: '6px' }, onclick: function (e) {
             busy(e.target, function () { return run('game.publish', { id: g.id, published: !g.data.published }, { msg: g.data.published ? '已收回' : '已發布' }); }).catch(function () {});
           } }, g.data.published ? '收回手動發布' : '手動發布') : null),
-          actions(function () { edit(g); }, n ? null : function () { del('game.delete', { id: g.id }, g.data.name); }));
+          actions(function () { edit(g); }, n || (ac && ac.scored && g.data.auto !== false && !g.data.test) ? null : function () { del('game.delete', { id: g.id }, g.data.name); }));
       }), '還沒有 Game'));
     },
     results: function (box, D) {

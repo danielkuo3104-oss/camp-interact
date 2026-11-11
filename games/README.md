@@ -31,10 +31,18 @@
   "data": { "遊戲的預設設定": "…" },
   "config": [
     { "key": "endAt", "label": "活動結束時間", "type": "datetime", "hint": "說明" },
-    { "key": "squads", "label": "小隊數", "type": "number", "dflt": 8 }
-  ]
+    { "key": "squads", "label": "小隊數", "type": "number", "dflt": 8 },
+    { "key": "stamps", "label": "關卡清單（進階）", "type": "json" }
+  ],
+  "scoring": true,
+  "presets": [ { "name": "2027 定向越野", "hint": "說明", "cfg": { "squads": 8 } } ]
 }
 ```
+
+- `config` 的 `type`：`text`、`number`、`textarea`、`datetime`、`bool`（勾選）、`select`（加 `options`）、`json`（整段 JSON，例如關卡清單；管理端有「填入預設再改」，留空＝用 `data` 裡的預設）。
+- `scoring: true`：這個遊戲會計分。活動連上它（或在「活動＆課程」打開「🏆 計分」）時，「團隊計分 → Game 清單」**自動**出現同名的 Game，開測試模式時也自動有「（測試）」Game；改活動名稱會跟著改，刪活動或關掉計分時，沒有分數的自動 Game 會拿掉。
+- `presets`：管理端「套用預設」按鈕，一鍵帶入一組設定（例如今年企劃書的關卡）。
+- 新資源包也要加進 `games/index.json`（`scoring` 也寫一份）。
 
 ## 關主登入
 
@@ -91,6 +99,12 @@
 | `host.qr(el, text)`、`host.link(params)` | 畫 QR code；產生這個遊戲頁的網址 |
 | `host.scan(title)` | 在遊戲裡開相機掃 QR code，回傳掃到的文字（取消是 null）。學員不要用手機相機 App 掃：相機 App 會用別的瀏覽器打開，又要重新登入 |
 | `host.h`、`host.toast`、`host.modal`、`host.fail` | 畫面小工具（和 App 同一套） |
+| `host.api` | 平台版本，現在是 `2`。要用下面的新功能前可以先檢查 `host.api >= 2` |
+| `host.key(text, n)` | 在手機上算密鑰（cyrb53，n 個字、不含容易看錯的 0/O/1/I）。關主和學員算出來一樣，斷網也能驗：`host.key('esc|' + salt + '|' + host.scope + '|' + 關卡 + '|' + 小隊, 8)` |
+| `host.scoreSafe(o)` | 跟 `host.score` 一樣，但沒網路、伺服器忙時先存在手機，連上自動補送（同一隊同一關只留最後一筆）。回傳 `{ sent, queued }`。關主過關按鈕建議用這個 |
+| `host.scorePending()` | 還沒送出的分數有幾筆（畫在關主畫面上提醒） |
+| `host.every(ms, fn, { now })` | 定時做事，畫面切到背景自動暫停，回傳 `stop()`。比 `setInterval` 省電、省流量 |
+| `host.fx` | 共用動畫：`confetti()` 彩帶、`flash(color)` 閃一下、`shake(el)`、`pop(el)`、`buzz(ms)` 震動、`banner(text)` 大字、`glitch(el, on)` 故障、`count(el, from, to, ms)` 數字跳動。手機設定「減少動態效果」時自動變安靜（`host.fx.still()`） |
 
 頻道範圍由伺服器檢查，學員改前端也繞不過：
 

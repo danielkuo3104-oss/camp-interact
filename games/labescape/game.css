@@ -1,0 +1,87 @@
+/* 級聯封鎖（密室）測試資源包：深色研究站介面，紅色警報隨倒數變強 */
+.game-root { padding: 10px 10px 40px; }
+.le-root { --c: #59d39b; --c2: #9ef0ff; --bg: #0b1418; display: flex; flex-direction: column; gap: 10px; background: radial-gradient(120% 80% at 50% 0%, #12323a 0%, var(--bg) 70%); color: #d9f3ec; border-radius: 18px; padding: 12px; min-height: 80vh; position: relative; overflow: hidden; font-family: ui-monospace, "SF Mono", Menlo, "Noto Sans TC", monospace; transition: background 1.2s; }
+.le-root::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px); mix-blend-mode: overlay; }
+.le-root::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 0 transparent; transition: box-shadow 1s; }
+.le-dim { color: #8fb3aa; }
+.le-alarm { text-align: center; padding: 10px 8px 12px; border-radius: 14px; background: rgba(0,0,0,.35); border: 1px solid rgba(89,211,155,.35); transition: border-color .8s, background .8s; }
+.le-lbl { font-size: 12px; letter-spacing: 2px; color: #8fb3aa; }
+.le-cd { font-size: 46px; font-weight: 800; letter-spacing: 2px; font-variant-numeric: tabular-nums; color: var(--c); text-shadow: 0 0 18px rgba(89,211,155,.55); line-height: 1.1; margin-top: 2px; }
+.le-cdsub { font-size: 12px; color: #8fb3aa; margin-top: 2px; }
+/* 倒數等級 */
+.le-warn { --c: #ffb547; }
+.le-warn .le-alarm { border-color: rgba(255,181,71,.6); }
+.le-warn .le-cd { text-shadow: 0 0 18px rgba(255,181,71,.6); animation: le-breath 2.4s ease-in-out infinite; }
+.le-danger, .le-crit, .le-over { --c: #ff4d5e; background: radial-gradient(120% 80% at 50% 0%, #3a1218 0%, #120709 70%); }
+.le-danger .le-alarm, .le-crit .le-alarm, .le-over .le-alarm { border-color: #ff4d5e; background: rgba(80,0,10,.45); animation: le-siren 1.4s ease-in-out infinite; }
+.le-danger .le-cd, .le-crit .le-cd { text-shadow: 0 0 22px rgba(255,77,94,.8); }
+.le-danger::after { box-shadow: inset 0 0 60px 6px rgba(255,40,60,.25); animation: le-vign 1.4s ease-in-out infinite; }
+.le-crit::after { box-shadow: inset 0 0 90px 14px rgba(255,40,60,.45); animation: le-vign .7s ease-in-out infinite; }
+.le-crit .le-alarm { animation-duration: .7s; }
+.le-safe { --c: #7fffd4; }
+.le-safe .le-alarm { border-color: #7fffd4; background: rgba(0,60,40,.4); }
+@keyframes le-breath { 50% { opacity: .65; } }
+@keyframes le-siren { 50% { background: rgba(140,0,20,.55); box-shadow: 0 0 24px rgba(255,40,60,.5); } }
+@keyframes le-vign { 50% { opacity: .45; } }
+/* AI 本體：完整度越低越故障 */
+.le-core { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(158,240,255,.18); }
+.le-ai { font-size: 18px; font-weight: 800; color: var(--c2); }
+.le-face { width: 48px; height: 48px; flex: none; border-radius: 50%; border: 2px solid var(--c2); position: relative; box-shadow: 0 0 16px rgba(158,240,255,.35); }
+.le-face i { position: absolute; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--c2); animation: le-blink 4s infinite; }
+.le-face i:first-child { left: 11px; } .le-face i:nth-child(2) { right: 11px; }
+.le-face u { position: absolute; left: 13px; right: 13px; bottom: 11px; height: 3px; border-radius: 2px; background: var(--c2); }
+@keyframes le-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+.g3 .le-face, .g2 .le-face { animation: le-jit .9s steps(2) infinite; border-color: #ff6b7a; }
+.g3 .le-face i, .g2 .le-face i { background: #ff6b7a; }
+.g3 .le-face u { transform: rotate(-12deg); background: #ff6b7a; }
+.g1 .le-face { animation: le-jit 3s steps(2) infinite; }
+@keyframes le-jit { 0%, 100% { transform: none; } 30% { transform: translate(1px, -1px) skewX(6deg); } 60% { transform: translate(-2px, 0); filter: hue-rotate(80deg); } }
+.le-ring { --p: 0; width: 64px; height: 64px; flex: none; border-radius: 50%; display: grid; place-items: center; text-align: center; background: conic-gradient(var(--c2) calc(var(--p) * 1%), rgba(255,255,255,.08) 0); position: relative; transition: background .8s; }
+.le-ring::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: #0d1d22; }
+.le-ring b { position: relative; font-size: 16px; color: var(--c2); line-height: 1; }
+.le-ring span { position: absolute; bottom: -16px; font-size: 10px; color: #8fb3aa; white-space: nowrap; }
+/* 關卡鏈 */
+.le-nodes { display: flex; gap: 6px; overflow-x: auto; padding: 14px 2px 4px; }
+.le-node { flex: 1 0 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #6f8f88; text-align: center; }
+.le-node b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1.5px dashed #3c5b55; color: #6f8f88; }
+.le-node.ok b { border: 0; background: #2fae74; color: #fff; box-shadow: 0 0 12px rgba(47,174,116,.6); animation: le-pop .5s cubic-bezier(.2,1.6,.4,1); }
+.le-node.ok { color: #bfe9d6; }
+.le-node.cur b { border: 2px solid var(--c); color: var(--c); animation: le-cur 1.6s ease-in-out infinite; }
+.le-node.cur { color: #e8fff7; font-weight: 700; }
+@keyframes le-cur { 50% { box-shadow: 0 0 0 6px rgba(89,211,155,.15); } }
+@keyframes le-pop { from { transform: scale(.4); } to { transform: scale(1); } }
+.le-task { padding: 12px 14px; border-radius: 14px; background: rgba(158,240,255,.06); border-left: 3px solid var(--c2); line-height: 1.6; }
+.le-tt { font-size: 17px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.le-input { display: flex; flex-direction: column; gap: 8px; }
+.le-code { flex: 1; text-transform: uppercase; letter-spacing: 1px; background: rgba(0,0,0,.35) !important; color: #e8fff7 !important; border-color: #2f5b52 !important; }
+.le-scan { background: rgba(255,255,255,.08) !important; color: #d9f3ec !important; border-color: #2f5b52 !important; }
+.le-sec { font-size: 12px; letter-spacing: 2px; color: #8fb3aa; margin-top: 6px; }
+.le-log { display: flex; flex-direction: column; gap: 6px; }
+.le-msg { display: flex; gap: 8px; font-size: 14px; line-height: 1.55; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.04); }
+.le-msg.hint { background: rgba(255,181,71,.1); color: #ffe2b0; }
+.le-msg.wake { background: rgba(158,240,255,.12); color: #dffbff; border: 1px solid rgba(158,240,255,.35); }
+.le-msg.ai { color: #bfe9d6; }
+.le-msg.new { animation: le-in .6s ease-out; }
+.le-t { flex: none; color: #6f8f88; font-size: 12px; padding-top: 2px; }
+@keyframes le-in { from { opacity: 0; transform: translateY(-6px); } }
+.le-free { position: fixed; inset: 0; z-index: 8000; display: grid; place-items: center; background: radial-gradient(circle, rgba(127,255,212,.35), rgba(0,20,15,.88)); animation: le-in .5s; }
+.le-free-card { text-align: center; color: #e8fff7; padding: 24px; font-family: ui-monospace, Menlo, "Noto Sans TC", monospace; }
+.le-free-big { font-size: 34px; font-weight: 900; letter-spacing: 4px; color: #7fffd4; text-shadow: 0 0 24px #7fffd4; margin-bottom: 10px; animation: le-pop .8s cubic-bezier(.2,1.6,.4,1); }
+/* 關主 */
+.le-mcard { padding: 14px; margin-bottom: 12px; }
+.le-mtitle { font-weight: 800; font-size: 18px; }
+.le-mcard .le-sec { color: var(--text-2, #666); margin: 10px 0 6px; }
+.le-mcard .le-dim { color: var(--text-2, #777); }
+.le-sts, .le-sqs { display: flex; flex-wrap: wrap; gap: 6px; }
+.le-sts .btn.on, .le-sqs .btn.on { background: #1f4f4a; color: #fff; border-color: #1f4f4a; }
+.le-keyout { margin-top: 12px; }
+.le-qr { background: #fff; padding: 8px; border-radius: 10px; }
+.le-big { font-size: 22px; font-weight: 800; letter-spacing: 2px; font-family: ui-monospace, Menlo, monospace; }
+.le-line { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: #f4f1ea; color: #333; }
+.le-wakes { display: flex; flex-direction: column; gap: 6px; }
+.le-wake { display: flex; align-items: center; justify-content: space-between; font-family: ui-monospace, Menlo, monospace; }
+.le-board { display: flex; flex-direction: column; gap: 6px; }
+.le-brow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.le-bsq { width: 64px; flex: none; }
+.le-dots { display: flex; gap: 3px; } .le-dots i { width: 13px; height: 13px; border-radius: 4px; background: #e2e2e2; } .le-dots i.on { background: #2fae74; }
+@media (prefers-reduced-motion: reduce) { .le-root *, .le-root::after { animation: none !important; } }

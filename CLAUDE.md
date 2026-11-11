@@ -85,7 +85,9 @@
 - `games/index.json` 列出資源包；每包一個資料夾：`manifest.json`（id, version, entry, css, files, data, config）＋ `game.js`（`CampGame.register({mount(el, host)})`）＋ `README.md`（必要）＋素材。
 - 遊戲只透過 `host` 溝通（me、data、ch、scope、save/load、sync、submit、inbox、score、scan、time、mode…），完整說明見 `games/README.md`。
 - **改資源包任何檔案都要把 `version` 加一（manifest 和 index.json 一起）**，手機才會重新下載。
-- `fogmap`（霧之校園，v0.4.x）：密鑰在手機上算（cyrb53），小隊頻道只用來補齊進度；說明見 `games/fogmap/README.md`。
+- `fogmap`（霧之校園，v0.6.x）：密鑰在手機上算（cyrb53），小隊頻道只用來補齊進度；有「2027 清大定向越野」預設；說明見 `games/fogmap/README.md`。
+- 2027 測試包：`labescape`（密室級聯封鎖）、`factions`（雙陣營 RPG）、`horserace`（賭馬，不計分）。新遊戲優先用 `host.key`／`host.scoreSafe`／`host.fx`／`host.every`（host.api 2）。
+- 計分自動連動：manifest `scoring: true`（或活動「🏆 計分」開關）→ `Pkg_scoreboard.gs sbLinkAct_` 自動建／改名／移除 Game `gx<活動>`（測試 `-tN`）；活動的 save/delete/game/gameTest/reveal 都會呼叫。
 
 ## 測試（在 `/mnt/project-files/camp-interact/` 下跑）
 
@@ -97,6 +99,6 @@ REG_DIR=../camp-system node test/e2e-bridge.js    # 跨系統
 node test/loadtest.js <exec> <營隊ID> <Email>     # 正式環境壓測
 ```
 
-- browserN 主題：13 展延／驗收、14 六點修正、18–24 遊戲（18 寫死埠 8799；20 要獨立的預覽伺服器）、22 掃描、23 捷徑交接、24 工作人員遊戲入口、25 離線打開（sw.js）。
+- browserN 主題：13 展延／驗收、14 六點修正、18–24 遊戲（18 寫死埠 8799；20 要獨立的預覽伺服器）、22 掃描、23 捷徑交接、24 工作人員遊戲入口、25 離線打開（sw.js）、31 計分自動連動＋密室、32 RPG、33 賭馬。
 - 瀏覽器測試受實際時間影響：深夜跑 browser5/9/11/13 可能失敗，屬已知現象。
 - 改完要跑相關 browserN ＋ `run.js`，並在 HANDOFF.md 加一段（日期、改了什麼、測試數、這次改的 .gs）。
