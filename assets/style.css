@@ -1039,6 +1039,41 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .game-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px 0; }
 .game-back { color: var(--accent, #2f5d62); text-decoration: none; font-weight: 600; }
 .game-act { margin-left: auto; font-size: 13px; color: var(--text-3, #888); }
+.game-chip { flex: none; border: 1px solid var(--line-strong, #ddd); background: var(--card, #fff); color: inherit; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+/* 投影畫面右上角：回主持人畫面、全螢幕、結束投影 */
+.game-showbar { position: fixed; top: 8px; right: 8px; z-index: 9000; display: flex; gap: 6px; opacity: .35; transition: opacity .2s; }
+.game-showbar:hover, .game-showbar:focus-within { opacity: 1; }
+.game-showbar .btn { background: rgba(0,0,0,.55); color: #fff; border-color: rgba(255,255,255,.3); }
+@media (hover: none) { .game-showbar { opacity: .8; } }
+/* 即時分數榜（host.scoreboard） */
+.gb-root { display: flex; flex-direction: column; gap: 8px; }
+.gb-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gb-title { font-weight: 800; flex: 1; }
+.gb-tabs { display: flex; gap: 4px; }
+.gb-tab { border: 1px solid var(--line-strong, #ddd); background: transparent; color: inherit; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.gb-tab.on { background: var(--brand, #2f5d62); border-color: var(--brand, #2f5d62); color: #fff; }
+.gb-list { display: flex; flex-direction: column; gap: 4px; }
+.gb-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(40px, 30%) 56px; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: rgba(127,127,127,.08); }
+.gb-row.me { outline: 2px solid var(--brand, #2f5d62); background: rgba(47,93,98,.12); }
+.gb-row.up { animation: gb-up 1.2s ease-out; }
+@keyframes gb-up { 0% { background: rgba(255,213,79,.6); transform: scale(1.02); } }
+.gb-rk { text-align: center; font-weight: 800; }
+.gb-nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .gb-nm small { opacity: .6; }
+.gb-bar { height: 8px; border-radius: 4px; background: rgba(127,127,127,.18); overflow: hidden; } .gb-bar i { display: block; height: 100%; background: var(--brand, #2f5d62); border-radius: 4px; transition: width .8s; }
+.gb-sc { text-align: right; font-variant-numeric: tabular-nums; }
+.gb-empty, .gb-foot { font-size: 12px; opacity: .65; text-align: center; padding: 6px; }
+.gb-root.big { padding: 2vh 3vw; gap: 1.4vh; }
+.gb-root.big .gb-title { font-size: 4.5vh; text-align: center; }
+.gb-root.big .gb-tab { font-size: 2vh; padding: .6vh 1.6vh; }
+.gb-root.big .gb-row { font-size: 3.6vh; padding: 1.2vh 2vh; grid-template-columns: 7vh minmax(0, 1fr) 30% 12vh; }
+.gb-root.big .gb-bar { height: 2vh; }
+body.gb-showbody { background: #10141f; color: #f3f4f6; }
+body.gb-showbody .app-shell { max-width: none; background: transparent; color: #f3f4f6; }
+body.gb-showbody #root { display: block; }
+body.gb-showbody .app-shell > * { width: 100%; }
+body.gb-showbody .gb-bar i { background: #ffd54f; }
+body.gb-showbody .gb-row.r1 { background: rgba(255,213,79,.18); }
+@media (prefers-reduced-motion: reduce) { .gb-row.up { animation: none; } .gb-bar i { transition: none; } }
 
 /* 遊戲資源包下載畫面 */
 .gd { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0; text-align: center; transition: opacity .35s, transform .35s; }
@@ -1077,3 +1112,4 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .cam-help { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff6e5; color: #5a3b00; font-size: 14px; line-height: 1.55; }
 .cam-help ol { margin: 6px 0; padding-left: 20px; }
 .cam-help li { margin: 2px 0; }
+.gb-card { padding: 10px 12px; border-radius: 14px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2); margin-top: 4px; }

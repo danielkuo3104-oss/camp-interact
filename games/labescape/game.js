@@ -17,6 +17,9 @@ CampGame.register({
     stages.forEach(function (s, i) { s.no = i + 1; byId[s.id] = s; });
     if (!stages.length) { el.appendChild(host.h('div', { class: 'card' }, '這個活動還沒有設定關卡')); return; }
     if (host.mode === 'player') player(el, host, D, stages, byId); else master(el, host, D, stages, byId);
+
+    // 即時分數榜（平台 host.api 2 才有）：玩家畫面最下面
+    if (host.mode === 'player' && host.activity && host.scoreboard) { var bd = host.h('div', { class: 'gb-card' }); (el.querySelector('.le-root') || el).appendChild(bd); host.scoreboard(bd); }
   }
 });
 
