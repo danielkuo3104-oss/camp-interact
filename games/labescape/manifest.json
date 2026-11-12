@@ -1,7 +1,7 @@
 {
   "id": "labescape",
   "name": "級聯封鎖・密室（測試）",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "entry": "game.js",
   "css": "game.css",
   "files": [],

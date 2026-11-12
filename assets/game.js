@@ -81,14 +81,30 @@ var CampGame = (function () {
   function needLogin() {
     var s = want === 'worker' ? 'worker' : 'student';
     msg('請先登入', '這個瀏覽器還沒登入營隊互動（' + (s === 'worker' ? '工作人員端' : '學員端') + '）。登入後會自動回到遊戲。下次請用遊戲裡的「📷 掃描」，就不會跑到別的瀏覽器。',
-      h('a', { class: 'btn primary', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + s + '&back=' + encodeURIComponent(location.pathname.split('/').pop() + location.search) }, '前往登入'));
+      h('div', { class: 'col', style: { gap: '8px' } },
+        h('a', { class: 'btn primary', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + s + '&back=' + encodeURIComponent(location.pathname.split('/').pop() + location.search) }, '前往登入'),
+        // 編輯者（管理端帳號）：用管理端登入，登入後直接回到這個遊戲（關主連結是關主畫面，其他是試玩）
+        h('a', { class: 'btn ghost', href: 'index.html?next=' + encodeURIComponent(location.pathname.split('/').pop() + location.search) }, '我是編輯者：用管理端帳號登入')));
   }
+  // 編輯者（管理端帳號）在同一個瀏覽器登入過：直接用管理端的登入，不用再登入一次學員端／工作人員端
+  if (!side && store('ia_token')) side = 'staff';
   if (!side) { needLogin(); return; }
-  var TK = 'ia_f_' + camp + '_' + side;
+  var TK = side === 'staff' ? 'ia_token' : 'ia_f_' + camp + '_' + side;
+  var crew = side !== 'student';   // 工作人員或編輯者：關主畫面
+  // 遊戲裡開新分頁的連結（投影畫面、投影分數榜）改用 window.open：新分頁帶得到編輯者的登入（sessionStorage），「結束投影」也關得掉
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[target=_blank]') : null;
+    if (!a || !/(^|\/)game\.html\?/.test(a.getAttribute('href') || '') || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+    var w = window.open(a.href, '_blank');
+    if (w) ev.preventDefault();
+  });
+  /** 回到哪裡：編輯者回管理端，其他回營隊互動 App（同一端，不用重新登入） */
+  var homeHref = side === 'staff' ? 'admin.html?c=' + encodeURIComponent(camp) : 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side;
+  var homeText = side === 'staff' ? '‹ 回管理端' : '‹ 回營隊互動';
   IA.token = store(TK);
   IA.onAuth = function () { store(TK, null); needLogin(); };
-  root.classList.toggle('worker', side === 'worker');
-  document.documentElement.classList.toggle('side-worker', side === 'worker');
+  root.classList.toggle('worker', crew);
+  document.documentElement.classList.toggle('side-worker', crew);
 
   var base = 'games/' + g + '/';
   var blobs = {};   // 已下載到手機的檔案 → blob 網址（host.asset、遊戲程式都從這裡拿，斷網也能開）
@@ -282,12 +298,12 @@ var CampGame = (function () {
         }, function (e) { go.disabled = false; err.textContent = e.message; pass.select(); });
       });
       msg('🎯 關主登入', '「' + act.name + '」需要關主通行碼（問活動負責人）。', h('div', { class: 'col', style: { gap: '10px' } }, form,
-        h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動')));
+        h('a', { class: 'btn', href: homeHref }, homeText)));
       setTimeout(function () { pass.focus(); }, 50);
     });
   }
   // 工作人員試玩：用玩家身分玩（先選一個小隊），資料放在「活動範圍-p」，跟正式分開
-  var trial = side === 'worker' && param('as') === 'player' && !!actId, TQ = 'ia_gp_' + camp + '_' + actId;
+  var trial = !!actId && ((side === 'worker' && param('as') === 'player') || (side === 'staff' && (param('as') === 'player' || want !== 'worker'))), TQ = 'ia_gp_' + camp + '_' + actId;
   function pickSquad(info) {
     var cfg = Object.assign({}, manifest.data || {}, info.activity.cfg || {}), n = Number(cfg.squads) || 8, have = store(TQ);
     if (have && Number(have) >= 1 && Number(have) <= n) return Promise.resolve(have);
@@ -295,7 +311,7 @@ var CampGame = (function () {
       var grid = h('div', { class: 'game-sq' });
       for (var i = 1; i <= n; i++) (function (q) { grid.appendChild(h('button', { class: 'btn', onclick: function () { store(TQ, String(q)); done(String(q)); } }, '第 ' + q + ' 小隊')); })(i);
       msg('🎮 試玩「' + info.activity.name + '」', '用玩家身分試玩：選一個小隊。試玩的資料跟正式分開，不會影響學員。', h('div', { class: 'col', style: { gap: '10px' } }, grid,
-        h('a', { class: 'btn ghost', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動')));
+        h('a', { class: 'btn ghost', href: homeHref }, homeText)));
     });
   }
   var trialSq = '';
@@ -338,7 +354,7 @@ var CampGame = (function () {
     var host = {
       camp: info.camp, me: me, pack: manifest, data: data, side: side,
       activity: act ? { id: act.id, name: act.name, test: !!act.test } : null, scope: scope,
-      mode: side === 'worker' && !trial ? 'master' : 'player', trial: trial,
+      mode: crew && !trial ? 'master' : 'player', trial: trial,
       ch: function (name) { return chScope ? name + ':' + chScope : name; },
       time: function (v) {
         v = String(v || '').trim(); if (!v) return null;
@@ -371,7 +387,7 @@ var CampGame = (function () {
       },
       score: function (o) {
         if (!act) return Promise.reject(new Error('要從活動的「開始遊戲」進來才能上傳分數'));
-        return op('front.action', { camp: camp, target: { pkg: 'scoreboard', action: 'game.stage', side: side }, data: Object.assign({ act: act.id }, o || {}, { ticket: ticket }) });
+        return op('front.action', { camp: camp, target: { pkg: 'scoreboard', action: 'game.stage', side: side === 'staff' ? 'worker' : side }, data: Object.assign({ act: act.id }, o || {}, { ticket: ticket }) });
       },
       load: function (k, dflt) { var all = jget(saveKey, {}) || {}; return k in all ? all[k] : dflt; },
       save: function (k, v) { var all = jget(saveKey, {}) || {}; all[k] = v; jset(saveKey, all); },
@@ -428,16 +444,89 @@ var CampGame = (function () {
       return scoreFlush();
     };
     host.scorePending = function () { return jget(SQK, []) || []; };
-    if (act && side === 'worker') { setTimeout(scoreFlush, 2500); gameEvery(60000, scoreFlush); window.addEventListener('online', function () { setTimeout(scoreFlush, 2000); }); }
+    if (act && crew) { setTimeout(scoreFlush, 2500); gameEvery(60000, scoreFlush); window.addEventListener('online', function () { setTimeout(scoreFlush, 2000); }); }
+    /** 即時分數榜（有計分的遊戲）：這個活動各隊的分數＋團隊計分總排名，關主一上傳就看得到 */
+    host.board = function () { return act ? api('gameBoard', camp, act.id) : Promise.reject(new Error('要從活動的「開始遊戲」進來才看得到分數')); };
+    host.scoreboard = function (box, o) { return gameBoardView(box, host, o || {}); };
+    var scoring = !!(act && manifest.scoring);
+    var view = param('view');
     var el = h('div', { class: 'game-root' });
-    var back = h('a', { class: 'game-back', href: 'app.html?c=' + encodeURIComponent(camp) + '&s=' + side }, '‹ 回營隊互動');
-    screen(h('div', null, h('div', { class: 'game-bar' }, back, act ? h('span', { class: 'game-act' }, act.name) : null),
+    var back = h('a', { class: 'game-back', href: homeHref }, homeText);
+    var boardBtn = scoring && view !== 'board' ? h('button', { class: 'game-chip', type: 'button', onclick: function () {
+      var body = h('div'), w = host.scoreboard(body, { tabs: true });
+      modal({ title: '🏆 即時分數', body: h('div', null, body, crew ? h('div', { class: 'row wrap', style: { gap: '8px', marginTop: '10px' } },
+        h('a', { class: 'btn', href: host.link({ view: 'board' }), target: '_blank' }, '📺 投影分數榜')) : null), onClose: function () { w.stop(); } });
+    } }, '🏆 分數') : null;
+    // 投影畫面（view=show／board）：右上角直接回主持人畫面、全螢幕、結束投影，不用回主頁再從活動進來
+    var showBar = view === 'show' || view === 'board' ? gameShowBar(host) : null;
+    screen(h('div', null, h('div', { class: 'game-bar' }, back, act && !showBar ? h('span', { class: 'game-act' }, act.name) : null, boardBtn), showBar,
       act && act.test ? h('div', { class: 'game-testbar' }, '🧪 測試模式：跟正式一樣（日期當作今天），結束測試後全部歸零') : null,
       trial ? h('div', { class: 'game-testbar' }, '🎮 試玩：第 ' + trialSq + ' 小隊（資料跟正式分開）　', h('a', { href: '#', onclick: function (ev) { ev.preventDefault(); store(TQ, null); location.reload(); } }, '換小隊')) : null, el));
+    if (view === 'board' && scoring) { document.body.classList.add('gb-showbody'); host.scoreboard(el, { big: true, tabs: true }); return; }
     try { d.mount(el, host); } catch (e) { msg('遊戲出錯了', e.message); return; }
     setTimeout(function () { gameSubmit.flush(); }, 2000);   // 上次沒送出的補送
   }
 })();
+
+/* ---------------- 投影畫面工具列 ---------------- */
+function gameShowBar(host) {
+  var u = new URL(host.link({})); u.searchParams.delete('view');
+  var main = u.href;
+  var full = h('button', { class: 'btn sm', type: 'button', onclick: function () {
+    var d = document;
+    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    else { var r = d.documentElement; (r.requestFullscreen || r.webkitRequestFullscreen || function () {}).call(r); }
+  } }, '⛶ 全螢幕');
+  var end = h('button', { class: 'btn sm', type: 'button', onclick: function () {
+    try { window.close(); } catch (e) {}
+    setTimeout(function () { location.href = main; }, 300);   // 不是用新分頁打開的（關不掉）：回主持人畫面
+  } }, '✕ 結束投影');
+  return h('div', { class: 'game-showbar' }, h('a', { class: 'btn sm', href: main }, '‹ 主持人畫面'), full, end);
+}
+
+/* ---------------- 即時分數榜（host.scoreboard） ----------------
+ * 兩個分頁：「這個活動」（這個活動各隊得分、過了幾關）和「總排名」（團隊計分）。自己的小隊標起來，分數變了會跳動。
+ * 每 o.every 毫秒（預設 20 秒，投影 10 秒）更新，畫面切到背景暫停；斷網時顯示上次的。回傳 { stop, refresh } */
+function gameBoardView(box, host, o) {
+  var CK = 'ia_gbd_' + (host.camp && host.camp.campId) + '_' + host.scope, last = jget(CK, null), tab = 'act', prev = {}, stopped = false;
+  var mine = String(host.me && host.me.squad || '');
+  box.classList.add('gb-root'); if (o.big) box.classList.add('big');
+  var head = h('div', { class: 'gb-head' }), list = h('div', { class: 'gb-list' }), foot = h('div', { class: 'gb-foot' });
+  clear(box); box.appendChild(head); box.appendChild(list); box.appendChild(foot);
+  function tabs() {
+    clear(head);
+    head.appendChild(h('div', { class: 'gb-title' }, '🏆 ' + (last && last.name ? last.name : '即時分數')));
+    if (o.tabs !== false) head.appendChild(h('div', { class: 'gb-tabs' },
+      [['act', '這個活動'], ['total', '總排名']].map(function (t) { return h('button', { type: 'button', class: 'gb-tab' + (tab === t[0] ? ' on' : ''), onclick: function () { tab = t[0]; prev = {}; draw(); } }, t[1]); })));
+  }
+  function draw() {
+    tabs(); clear(list);
+    if (!last) { list.appendChild(h('div', { class: 'gb-empty' }, '載入中…')); return; }
+    if (last.on === false) { list.appendChild(h('div', { class: 'gb-empty' }, '團隊計分還沒啟用')); return; }
+    var rows = tab === 'total' ? (last.total && last.total.rows) || [] : last.rows || [];
+    var max = Math.max(1, Math.max.apply(null, rows.map(function (r) { return r.score; }).concat([0])));
+    rows.forEach(function (r) {
+      var key = tab + r.no, old = prev[key], sc = h('b', { class: 'gb-sc' }, String(r.score));
+      var medal = r.rank <= 3 && r.score > 0;   // 還沒得分的不給獎牌
+      var row = h('div', { class: 'gb-row' + (String(r.no) === mine ? ' me' : '') + (medal ? ' r' + r.rank : '') },
+        h('span', { class: 'gb-rk' }, medal ? ['🥇', '🥈', '🥉'][r.rank - 1] : String(r.rank)),
+        h('span', { class: 'gb-nm' }, r.name + (String(r.no) === mine ? '（我們）' : ''), tab === 'act' && r.stages ? h('small', null, '　' + r.stages + ' 關') : null),
+        h('span', { class: 'gb-bar' }, h('i', { style: { width: Math.max(0, r.score) / max * 100 + '%' } })), sc);
+      list.appendChild(row);
+      if (old !== undefined && old !== r.score) { row.classList.add('up'); GameFx.count(sc, old, r.score, 900); }
+      prev[key] = r.score;
+    });
+    if (!rows.length) list.appendChild(h('div', { class: 'gb-empty' }, '還沒有分數'));
+    foot.textContent = (tab === 'total' && last.total && last.total.provisional ? '有 Game 還沒公布，總分不含那些。' : '') + (last.at ? '更新 ' + new Date(last.at).toTimeString().slice(0, 5) : '');
+  }
+  function refresh() {
+    if (stopped) return Promise.resolve();
+    return host.board().then(function (r) { r.at = Date.now(); last = r; jset(CK, r); draw(); }, function () { draw(); });
+  }
+  draw();
+  var t = gameEvery(o.every || (o.big ? 10000 : 20000), refresh, { now: true });
+  return { stop: function () { stopped = true; t(); }, refresh: refresh };
+}
 
 /* ---------------- 共用工具（給資源包，host.key／host.every／host.fx） ---------------- */
 var GAME_KEY_ABC_ = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

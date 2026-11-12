@@ -14,6 +14,9 @@ CampGame.register({
     stamps.forEach(function (s) { byId[s.id] = s; });
     if (host.mode ? host.mode === 'player' : host.me.kind === 'student') student(el, host, h, D, stamps, byId);   // 工作人員試玩也是玩家畫面
     else worker(el, host, h, D, stamps);
+
+    // 即時分數榜（平台 host.api 2 才有）：玩家畫面最下面
+    if (host.mode === 'player' && host.activity && host.scoreboard) { var bd = host.h('div', { class: 'gb-card' }); (el.querySelector('.fm-root') || el).appendChild(bd); host.scoreboard(bd); }
   }
 });
 

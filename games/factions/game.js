@@ -17,6 +17,9 @@ CampGame.register({
     if (!npcs.length || F.length < 2) { el.appendChild(host.h('div', { class: 'card' }, '這個活動還沒設定 NPC 或陣營')); return; }
     var ctx = { D: D, npcs: npcs, byId: byId, F: F, fById: fById, teamOf: teamMap(D, F) };
     if (host.mode === 'player') player(el, host, ctx); else master(el, host, ctx);
+
+    // 即時分數榜（平台 host.api 2 才有）：玩家畫面最下面
+    if (host.mode === 'player' && host.activity && host.scoreboard) { var bd = host.h('div', { class: 'gb-card' }); (el.querySelector('.fx-root') || el).appendChild(bd); host.scoreboard(bd); }
   }
 });
 
