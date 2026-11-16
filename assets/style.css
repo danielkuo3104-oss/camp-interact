@@ -1126,3 +1126,5 @@ body.gb-showbody .gb-row.r1 { background: rgba(255,213,79,.18); }
 }
 /* 手機：一列裡的說明文字自己佔一行（不然會被兩邊的按鈕擠成很窄的一條） */
 @media (max-width: 760px) { .row.wrap > .hint.grow { flex-basis: 100%; order: 9; } }
+/* 管理端選單：直接打開兩端頁面的連結 */
+#nav a.nav-open { color: var(--text-2); }

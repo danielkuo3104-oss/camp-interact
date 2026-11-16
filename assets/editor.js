@@ -29,6 +29,9 @@ var Editor = (function () {
     }, function (e) { if (!E || E.m !== m) return; clear(m).appendChild(h('div', { class: 'card' }, h('h2', null, '無法開啟編輯器'), h('p', null, e.message))); });   // 已經切到別頁就不要蓋掉
     E.timers.push(setInterval(ping, 60000));
     E.timers.push(setInterval(watchLock, 30000));
+    // 在等交接的時候 10 秒看一次、每秒更新倒數（對方接受或 2 分鐘沒回覆就自動接手）
+    E.timers.push(setInterval(function () { if (E && !E.mine && waiting()) watchLock(); }, 10000));
+    E.timers.push(setInterval(function () { if (E && !E.mine && waiting()) { var n = $('#hoLeft'); if (n) n.textContent = leftText(); if (autoLeft() <= 0) autoStart(); } }, 1000));
     A.leaving = leave;
     window.addEventListener('beforeunload', beacon);
     // 活動 Package 的頁面可以連到「活動」：先讀活動清單
@@ -149,10 +152,26 @@ var Editor = (function () {
     }, function (e) { if (e.code === 'LOCK') lockLost(e); });
   }
 
-  function acquire(btn) {
-    busy(btn, function () { return op('lock.acquire', { camp: A.camp, data: { side: E.side, tab: E.tab } }); }).then(function () {
+  function acquire(btn, force) {
+    busy(btn, function () { return op('lock.acquire', { camp: A.camp, data: { side: E.side, tab: E.tab, force: !!force } }); }).then(function (r) {
+      if (r && r.took) toast('已從 ' + r.from + ' 接手編輯，對方會收到通知');
+      E.myReq = null;
       return load().then(render);
-    }, function () {});
+    }, function () { watchLock(); });
+  }
+  /* ---- 等交接：對方接受、對方人不在、或 2 分鐘沒回覆，就自動開始編輯（不用再按一次） ---- */
+  function waiting() { return !!(E.myReq && E.myReq.status === 'pending'); }
+  function autoLeft() { return E.myReq && E.myReq.autoAt ? Math.ceil((E.myReq.autoAt - Date.now()) / 1000) : 999; }
+  function leftText() { if (!E.myReq || !E.myReq.autoAt) return '。'; var s = Math.max(0, autoLeft()); return s > 0 ? '（對方沒回覆的話，' + (s >= 60 ? Math.floor(s / 60) + ' 分 ' : '') + (s % 60) + ' 秒後自動交給你）' : '（正在接手…）'; }
+  function autoStart() {
+    if (!E || E.mine || E.autoBusy || Date.now() - (E.autoTried || 0) < 8000) return;
+    E.autoBusy = true; E.autoTried = Date.now();
+    op('lock.acquire', { camp: A.camp, data: { side: E.side, tab: E.tab } }).then(function (r) {
+      if (!E) return;
+      E.autoBusy = false; E.myReq = null;
+      toast(r && r.took ? '已從 ' + r.from + ' 接手，可以開始編輯了' : '對方已把編輯交給你，可以開始編輯了');
+      return load().then(render);
+    }, function () { if (E) E.autoBusy = false; });
   }
 
   function takeHere(btn) {
@@ -199,7 +218,7 @@ var Editor = (function () {
     var active = Date.now() - E.lastInput < 60000;
     op('lock.ping', { camp: A.camp, data: { side: E.side, tab: E.tab, active: active } }).then(function (r) {
       if (!E) return;
-      if (!r.mine) { lockLost({ message: r.lock && r.lock.held && r.lock.holder === IA.user.email ? '編輯已改到你的另一個分頁，這個分頁變成唯讀' : '編輯鎖已釋放（離線超過 10 分鐘或閒置超過 30 分鐘），要繼續請再按「開始編輯」' }); return; }
+      if (!r.mine) { lockLost({ message: r.lock && r.lock.held && r.lock.holder === IA.user.email ? '編輯已改到你的另一個分頁，這個分頁變成唯讀' : r.lock && r.lock.held ? r.lock.name + ' 已接手編輯，這個分頁變成唯讀。你改的內容都在草稿裡；要繼續請按「請求交接」' : '編輯鎖已釋放（離線超過 10 分鐘或閒置超過 30 分鐘），要繼續請再按「開始編輯」' }); return; }
       (r.handoffs || []).forEach(function (ho) { if (!E.shownHandoffs[ho.id]) { E.shownHandoffs[ho.id] = 1; handoffPopup(ho); } });
     }, function () {});
   }
@@ -207,15 +226,20 @@ var Editor = (function () {
     if (!E || E.mine) return;
     api('getLock', A.camp, E.side).then(function (r) {
       if (!E || E.mine) return;
-      var before = JSON.stringify(E.d.lock);
+      var before = JSON.stringify([E.d.lock, E.myReq && E.myReq.status]), was = waiting();
       E.d.lock = r.lock;
       E.myReq = r.myRequest;
-      if (before !== JSON.stringify(r.lock)) { if (r.lock.held && r.lock.holder === IA.user.email) toast('對方已把編輯交給你，按「開始編輯」就可以接手'); lockbar(); }
+      if (E.myReq && E.myReq.status === 'pending' && typeof E.myReq.autoIn === 'number') E.myReq.autoAt = Date.now() + E.myReq.autoIn * 1000;   // 舊版後端沒有 autoIn：照舊等對方接受
+      var me = IA.user.email;
+      // 對方交給我了、或我在等交接而對方人不在／太久沒回覆：直接開始編輯
+      if ((r.lock.held && r.lock.holder === me && r.lock.claimPending) || (waiting() && (r.lock.takeable || autoLeft() <= 0 || !r.lock.held))) { autoStart(); return; }
+      if (was && E.myReq && E.myReq.status === 'rejected') toast(r.lock.name + ' 還在編輯，先不交接（5 分鐘後可以再請求）', true);
+      if (before !== JSON.stringify([r.lock, E.myReq && E.myReq.status])) lockbar();
     }, function () {});
   }
 
   function handoffPopup(ho) {
-    var mm = modal({ title: '交接請求', body: h('div', null, h('b', null, ho.fromName), ' 想接手編輯' + E.d.sideName + '。接受後會先儲存你的變更再交給對方。'),
+    var mm = modal({ title: '交接請求', body: h('div', null, h('b', null, ho.fromName), ' 想接手編輯' + E.d.sideName + '。接受後會先儲存你的變更再交給對方。', h('div', { class: 'hint', style: { marginTop: '8px' } }, '還要繼續改就按「拒絕」；2 分鐘沒有回覆會自動交給對方（你改的內容都會留在草稿裡）。')),
       actions: [{ text: '拒絕', onClick: function () { return op('handoff.reject', { camp: A.camp, data: { side: E.side, id: ho.id } }).then(function () { toast('已拒絕'); }); } },
         { text: '接受交接', cls: 'primary', onClick: function () {
           var x = changes();
@@ -235,7 +259,7 @@ var Editor = (function () {
         h('button', { class: 'btn sm', onclick: versions }, '發布紀錄'),
         h('button', { class: 'btn sm', onclick: deletedList }, '已刪除的內容'),
         h('button', { class: 'btn sm', onclick: templates }, '模板'),
-        h('a', { class: 'btn sm', target: '_blank', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + E.side + '&preview=draft' }, '開新視窗預覽')));
+        h('a', { class: 'btn sm', target: '_blank', onclick: A.openTab, href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + E.side + '&preview=draft' }, '開新視窗預覽')));
     nodes.lock = h('div', { class: 'lockbar' });
     m.appendChild(nodes.lock);
     lockbar();
@@ -268,14 +292,25 @@ var Editor = (function () {
       el.appendChild(h('button', { class: 'btn sm', onclick: function (e) { save(e.target); } }, '儲存'));
       el.appendChild(h('button', { class: 'btn sm', onclick: function (e) { release(e.target); } }, '結束編輯'));
     } else if (L.held && L.holder !== me) {
-      el.appendChild(h('span', { class: 'grow' }, '👀 ', h('b', null, L.name), ' 正在編輯，你目前是唯讀。'));
-      var req = E.myReq && E.myReq.status === 'pending';
-      el.appendChild(h('button', { class: 'btn sm', disabled: req, onclick: function (e) {
-        busy(e.target, function () { return op('handoff.request', { camp: A.camp, data: { side: E.side } }); }).then(function () { toast('已送出交接請求，等對方接受'); E.myReq = { status: 'pending' }; lockbar(); }, function () {});
-      } }, req ? '已請求交接，等待回覆' : '請求交接'));
+      var req = waiting();
+      if (L.takeable) {
+        // 對方人不在：不用等回覆，直接接手
+        el.appendChild(h('span', { class: 'grow' }, '👀 ', h('b', null, L.name), L.takeable === 'offline' ? ' 開著編輯，但分頁已經沒有連線（可能關掉了）。' : ' 開著編輯，但已經 ' + L.idleMin + ' 分鐘沒有動作。', '你可以直接接手，對方改的內容都在草稿裡。'));
+        el.appendChild(h('button', { class: 'btn sm primary', onclick: function (e) { acquire(e.target); } }, '接手編輯'));
+      } else {
+        el.appendChild(h('span', { class: 'grow' }, '👀 ', h('b', null, L.name), ' 正在編輯，你目前是唯讀。', req ? h('span', null, '已請求交接，對方接受就會自動換你編輯', h('span', { id: 'hoLeft' }, leftText())) : null));
+        if (!req) el.appendChild(h('button', { class: 'btn sm primary', onclick: function (e) {
+          busy(e.target, function () { return op('handoff.request', { camp: A.camp, data: { side: E.side } }); }).then(function (r) { toast('已送出交接請求'); E.myReq = { status: 'pending', autoAt: r && typeof r.autoIn === 'number' ? Date.now() + r.autoIn * 1000 : 0 }; lockbar(); }, function () { watchLock(); });
+        } }, '請求交接'));
+        if (A.isAdmin()) el.appendChild(h('button', { class: 'btn sm ghost', title: '營隊管理者可以不等對方回覆', onclick: function (e) {
+          var b = e.target;
+          modal({ title: '強制接手編輯', body: h('div', null, h('b', null, L.name), ' 正在編輯' + E.d.sideName + '。強制接手後對方的畫面會變成唯讀並收到通知；對方 4 秒前改好的內容都在草稿裡，剛打到一半的可能沒存到。'),
+            actions: [{ text: '取消' }, { text: '強制接手', cls: 'primary', onClick: function () { acquire(b, true); } }] });
+        } }, '強制接手'));
+      }
     } else if (L.held && L.holder === me) {
       el.appendChild(h('span', { class: 'grow' }, L.claimPending ? '對方已把編輯交給你。' : '你在另一個分頁（或另一台裝置）編輯中，這個分頁是唯讀。如果那個分頁已經關掉，或你想改在這裡編輯，按「改在這個分頁編輯」。'));
-      if (L.claimPending) el.appendChild(h('button', { class: 'btn sm primary', onclick: function (e) { acquire(e.target); } }, '開始編輯'));
+      if (L.claimPending) { el.appendChild(h('button', { class: 'btn sm primary', onclick: function (e) { acquire(e.target); } }, '開始編輯')); setTimeout(autoStart, 0); }
       else el.appendChild(h('button', { class: 'btn sm primary', title: '另一個分頁還沒存的內容不會帶過來', onclick: function (e) { takeHere(e.target); } }, '改在這個分頁編輯'));
     } else {
       el.appendChild(h('span', { class: 'grow' }, '目前沒有人在編輯。' + (L.expired ? '（上一位的編輯鎖已逾期）' : '')));
