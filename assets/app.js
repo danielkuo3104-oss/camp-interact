@@ -216,6 +216,7 @@
       show(b);
     }, function (e) {
       if (early) { clearTimeout(early); early = null; }
+      if (S.verToast) { S.verToast = false; S.keepY = null; S.verTried = ''; }   // 自動換新版沒成功：下次更新再試
       var cached = !preview && jget(BK, null);
       if (e.code === 'NET' && cached) {
         // 網路回來時自動拿最新的
@@ -442,7 +443,9 @@
       }));
       screen(h('div', { style: { display: 'contents' } }, head, navEl, body));
     }
-    window.scrollTo(0, 0);
+    var ky = S.keepY; S.keepY = null;
+    window.scrollTo(0, ky && ky.page === S.cur ? ky.y : 0);
+    if (S.verToast) { S.verToast = false; toast('內容已更新到最新版本'); }
     loadLive();
   }
 
@@ -456,6 +459,7 @@
   }
   /** 拿到的區塊資料：有變的才重畫（正在填的表單不會被洗掉） */
   function applyLive(r) {
+    newVer(r.ver);
     var changed = Object.keys(r.live).filter(function (k) { return JSON.stringify(S.live[k]) !== JSON.stringify(r.live[k]); });
     var first = {};
     changed.forEach(function (k) { first[k] = S.live[k] === undefined; S.live[k] = r.live[k]; });
@@ -500,12 +504,28 @@
     chunks.reduce(function (p, list) { return p.then(function () { return api('frontLive', camp, side, list, simNow()).then(applyLive, function () {}); }); }, Promise.resolve());
   }
 
+  /** 有人發布了新版本：已經開著的畫面自動換成新版面（留在同一頁、同一個位置）。
+   * 正在填表單或開著彈窗時先不換，下一次更新（約 1 分鐘）再換；同一個版本只試一次，不會一直重載。 */
+  function newVer(v) {
+    if (preview || S.offline || !v || !S.boot || !S.boot.snapshot) return;
+    if (!(Number(v) > Number(S.boot.snapshot.ver || 0)) || S.verTried === String(v)) return;
+    var a = document.activeElement;
+    if (document.querySelector('.modal-bg') || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+    S.verTried = String(v);
+    try { sessionStorage.removeItem(VK); } catch (e) {}
+    S.keepY = { page: S.cur, y: window.scrollY || 0 };
+    S.verToast = true;
+    boot();
+  }
+
   function loadLive(force) {
     if (S.offline || !S.env) return;
     var list = Front.liveBlocks(S.env, S.cur);
     // 剛打開時已經一起拿到了：20 秒內只補還沒有的（例如夜間模式加的區塊）
-    if (!force && S.freshAt && Date.now() - S.freshAt < 20000) list = list.filter(function (b) { return S.live[b.id] === undefined; });
-    if (!list.length) { afterDraw(); prefetch(); return; }
+    var fresh = !force && S.freshAt && Date.now() - S.freshAt < 20000;
+    if (fresh) list = list.filter(function (b) { return S.live[b.id] === undefined; });
+    // 這一頁沒有動態區塊也照樣問一次（很輕，只回版本號）：才知道有沒有人發布了新版本
+    if (!list.length && fresh) { afterDraw(); prefetch(); return; }
     api('frontLive', camp, side, list, simNow()).then(function (r) {
       applyLive(r);
       S.liveFail = 0;
