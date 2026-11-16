@@ -13,7 +13,7 @@
 .bz-btn:disabled { cursor: default; }
 .bz-btn.ready { background: radial-gradient(circle at 35% 30%, #ffcc80, #ef6c00 70%); box-shadow: 0 12px 0 #a84a00, 0 22px 30px rgba(0,0,0,.3); }
 .bz-btn.go { background: radial-gradient(circle at 35% 30%, #ff8a80, #d50000 70%); box-shadow: 0 12px 0 #8e0000, 0 22px 30px rgba(213,0,0,.45), 0 0 0 0 rgba(255,82,82,.7); animation: bz-pulse 0.9s ease-out infinite; }
-.bz-btn.go:active { transform: translateY(10px); box-shadow: 0 2px 0 #8e0000, 0 8px 14px rgba(0,0,0,.3); animation: none; }
+.bz-btn.go:active, .bz-btn.ready:active { transform: translateY(10px); box-shadow: 0 2px 0 #8e0000, 0 8px 14px rgba(0,0,0,.3); animation: none; }
 @keyframes bz-pulse { 0% { box-shadow: 0 12px 0 #8e0000, 0 22px 30px rgba(213,0,0,.45), 0 0 0 0 rgba(255,82,82,.7); } 100% { box-shadow: 0 12px 0 #8e0000, 0 22px 30px rgba(213,0,0,.45), 0 0 0 26px rgba(255,82,82,0); } }
 .bz-btn.sent { background: radial-gradient(circle at 35% 30%, #90caf9, #1565c0 70%); box-shadow: 0 4px 0 #0d47a1, 0 10px 18px rgba(0,0,0,.25); transform: translateY(8px); }
 .bz-btn.win { background: radial-gradient(circle at 35% 30%, #fff59d, #f9a825 70%); box-shadow: 0 12px 0 #c17900, 0 0 50px rgba(249,168,37,.8); animation: bz-win .6s ease-in-out infinite alternate; }

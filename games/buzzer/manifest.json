@@ -9,18 +9,38 @@
   "data": {
     "title": "搶答大賽",
     "points": 10,
-    "penalty": 0,
-    "lead": 5
+    "penalty": 0
   },
-  "summary": "手機變成搶答鈴（測試用）：主持人唸完題目按「開放搶答」，每支手機的大按鈕同時亮起，最快按下的人全場手機和投影都看得到。答對加分、答錯換下一位或重新開放（答錯的小隊這題不能再搶）。各隊分數可以一鍵送進團隊計分。",
+  "summary": "手機變成搶答鈴（測試用）：主持人按「下一題」讓手機預備、唸完題目按「開放搶答」，最快按下的人全場手機和投影都看得到；比的是按下去的時間，太早按算偷跑。答對加分、答錯換下一位或重新開放（答錯的小隊這題不能再搶）。各隊分數可以一鍵送進團隊計分。",
   "test": true,
   "presets": [
-    { "name": "答錯倒扣", "hint": "答錯扣 5 分，避免亂按。", "cfg": { "points": 10, "penalty": 5 } }
+    {
+      "name": "答錯倒扣",
+      "hint": "答錯扣 5 分，避免亂按。",
+      "cfg": {
+        "points": 10,
+        "penalty": 5
+      }
+    }
   ],
   "config": [
-    { "key": "title", "label": "標題", "type": "text", "dflt": "搶答大賽" },
-    { "key": "points", "label": "答對加幾分", "type": "number", "dflt": 10 },
-    { "key": "penalty", "label": "答錯扣幾分（0＝不扣）", "type": "number", "dflt": 0 },
-    { "key": "lead", "label": "按開放後幾秒按鈕才亮（留給手機收到）", "type": "number", "dflt": 5, "hint": "每隊派代表搶答（十幾支手機）3 秒就夠；全場 100 人一起搶建議 10 秒。" }
+    {
+      "key": "title",
+      "label": "標題",
+      "type": "text",
+      "dflt": "搶答大賽"
+    },
+    {
+      "key": "points",
+      "label": "答對加幾分",
+      "type": "number",
+      "dflt": 10
+    },
+    {
+      "key": "penalty",
+      "label": "答錯扣幾分（0＝不扣）",
+      "type": "number",
+      "dflt": 0
+    }
   ]
 }
