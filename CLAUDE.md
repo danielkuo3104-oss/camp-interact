@@ -49,9 +49,12 @@
 | `assets/richtext.js` | 格式文字 `RT`（和報名系統信件編輯器同語法） |
 | `game.html?c=&g=&a=&s=` + `assets/game.js` | 遊戲載入頁：提供 `host`、下載資源包到 Cache Storage（`ia-game-<id>`）、測試模式、關主通行碼、QR 掃描 |
 | `assets/config.js` | 後端 API 網址（不要改） |
+| `assets/login.js`、`assets/admin-boot.js`、`assets/camps-boot.js` | 原本寫在 index／admin／camps.html 裡的程式（搬出來才能用內容安全政策） |
 | `sw.js` | 離線打開：快取 `ia-shell-vN`（SHELL 清單＋jsQR CDN）；網路優先、斷網用快取；不管 API 與 `games/` |
 
 新增前端檔案要加進 `sw.js` 的 `SHELL`；改了 shell 結構記得把 `CACHE` 版本加一。
+
+**內容安全政策（CSP）**：五個 HTML 的 `<meta http-equiv="Content-Security-Policy">` 不允許頁面內的 `<script>…</script>` 與 `onclick=` 屬性（程式一律放 `assets/*.js`、事件用 `h()` 的 `onclick: fn`）。要連新的外部網域（API、CDN、iframe）要同時改五個 HTML 的 CSP。
 
 ## 後端 .gs
 

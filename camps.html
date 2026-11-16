@@ -2,6 +2,8 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; frame-src https://www.youtube.com https://www.google.com; manifest-src 'self' data:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#2f5d62">
 <title>營隊互動系統｜我的營隊</title>
@@ -28,6 +30,6 @@
 <script src="assets/core.js"></script>
 <script src="assets/staff.js"></script>
 <script src="assets/camps.js"></script>
-<script>homeName('管理', '');</script>
+<script src="assets/camps-boot.js"></script>
 </body>
 </html>
