@@ -11,6 +11,8 @@ var A = {
   isManager: function () { return A.info.isRoot || A.info.role === 'admin' || A.info.role === 'manager'; },
   can: function (perm) { return A.info.isRoot || (A.info.perms || []).indexOf(perm) >= 0; },
   canSide: function (side) { return A.can('edit_' + side); },
+  /** 連結開新分頁時用 window.open：新分頁才帶得到這個分頁的登入（沒勾「保持登入」時登入只存在這個分頁，不然新分頁會跳回登入頁） */
+  openTab: function (e) { var w = window.open(this.href, '_blank'); if (w) e.preventDefault(); },
   frontBase: function () { var u = A.info.frontUrl || ''; if (!u) u = location.href.replace(/[^/]*([?#].*)?$/, ''); return u.replace(/\/?$/, '/'); },
   main: function () { return $('#main'); }
 };
@@ -67,6 +69,15 @@ A.navBuild = function () {
   var info = A.pool.filter(function (p) { return p.category !== 'activity'; }), act = A.pool.filter(function (p) { return p.category === 'activity'; });
   if (info.length) { nav.appendChild(h('div', { class: 'grp' }, '資料')); info.forEach(function (p) { nav.appendChild(item('data/' + p.pkg, p.name + (p.maintenance ? ' 🔧' : ''))); }); }
   if (act.length) { nav.appendChild(h('div', { class: 'grp' }, '活動 Package')); act.forEach(function (p) { nav.appendChild(item('data/' + p.pkg, p.name + (p.maintenance ? ' 🔧' : ''))); }); }
+  // 直接打開兩端的頁面（用編輯者身分看目前發布的版本；開新分頁）
+  var openSide = function (side) { return A.isAdmin() || (I.allPerms || I.perms || []).indexOf('edit_' + side) >= 0; };
+  if (openSide('student') || openSide('worker')) {
+    nav.appendChild(h('div', { class: 'grp' }, '打開頁面'));
+    [['student', '學員頁面'], ['worker', '工作人員頁面']].forEach(function (x) {
+      if (openSide(x[0])) nav.appendChild(h('a', { class: 'nav-open', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + x[0] + '&preview=pub', target: '_blank', title: '用你的編輯者帳號打開' + x[1] + '（目前發布的版本），不用另外登入',
+        onclick: A.openTab }, h('span', { class: 'side-dot' + (x[0] === 'worker' ? ' worker' : '') }), x[1] + ' ↗'));
+    });
+  }
   nav.appendChild(h('div', { class: 'grp' }, '管理'));
   nav.appendChild(item('packages', 'Package 管理'));
   nav.appendChild(item('events', '警示與通知', 'navEvents'));
@@ -156,8 +167,8 @@ A.views.home = function (m) {
       ' ', h('button', { class: 'btn sm', onclick: function () { A.showQr(wl, '工作人員端 QR code', '工作人員掃了打開工作人員端，用姓名＋股別' + (I.passOff ? '' : '＋營隊通行碼') + '登入。', '工作人員端QR.png'); } }, 'QR code'),
       I.workerPassSet || I.passOff ? null : h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, '還沒設定工作人員通行碼')),
     h('div', { class: 'row wrap' }, ['student', 'worker'].filter(A.canSide).map(function (side) {
-      return [h('a', { class: 'btn sm', target: '_blank', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=pub' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（發布版）'),
-        h('a', { class: 'btn sm', target: '_blank', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=draft' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（草稿）')];
+      return [h('a', { class: 'btn sm', target: '_blank', onclick: A.openTab, href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=pub' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（發布版）'),
+        h('a', { class: 'btn sm', target: '_blank', onclick: A.openTab, href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + side + '&preview=draft' }, '預覽' + (side === 'student' ? '學員端' : '工作人員端') + '（草稿）')];
     }))));
   m.appendChild(links);
   m.appendChild(h('div', { class: 'section' }, h('h2', null, '使用順序建議'), h('div', { class: 'card' }, h('ol', { style: { margin: 0, paddingLeft: '20px' } },
