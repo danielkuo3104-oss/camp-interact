@@ -99,12 +99,18 @@
 | `host.qr(el, text)`、`host.link(params)` | 畫 QR code；產生這個遊戲頁的網址 |
 | `host.scan(title)` | 在遊戲裡開相機掃 QR code，回傳掃到的文字（取消是 null）。學員不要用手機相機 App 掃：相機 App 會用別的瀏覽器打開，又要重新登入 |
 | `host.h`、`host.toast`、`host.modal`、`host.fail` | 畫面小工具（和 App 同一套） |
-| `host.api` | 平台版本，現在是 `2`。要用下面的新功能前可以先檢查 `host.api >= 2` |
+| `host.api` | 平台版本，現在是 `3`。要用新功能前可以先檢查 `host.api >= 3`（2：key／scoreSafe／every／fx；3：at／stage／pending、更多動畫與音效、連線提示） |
 | `host.key(text, n)` | 在手機上算密鑰（cyrb53，n 個字、不含容易看錯的 0/O/1/I）。關主和學員算出來一樣，斷網也能驗：`host.key('esc|' + salt + '|' + host.scope + '|' + 關卡 + '|' + 小隊, 8)` |
 | `host.scoreSafe(o)` | 跟 `host.score` 一樣，但沒網路、伺服器忙時先存在手機，連上自動補送（同一隊同一關只留最後一筆）。回傳 `{ sent, queued }`。關主過關按鈕建議用這個 |
 | `host.scorePending()` | 還沒送出的分數有幾筆（畫在關主畫面上提醒） |
 | `host.every(ms, fn, { now })` | 定時做事，畫面切到背景自動暫停，回傳 `stop()`。比 `setInterval` 省電、省流量 |
 | `host.fx` | 共用動畫：`confetti()` 彩帶、`flash(color)` 閃一下、`shake(el)`、`pop(el)`、`buzz(ms)` 震動、`banner(text)` 大字、`glitch(el, on)` 故障、`count(el, from, to, ms)` 數字跳動。手機設定「減少動態效果」時自動變安靜（`host.fx.still()`） |
+| `host.fx`（api 3 新增） | `fireworks({ n })` 煙火、`rain('🎉')` 表情雨、`countdown(3, { until, now, go })` 全螢幕大倒數（回傳 Promise；給 `until: 伺服器時間, now: host.now` 就全場對齊）、`float(el, '+10')` 飄字、`typewriter(el, text)` 打字機（Promise，有 `.skip()`）、`spotlight(el)` 外圈亮一下、`sound(name)` 音效（`tick`／`pop`／`ok`／`bad`／`buzz`／`win`／`drum`，手機合成不用素材檔）、`mute(true)` 關音效 |
+| `host.at(t, fn)` | 到伺服器時間 `t`（毫秒）時做 `fn(晚了幾毫秒)`。手機切到背景、時間校正都照樣準；已經過了會馬上做。回傳取消函式。開獎、開跑、時間到自動公布都用這個，不要自己 `setTimeout` |
+| `host.stage(name, o)` | **主持人狀態**（問答、搶答、投票、開獎這類「主持人控場、全部手機跟著走」的遊戲用）：回傳 `{ get(), on(fn), set(st), patch(obj), stop() }`。主持人（工作人員、編輯者，不含投影）`set` 寫入，自動蓋版本 `v`（伺服器時間）；學員和投影只看（不加入頻道，一百支手機也不重）。只認工作人員寫的、版本最新的。主持人換手機、同步快取被清掉都會自動找回來（存在手機＋收件 `w-名稱`）。狀態 2000 字以內 |
+| `host.pending()` | 還沒送到伺服器的筆數（`host.submit` 排隊中＋`host.scoreSafe` 還沒上傳） |
+| 連線提示 | 遊戲頁左下角自動出現「離線中」「連線不穩」「N 筆送出中」，恢復後顯示「已連線」。遊戲不用自己做 |
+| `host.sync` 的 `onOk(r, batch)` | 每次同步成功後呼叫（`batch` 是這次送出去的事件），可以用來確認「我送的事件到了」 |
 | `host.board()`、`host.scoreboard(el, o)` | 即時分數榜（有計分的遊戲）：`host.board()` 拿這個活動各隊分數＋團隊計分總排名；`host.scoreboard(el)` 直接畫一個會自動更新的分數榜（自己的小隊標起來、分數變了會跳動），回傳 `{ stop, refresh }`。遊戲頁上方也會自動有「🏆 分數」按鈕，`view=board` 是投影用的大分數榜 |
 
 頻道範圍由伺服器檢查，學員改前端也繞不過：
@@ -121,6 +127,17 @@
 - **即時同步只放可以重算的狀態**：Google 快取可能被清掉。
 - **一定要留下的東西用 `host.submit`**：每個動作送一次就好，不要每秒都送。
 - **分數由關主端上傳**：用 `host.score`，每過一關送一次，不要讓學員端自己加分。
+
+## 主持人控場的遊戲怎麼寫（host.stage）
+
+`quiz`、`buzzer`、`vote` 三個測試包都是同一個模式，新遊戲可以照抄：
+
+1. 狀態用 `host.stage('名稱')`：主持人 `stage.set({ phase: 'open', at: host.now() + 6000, … })`，學員 `stage.on(function (st) { 畫面跟著 st 變 })`。
+2. 要全場同時開始的事，在狀態裡放一個未來的伺服器時間 `at`（留 3～8 秒讓手機收到），每支手機用 `host.now()` 對 `at` 倒數。
+3. 比速度的遊戲，時間從「自己手機出現題目／按鈕亮起」開始算（`Math.max(at, 收到的時間)`），晚幾秒收到的手機才不吃虧。
+4. 學員的答案、選擇用 `host.submit('in-名稱', …)`（別人看不到、斷網會補送）；要搶快的用 `host.sync('in-名稱')` 送事件。
+5. 主持人用 `host.inbox` 讀收件算結果，結果（票數、排名）放回狀態給大家看。不要把每個人的資料放進狀態（2000 字上限）。
+6. 統計函式寫成全域的純函式（例如 `qzTally`），壓力測試 `test/loadtest-games.js` 會直接載入來算，跟手機算的一樣。
 
 ## 投影畫面
 
