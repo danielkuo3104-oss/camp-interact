@@ -1113,3 +1113,16 @@ body.gb-showbody .gb-row.r1 { background: rgba(255,213,79,.18); }
 .cam-help ol { margin: 6px 0; padding-left: 20px; }
 .cam-help li { margin: 2px 0; }
 .gb-card { padding: 10px 12px; border-radius: 14px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2); margin-top: 4px; }
+
+/* ---- 手機好按：觸控裝置上按鈕加高（原本小按鈕 28px 太小容易按錯），桌機滑鼠不變 ---- */
+@media (pointer: coarse) {
+  .btn { height: 42px; }
+  .btn.sm { height: 36px; padding: 0 12px; font-size: 13px; }
+  .blk-head .btn.sm { padding: 0 10px; }
+  .input, select.input { height: 44px; }
+  .seg-b { min-height: 36px; }
+  .pp-x { font-size: 14px; padding: 6px 8px; margin: -6px -4px -6px 0; }
+  .wk-menu button { padding: 9px 16px; }
+}
+/* 手機：一列裡的說明文字自己佔一行（不然會被兩邊的按鈕擠成很窄的一條） */
+@media (max-width: 760px) { .row.wrap > .hint.grow { flex-basis: 100%; order: 9; } }
