@@ -36,6 +36,15 @@
  *   host.api = 2；host.key(text, n) 手機上算密鑰（cyrb53）；host.every(ms, fn) 背景自動暫停的定時器
  *   host.scoreSafe(o) 斷網先存手機、連上補送的 host.score；host.scorePending() 還沒送出的筆數
  *   host.fx 共用動畫（confetti、flash、shake、pop、buzz、banner、glitch、count；減少動態效果時自動安靜）
+ *   host.api = 3（2026/11）：
+ *   host.at(t, fn)                   到伺服器時間 t（毫秒）時做 fn(晚了幾毫秒)；手機切到背景、時間校正都照樣準。回傳取消函式
+ *   host.stage(name, o)              「主持人狀態」：主持人（工作人員、編輯者）寫、全部手機跟著走（問答、搶答、投票、開獎都是這個模式）
+ *                                    → { get(), on(fn), set(st), patch(obj), stop(), sync }；只認工作人員寫的、版本最新的；
+ *                                    主持人換手機、同步快取被清掉都找得回來（存在手機＋收件 w-名稱）
+ *   host.pending()                   還沒送到伺服器的筆數（host.submit 排隊中的＋host.scoreSafe 還沒上傳的）
+ *   畫面左下角自動出現連線提示（離線、連線不穩、幾筆等待送出），遊戲不用自己做
+ *   host.fx 新增：fireworks 煙火、rain(emoji) 表情雨、countdown(n) 大倒數 → Promise、float(el, '+10') 飄字、
+ *                typewriter(el, text) 打字機 → Promise、spotlight(el) 聚光、sound(name) 音效（tick/ok/bad/win/buzz/drum/pop）、mute(true/false)
  * 學員、工作人員要先在營隊互動 App 登入過（同一支手機、同一個瀏覽器）。
  */
 var CampGame = (function () {
@@ -407,7 +416,7 @@ var CampGame = (function () {
       param: param, h: h, toast: toast, modal: modal, fail: fail
     };
     /* ---- 共用工具（host.api = 2）：新資源包直接用，不用每包自己寫一份 ---- */
-    host.api = 2;
+    host.api = 3;
     host.key = gameKey;   // host.key('任何文字', 8) → 8 個好輸入的字（沒有 0/O、1/I），同樣的文字每支手機算出來一樣
     host.every = function (ms, fn, o) { return gameEvery(ms, fn, o); };
     host.fx = GameFx;
@@ -448,6 +457,13 @@ var CampGame = (function () {
     /** 即時分數榜（有計分的遊戲）：這個活動各隊的分數＋團隊計分總排名，關主一上傳就看得到 */
     host.board = function () { return act ? api('gameBoard', camp, act.id) : Promise.reject(new Error('要從活動的「開始遊戲」進來才看得到分數')); };
     host.scoreboard = function (box, o) { return gameBoardView(box, host, o || {}); };
+    /* ---- host.api = 3：定時、主持人狀態、連線提示 ---- */
+    host.at = function (t, fn) { return gameAt(host, t, fn); };
+    host.pending = function () {
+      var q = jget(GS_KEY_, []);
+      return (Array.isArray(q) ? q : []).filter(function (x) { return x.camp === camp; }).length + (jget(SQK, []) || []).length;
+    };
+    host.stage = function (name, o) { return gameStage(host, camp, name, scope, o || {}); };
     var scoring = !!(act && manifest.scoring);
     var view = param('view');
     var el = h('div', { class: 'game-root' });
@@ -463,6 +479,7 @@ var CampGame = (function () {
       act && act.test ? h('div', { class: 'game-testbar' }, '🧪 測試模式：跟正式一樣（日期當作今天），結束測試後全部歸零') : null,
       trial ? h('div', { class: 'game-testbar' }, '🎮 試玩：第 ' + trialSq + ' 小隊（資料跟正式分開）　', h('a', { href: '#', onclick: function (ev) { ev.preventDefault(); store(TQ, null); location.reload(); } }, '換小隊')) : null, el));
     if (view === 'board' && scoring) { document.body.classList.add('gb-showbody'); host.scoreboard(el, { big: true, tabs: true }); return; }
+    gameNetPill(host);
     try { d.mount(el, host); } catch (e) { msg('遊戲出錯了', e.message); return; }
     setTimeout(function () { gameSubmit.flush(); }, 2000);   // 上次沒送出的補送
   }
@@ -528,6 +545,98 @@ function gameBoardView(box, host, o) {
   return { stop: function () { stopped = true; t(); }, refresh: refresh };
 }
 
+/* ---------------- 定時（host.at） ----------------
+ * 到伺服器時間 t 做 fn(晚了幾毫秒)。不用一個長的 setTimeout：手機切到背景計時器會被暫停、時間校正後也會變，
+ * 所以每秒（快到時更密）看一次伺服器時間；已經過了就馬上做（晚多少給 fn 自己決定要不要播動畫）。 */
+function gameAt(host, t, fn) {
+  var timer = 0, done = false;
+  var fire = function (late) { if (done) return; done = true; stop(); try { fn(late); } catch (e) {} };
+  var check = function () {
+    if (done) return;
+    var left = Number(t) - host.now();
+    if (!(left > 0)) { fire(Math.max(0, -left)); return; }
+    timer = setTimeout(check, Math.min(left, left > 1500 ? 1000 : 250));
+  };
+  var vis = function () { if (!document.hidden && !done) { clearTimeout(timer); check(); } };
+  function stop() { done = true; clearTimeout(timer); document.removeEventListener('visibilitychange', vis); }
+  document.addEventListener('visibilitychange', vis);
+  timer = setTimeout(check, 0);
+  return stop;
+}
+
+/* ---------------- 主持人狀態（host.stage） ----------------
+ * 一份小小的狀態（2000 字以內），主持人寫、大家看。
+ *   學員、投影：只看（peek，不加入頻道，一百支手機也不會讓頻道變重）
+ *   主持人：set(st) 寫入（自動蓋上版本 v＝伺服器時間）；同時存在手機、送一份到收件 w-名稱，
+ *           同步快取被清掉或換手機時從那裡補回來，並重新廣播
+ * 只認工作人員、編輯者寫的（代號 w／u 開頭），而且只收版本比手上新的。 */
+function gameStage(host, camp, name, scope, o) {
+  var ch = scope ? name + ':' + scope : name, bak = 'w-' + (scope ? name + ':' + scope : name);
+  var writer = host.mode === 'master' && host.param('view') !== 'show' && !o.watch;
+  var cur = null, subs = [], stopped = false, SK = 'stage_' + name;
+  var emit = function () { subs.slice().forEach(function (fn) { try { fn(cur); } catch (e) {} }); };
+  var take = function (st) {
+    if (!st || typeof st !== 'object' || !(Number(st.v) > 0)) return false;
+    if (cur && !(Number(st.v) > Number(cur.v))) return false;
+    cur = st; return true;
+  };
+  var s = gameSync(camp, ch, {
+    fast: o.fast || 1500, slow: o.slow || 6000, peek: !writer, priority: host.mode === 'master',
+    onStates: function (m) {
+      var ch2 = false;
+      Object.keys(m).forEach(function (c) { if (/^[wu]/.test(c) && take(m[c].st)) ch2 = true; });
+      if (ch2) { if (writer) host.save(SK, cur); emit(); }
+    },
+    onError: o.onError
+  });
+  var me = {
+    sync: s, writer: writer,
+    get: function () { return cur; },
+    on: function (fn) { subs.push(fn); if (cur) { try { fn(cur); } catch (e) {} } return function () { subs = subs.filter(function (x) { return x !== fn; }); }; },
+    set: function (st) {
+      if (!writer) throw new Error('只有主持人可以改狀態');
+      st = Object.assign({}, st, { v: Math.max(host.now(), cur ? Number(cur.v) + 1 : 0) });
+      cur = st; host.save(SK, st); s.setState(st);
+      if (o.backup !== false) host.submit(bak, { st: st }).catch(function () {});
+      emit(); return st;
+    },
+    patch: function (p) { return me.set(Object.assign({}, cur || {}, p)); },
+    stop: function () { stopped = true; s.stop(); subs = []; }
+  };
+  if (writer) {
+    // 找回上次的狀態：先用手機存的，再看收件裡最後一份（換手機、另一位主持人寫的）；比同步上的新就重新廣播
+    var again = function (st) { if (!stopped && take(st)) { host.save(SK, cur); s.setState(cur); emit(); } };
+    again(host.load(SK, null));
+    if (o.backup !== false) host.inbox(bak, 0).then(function (r) {
+      var best = null; (r.items || []).forEach(function (x) { var st = x.d && x.d.st; if (st && (!best || Number(st.v) > Number(best.v))) best = st; });
+      again(best);
+    }, function () {});
+  }
+  return me;
+}
+
+/* ---------------- 連線提示（遊戲頁左下角） ----------------
+ * 離線、同步連續失敗、有東西還沒送到伺服器時出現；恢復後顯示一下「已連線」再消失。學員不用猜「到底有沒有送出去」。 */
+function gameNetPill(host) {
+  var pill = h('div', { class: 'game-net', role: 'status' }), bad = false, okUntil = 0, hideT = 0;
+  document.body.appendChild(pill);
+  var draw = function () {
+    var off = navigator.onLine === false, weak = gameSync.fails >= 2, n = 0;
+    try { n = host.pending(); } catch (e) {}
+    var kind = off ? 'off' : weak ? 'weak' : n ? 'wait' : '';
+    var text = off ? '📡 離線中' + (n ? '・' + n + ' 筆連上後自動送出' : '・連上後自動更新') : weak ? '📶 連線不穩，自動重試中' + (n ? '・' + n + ' 筆等待送出' : '') : n ? '⏳ ' + n + ' 筆送出中…' : '';
+    if (off || weak) bad = true;
+    if (kind) { clearTimeout(hideT); okUntil = 0; pill.textContent = text; pill.className = 'game-net on ' + kind; return; }
+    if (bad) {   // 剛從離線／不穩恢復，而且東西都送出去了
+      bad = false; okUntil = Date.now() + 2200;
+      pill.textContent = '✓ 已連線'; pill.className = 'game-net on ok';
+      clearTimeout(hideT); hideT = setTimeout(function () { okUntil = 0; pill.className = 'game-net'; }, 2200);
+    } else if (Date.now() >= okUntil) pill.className = 'game-net';
+  };
+  ['online', 'offline', 'ia-net'].forEach(function (ev) { window.addEventListener(ev, draw); });
+  gameEvery(3000, draw, { now: true });
+}
+
 /* ---------------- 共用工具（給資源包，host.key／host.every／host.fx） ---------------- */
 var GAME_KEY_ABC_ = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** cyrb53 雜湊 → n 個好輸入的字（最多 12） */
@@ -551,6 +660,32 @@ function gameEvery(ms, fn, o) {
   arm(); if (o && o.now) run();
   return function () { stopped = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); };
 }
+/** 音效：用 Web Audio 合成短音（不用素材檔、離線也有）。瀏覽器規定要先碰過畫面才出得了聲，出不了就安靜略過 */
+function gameSound(name) {
+  if (gameSound.muted()) return;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    var ac = gameSound.ac || (gameSound.ac = new AC());
+    if (ac.state === 'suspended') ac.resume();
+    var T = ac.currentTime;
+    var tone = function (f, at, len, type, vol, f2) {
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f, T + at); if (f2) o.frequency.exponentialRampToValueAtTime(f2, T + at + len);
+      g.gain.setValueAtTime(0.0001, T + at); g.gain.exponentialRampToValueAtTime(vol || 0.18, T + at + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, T + at + len);
+      o.connect(g); g.connect(ac.destination); o.start(T + at); o.stop(T + at + len + 0.03);
+    };
+    ({
+      tick: function () { tone(880, 0, 0.07, 'square', 0.07); },
+      pop: function () { tone(520, 0, 0.09, 'sine', 0.2, 900); },
+      ok: function () { tone(660, 0, 0.11, 'triangle'); tone(990, 0.1, 0.18, 'triangle'); },
+      bad: function () { tone(220, 0, 0.28, 'sawtooth', 0.12, 110); },
+      buzz: function () { tone(150, 0, 0.35, 'square', 0.14); },
+      win: function () { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.11, i === 3 ? 0.42 : 0.14, 'triangle', 0.2); }); },
+      drum: function () { for (var i = 0; i < 12; i++) tone(110, i * 0.075, 0.06, 'triangle', 0.1 + i * 0.012, 70); }
+    }[name] || function () {})();
+  } catch (e) {}
+}
+gameSound.muted = function () { try { return localStorage.getItem('ia_gfx_mute') === '1'; } catch (e) { return false; } };
 /** 動畫：彩帶、閃光、震動、數字跳動、故障效果；手機設定「減少動態效果」時自動變簡單 */
 var GameFx = (function () {
   var still = function () { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); };
@@ -568,7 +703,19 @@ var GameFx = (function () {
       + '.gfx-banner{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:9001;background:rgba(20,24,28,.88);color:#fff;padding:18px 26px;border-radius:18px;font-size:22px;font-weight:800;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.35);animation:gfxBan 2.6s ease forwards;pointer-events:none;max-width:86vw}'
       + '@keyframes gfxBan{0%{opacity:0;transform:translate(-50%,-40%) scale(.8)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.04)}20%{transform:translate(-50%,-50%) scale(1)}85%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%)}}'
       + '.gfx-glitch{position:relative}.gfx-glitch.on{animation:gfxGl 1.2s steps(2) infinite}'
-      + '@keyframes gfxGl{0%,100%{text-shadow:2px 0 #f0f,-2px 0 #0ff;transform:none}23%{text-shadow:-3px 0 #f0f,3px 0 #0ff;transform:skewX(4deg)}47%{transform:translateX(-2px)}71%{text-shadow:1px 0 #f0f,-1px 0 #0ff;transform:skewX(-3deg)}}';
+      + '@keyframes gfxGl{0%,100%{text-shadow:2px 0 #f0f,-2px 0 #0ff;transform:none}23%{text-shadow:-3px 0 #f0f,3px 0 #0ff;transform:skewX(4deg)}47%{transform:translateX(-2px)}71%{text-shadow:1px 0 #f0f,-1px 0 #0ff;transform:skewX(-3deg)}}'
+      + '.gfx-fw{position:absolute;width:6px;height:6px;border-radius:50%;animation:gfxFw 1.1s cubic-bezier(.1,.7,.3,1) forwards}'
+      + '@keyframes gfxFw{0%{transform:translate(0,0) scale(1);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0}}'
+      + '.gfx-rain{position:absolute;top:-48px;animation:gfxRain linear forwards}'
+      + '@keyframes gfxRain{to{transform:translate3d(var(--dx),115vh,0) rotate(var(--r))}}'
+      + '.gfx-cd{position:fixed;inset:0;z-index:9002;display:grid;place-items:center;background:rgba(10,14,20,.55);pointer-events:none}'
+      + '.gfx-cd b{font-size:min(46vw,300px);font-weight:900;color:#fff;line-height:1;text-shadow:0 8px 40px rgba(0,0,0,.5);animation:gfxCd .9s ease-out forwards}'
+      + '@keyframes gfxCd{0%{transform:scale(1.7);opacity:0}25%{transform:scale(1);opacity:1}80%{opacity:1}100%{transform:scale(.8);opacity:0}}'
+      + '.gfx-float{position:fixed;z-index:9001;pointer-events:none;font-weight:900;font-size:22px;color:#f2a900;text-shadow:0 2px 6px rgba(0,0,0,.35);transform:translate(-50%,-50%);animation:gfxFloat 1.2s ease-out forwards}'
+      + '@keyframes gfxFloat{0%{opacity:0;margin-top:8px}15%{opacity:1}100%{opacity:0;margin-top:-70px}}'
+      + '.gfx-spot{animation:gfxSpot 1.6s ease-out}'
+      + '@keyframes gfxSpot{0%{box-shadow:0 0 0 0 rgba(242,193,78,.9)}60%{box-shadow:0 0 0 18px rgba(242,193,78,0)}100%{box-shadow:0 0 0 0 rgba(242,193,78,0)}}'
+      + '.gfx-caret::after{content:"▍";animation:gfxCaret .8s steps(2) infinite;margin-left:1px}@keyframes gfxCaret{50%{opacity:0}}';
     document.head.appendChild(st);
   };
   return {
@@ -594,6 +741,84 @@ var GameFx = (function () {
     buzz: function (ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 60); } catch (e) {} },
     banner: function (text) { css(); var b = document.createElement('div'); b.className = 'gfx-banner'; b.textContent = text; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 2700); },
     glitch: function (el, on) { css(); if (!el) return; el.classList.add('gfx-glitch'); el.classList.toggle('on', !!on && !still()); },
+    /** 煙火：o.n 發（預設 5），每發從畫面上半部隨機位置炸開 */
+    fireworks: function (o) {
+      o = o || {}; css();
+      if (still()) return;
+      var layer = document.createElement('div'); layer.className = 'gfx-layer';
+      var colors = o.colors || ['#ffd54f', '#ff7043', '#4fc3f7', '#ba68c8', '#81c784', '#f06292', '#fff'];
+      var shots = Math.min(12, o.n || 5), W = window.innerWidth, H = window.innerHeight;
+      for (var k = 0; k < shots; k++) {
+        var cx = W * (0.15 + Math.random() * 0.7), cy = H * (0.12 + Math.random() * 0.4), col = colors[Math.floor(Math.random() * colors.length)], delay = k * 0.28 + Math.random() * 0.15;
+        for (var i = 0; i < 26; i++) {
+          var a = Math.PI * 2 * i / 26 + Math.random() * 0.2, d = 60 + Math.random() * Math.min(150, W * 0.22), p = document.createElement('i');
+          p.className = 'gfx-fw'; p.style.left = cx + 'px'; p.style.top = cy + 'px'; p.style.background = i % 5 ? col : '#fff'; p.style.boxShadow = '0 0 6px ' + col;
+          p.style.setProperty('--dx', Math.cos(a) * d + 'px'); p.style.setProperty('--dy', (Math.sin(a) * d + 30) + 'px');
+          p.style.animationDelay = delay + 's'; p.style.opacity = '0';
+          layer.appendChild(p);
+        }
+      }
+      document.body.appendChild(layer);
+      setTimeout(function () { layer.remove(); }, shots * 280 + 1800);
+    },
+    /** 表情雨：fx.rain('🎉') 或 fx.rain(['💰', '✨'], { n: 40 }) */
+    rain: function (emoji, o) {
+      o = o || {}; css();
+      if (still()) return;
+      var list = Array.isArray(emoji) ? emoji : [emoji || '🎉'], layer = document.createElement('div'); layer.className = 'gfx-layer';
+      for (var i = 0; i < Math.min(80, o.n || 28); i++) {
+        var e = document.createElement('span'); e.className = 'gfx-rain'; e.textContent = list[i % list.length];
+        e.style.left = Math.random() * 96 + '%'; e.style.fontSize = (20 + Math.random() * 22) + 'px';
+        e.style.setProperty('--dx', (Math.random() * 80 - 40) + 'px'); e.style.setProperty('--r', (Math.random() * 360 - 180) + 'deg');
+        e.style.animationDuration = (1.8 + Math.random() * 1.6) + 's'; e.style.animationDelay = Math.random() * .9 + 's';
+        layer.appendChild(e);
+      }
+      document.body.appendChild(layer);
+      setTimeout(function () { layer.remove(); }, 4600);
+    },
+    /** 大倒數 3、2、1：fx.countdown(3, { go: '開始！' }) → Promise（數完）。要跟伺服器時間對齊就給 o.until（host.now 的毫秒）＋o.now（host.now） */
+    countdown: function (n, o) {
+      o = o || {}; css(); n = Math.max(1, Math.min(10, Math.round(Number(n)) || 3));
+      var self = this;
+      return new Promise(function (ok) {
+        var box = document.createElement('div'); box.className = 'gfx-cd'; document.body.appendChild(box);
+        var clock = o.now || function () { return Date.now(); }, end = o.until || clock() + n * 1000, last = null, t = 0;
+        var step = function () {
+          var left = end - clock(), k = Math.ceil(left / 1000);
+          if (left <= 0) {
+            clearInterval(t);
+            if (o.go) { box.innerHTML = ''; var g = document.createElement('b'); g.style.fontSize = 'min(20vw,130px)'; g.textContent = o.go; box.appendChild(g); self.sound('ok'); setTimeout(function () { box.remove(); }, 700); }
+            else box.remove();
+            ok(); return;
+          }
+          if (k !== last && k <= n) { last = k; box.innerHTML = ''; var b = document.createElement('b'); b.textContent = String(k); if (still()) b.style.animation = 'none'; box.appendChild(b); self.sound('tick'); }
+        };
+        t = setInterval(step, 100); step();
+      });
+    },
+    /** 飄字：fx.float(按鈕, '+10') 從那個元素往上飄走 */
+    float: function (el, text, color) {
+      css(); if (!el || still()) return;
+      var r = el.getBoundingClientRect(), f = document.createElement('div'); f.className = 'gfx-float'; f.textContent = text; if (color) f.style.color = color;
+      f.style.left = (r.left + r.width / 2) + 'px'; f.style.top = r.top + 'px';
+      document.body.appendChild(f); setTimeout(function () { f.remove(); }, 1300);
+    },
+    /** 打字機：一個字一個字出現 → Promise；回傳的 Promise 有 skip() 可以直接顯示全部 */
+    typewriter: function (el, text, ms) {
+      css(); text = String(text || '');
+      var t = 0, done, p = new Promise(function (ok) { done = ok; });
+      p.skip = function () { clearInterval(t); el.textContent = text; el.classList.remove('gfx-caret'); done(); };
+      if (!el) { done(); return p; }
+      if (still()) { p.skip(); return p; }
+      var chars = Array.from(text), i = 0; el.textContent = ''; el.classList.add('gfx-caret');
+      t = setInterval(function () { i++; el.textContent = chars.slice(0, i).join(''); if (i >= chars.length) p.skip(); }, ms || 45);
+      return p;
+    },
+    /** 聚光：元素外圈亮一下（提示「看這裡」） */
+    spotlight: function (el) { css(); if (!el || still()) return; el.classList.remove('gfx-spot'); void el.offsetWidth; el.classList.add('gfx-spot'); },
+    /** 音效（手機內建合成，不用下載檔案）：tick、ok、bad、win、buzz、drum、pop。fx.mute(true) 關掉（記在手機） */
+    sound: function (name) { gameSound(name); },
+    mute: function (v) { if (v === undefined) return gameSound.muted(); try { localStorage.setItem('ia_gfx_mute', v ? '1' : ''); } catch (e) {} return !!v; },
     /** 數字從 from 跳到 to（分數、金額） */
     count: function (el, from, to, ms) {
       if (!el) return; from = Number(from) || 0; to = Number(to) || 0;

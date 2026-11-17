@@ -1040,6 +1040,12 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .game-back { color: var(--accent, #2f5d62); text-decoration: none; font-weight: 600; }
 .game-act { margin-left: auto; font-size: 13px; color: var(--text-3, #888); }
 .game-chip { flex: none; border: 1px solid var(--line-strong, #ddd); background: var(--card, #fff); color: inherit; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+/* 遊戲頁左下角的連線提示（離線、連線不穩、等待送出） */
+.game-net { position: fixed; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 8990; max-width: calc(100vw - 20px); padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #fff; background: rgba(40,44,52,.9); box-shadow: 0 4px 14px rgba(0,0,0,.25); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .25s, transform .25s; }
+.game-net.on { opacity: 1; transform: none; }
+.game-net.off { background: rgba(176,58,46,.94); }
+.game-net.weak { background: rgba(183,121,31,.95); }
+.game-net.ok { background: rgba(46,125,50,.94); }
 /* 投影畫面右上角：回主持人畫面、全螢幕、結束投影 */
 .game-showbar { position: fixed; top: 8px; right: 8px; z-index: 9000; display: flex; gap: 6px; opacity: .35; transition: opacity .2s; }
 .game-showbar:hover, .game-showbar:focus-within { opacity: 1; }

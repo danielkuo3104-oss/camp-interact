@@ -579,14 +579,15 @@ function signPad(o) {
  */
 function gameSync(campId, ch, o) {
   o = o || {};
-  var fast = o.fast || 1500, slow = o.slow || 8000, wait = fast, cursor = null, out = [], state, hasState = false, timer = null, running = false, stopped = false;
+  var fast = o.fast || 1500, slow = o.slow || 8000, wait = fast, cursor = null, out = [], state, hasState = false, timer = null, running = false, stopped = false, errs = 0;
   var dev = '';
   try { dev = sessionStorage.getItem('ia_dev') || ''; if (!dev) { dev = Math.random().toString(36).slice(2, 8); sessionStorage.setItem('ia_dev', dev); } } catch (e) { dev = Math.random().toString(36).slice(2, 8); }
   var me = { me: null, send: send, setState: setState, stop: stop, now: function () { tick(0); } };
   function send(d) { out.push(d); tick(150); }
   function setState(st) { state = st; hasState = true; tick(150); }
-  function stop() { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', vis); }
+  function stop() { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', vis); window.removeEventListener('online', back); }
   function vis() { if (!document.hidden) tick(0); }
+  function back() { errs = 0; tick(300 + Math.random() * 1200); }   // 網路回來了：馬上補同步（大家稍微錯開，不要同一瞬間全部打進來）
   function tick(ms) {
     if (stopped) return;
     clearTimeout(timer);
@@ -602,28 +603,40 @@ function gameSync(campId, ch, o) {
     if (hasState) { opts.state = state; hasState = false; }
     var sentState = 'state' in opts;
     api('sync', campId, ch, batch, cursor, opts).then(function (r) {
-      running = false;
+      running = false; errs = 0; gameSync.note(true);
       me.me = r.me; cursor = r.cursor;
       var busy = batch.length || r.events.length || Object.keys(r.states).length;
       wait = busy ? fast : Math.min(slow, Math.round(wait * 1.4));
-      var floor = Number(r.wait) || 0;   // 伺服器建議的最短間隔（整個營隊太多人在同步時）
+      var floor = Number(r.wait) || 0;
+      if (o.priority) floor = Math.min(floor, fast);   // 主持人、關主的裝置（只有幾台）：不跟著全場一起放慢，控場才即時   // 伺服器建議的最短間隔（整個營隊太多人在同步時）
       if (wait < floor) wait = floor;
       if (r.gaps.length && o.onGap) o.onGap(r.gaps);
       if (r.events.length && o.onEvents) o.onEvents(r.events);
       if (Object.keys(r.states).length && o.onStates) o.onStates(r.states);
-      tick(out.length || hasState ? Math.max(150, floor) : wait);
+      if (o.onOk) { try { o.onOk(r, batch); } catch (e2) {} }   // 這一輪送到了（batch：這次送出去的事件）
+      // 安靜時的下一次同步前後錯開 10%：一百支手機同時收到同一件事後，不會永遠在同一瞬間一起打進來
+      tick(out.length || hasState ? Math.max(150, floor) : Math.round(wait * (0.9 + Math.random() * 0.2)));
     }, function (e) {
       running = false;
       out = batch.concat(out);                 // 沒送出去的放回去，下次再送
       if (sentState && !hasState) hasState = true;
+      errs++; gameSync.note(false);
       if (o.onError) o.onError(e);
-      tick(Math.min(slow * 2, wait * 2));
+      // 連續失敗越等越久（最多 30 秒），加一點隨機；網路回來（online）會馬上再試
+      tick(Math.round(Math.min(30000, Math.max(fast, wait) * Math.pow(2, Math.min(errs, 5))) * (0.7 + Math.random() * 0.6)));
     });
   }
   document.addEventListener('visibilitychange', vis);
+  window.addEventListener('online', back);
   tick(0);
   return me;
 }
+/** 同步通不通（遊戲頁右下角的連線提示用）：連續失敗幾次；變化時發 ia-net 事件 */
+gameSync.fails = 0;
+gameSync.note = function (ok) {
+  var was = gameSync.fails; gameSync.fails = ok ? 0 : was + 1;
+  if ((was >= 2) !== (gameSync.fails >= 2)) { try { window.dispatchEvent(new Event('ia-net')); } catch (e) {} }
+};
 
 /**
  * 送出要留下來的結果（集章、下注、交答案、最後分數）：不排鎖，很多人同時送也很快。
@@ -639,9 +652,11 @@ function gameSubmit(campId, ch, d) {
   q.push({ camp: campId, ch: ch, id: id, d: d, tok: IA.token, who: gameSubmit.who || '', at: Date.now() });
   if (q.length > 300) q = q.slice(-300);
   jset(GS_KEY_, q);
+  gameSubmit.changed_();
   return new Promise(function (ok, bad) { (gameSubmit.wait_[id] = { ok: ok, bad: bad }); gameSubmit.flush(); });
 }
 gameSubmit.wait_ = {};
+gameSubmit.changed_ = function () { try { window.dispatchEvent(new Event('ia-net')); } catch (e) {} };   // 排隊的筆數變了（遊戲頁的連線提示會更新）
 gameSubmit.who = '';   // 學員端／工作人員端打開時設成這個人（s學員代碼／w工作人員ID）
 gameSubmit.flush = function () {
   if (gameSubmit.busy_) return;
@@ -657,6 +672,7 @@ gameSubmit.flush = function () {
     gameSubmit.busy_ = false;
     var ids = {}; batch.forEach(function (x, i) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.ok({ id: x.id, sigOk: r && r.sigOk ? r.sigOk[i] : null }); delete gameSubmit.wait_[x.id]; } });
     jset(GS_KEY_, (jget(GS_KEY_, []) || []).filter(function (x) { return !ids[x.id]; }));
+    gameSubmit.changed_();
     gameSubmit.flush();
   }, function (e) {
     gameSubmit.busy_ = false;
@@ -664,6 +680,7 @@ gameSubmit.flush = function () {
     // 伺服器拒收（格式、權限）：丟掉這幾筆，告訴呼叫的地方
     var ids = {}; batch.forEach(function (x) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.bad(e); delete gameSubmit.wait_[x.id]; } });
     jset(GS_KEY_, (jget(GS_KEY_, []) || []).filter(function (x) { return !ids[x.id]; }));
+    gameSubmit.changed_();
     gameSubmit.flush();
   });
 };
