@@ -1,7 +1,7 @@
 {
   "id": "buzzer",
   "name": "搶答鈴（測試）",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "game.js",
   "css": "game.css",
   "files": [],

@@ -1134,3 +1134,28 @@ body.gb-showbody .gb-row.r1 { background: rgba(255,213,79,.18); }
 @media (max-width: 760px) { .row.wrap > .hint.grow { flex-basis: 100%; order: 9; } }
 /* 管理端選單：直接打開兩端頁面的連結 */
 #nav a.nav-open { color: var(--text-2); }
+
+/* ---------------- 遊戲測試台（bench.html）：一頁同時看關主、玩家、投影 ---------------- */
+body.bench-body { background: #e9ece8; }
+body.bench-body #root { display: block; max-width: none; padding: 0; }
+.bench-top { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--card, #fff); border-bottom: 1px solid var(--line, #ddd); }
+.bench-top .input { width: auto; min-width: 0; }
+.bench-pack { max-width: 260px; }
+.bench-title { font-size: 16px; margin-right: 4px; }
+.bench-chk { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; }
+.bench-status { flex: 1 1 240px; font-size: 13px; color: var(--text-3, #777); }
+.bench-status.bad { color: var(--danger, #b03a2e); font-weight: 600; }
+.bench-frames { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 12px; }
+.bench-phones { display: flex; flex-wrap: wrap; gap: 12px; }
+.bench-cell { display: flex; flex-direction: column; width: 390px; max-width: calc(100vw - 24px); background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 14px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.bench-cell.master { border-color: #c98a2b; }
+.bench-cell.show { width: min(100%, 880px); flex: 1 1 560px; }
+.bench-bar { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 12px; font-size: 14px; background: rgba(0,0,0,.035); border-bottom: 1px solid var(--line, #ddd); }
+.bench-bar b { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bench-cell.master .bench-bar { background: rgba(201,138,43,.14); }
+.bench-bar .bench-sq { flex: none; width: auto; padding: 2px 6px; font-size: 13px; height: 28px; }
+.bench-cell iframe { border: 0; width: 100%; height: min(760px, calc(100vh - 120px)); min-height: 520px; background: #f3f5f2; }
+.bench-cell.show iframe { height: auto; aspect-ratio: 16 / 9; min-height: 300px; }
+/* 在測試台的格子裡：不用「回營隊互動」、測試模式的說明（上面已經有了） */
+html.in-frame .game-back { display: none; }
+html.in-frame .game-testbar { display: none; }

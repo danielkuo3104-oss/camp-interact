@@ -48,13 +48,14 @@
 | `assets/staff.js` | 編輯者頁面共用（登入狀態等） |
 | `assets/richtext.js` | 格式文字 `RT`（和報名系統信件編輯器同語法） |
 | `game.html?c=&g=&a=&s=` + `assets/game.js` | 遊戲載入頁：提供 `host`、下載資源包到 Cache Storage（`ia-game-<id>`）、測試模式、關主通行碼、QR 掃描 |
+| `bench.html?c=` + `assets/bench.js` | 遊戲測試台（編輯者用）：一頁用 iframe 同時開關主、玩家 1～3 位（可選小隊）、投影。選資源包會自動建立活動「🧪 測試台：包名」、連上、開測試模式；玩家格網址 `as=player&vp=p1&sq=1&dev=p1`，用後端虛擬玩家身分（`Sync.gs gameAs_`，cid `v` 開頭），資料和關主同一個範圍 |
 | `assets/config.js` | 後端 API 網址（不要改） |
 | `assets/login.js`、`assets/admin-boot.js`、`assets/camps-boot.js` | 原本寫在 index／admin／camps.html 裡的程式（搬出來才能用內容安全政策） |
 | `sw.js` | 離線打開：快取 `ia-shell-vN`（SHELL 清單＋jsQR CDN）；網路優先、斷網用快取；不管 API 與 `games/` |
 
 新增前端檔案要加進 `sw.js` 的 `SHELL`；改了 shell 結構記得把 `CACHE` 版本加一。
 
-**內容安全政策（CSP）**：五個 HTML 的 `<meta http-equiv="Content-Security-Policy">` 不允許頁面內的 `<script>…</script>` 與 `onclick=` 屬性（程式一律放 `assets/*.js`、事件用 `h()` 的 `onclick: fn`）。要連新的外部網域（API、CDN、iframe）要同時改五個 HTML 的 CSP。
+**內容安全政策（CSP）**：六個 HTML（bench.html 的 `frame-src 'self'`，其他五個一樣） 的 `<meta http-equiv="Content-Security-Policy">` 不允許頁面內的 `<script>…</script>` 與 `onclick=` 屬性（程式一律放 `assets/*.js`、事件用 `h()` 的 `onclick: fn`）。要連新的外部網域（API、CDN、iframe）要同時改每個 HTML 的 CSP。
 
 ## 後端 .gs
 
@@ -105,6 +106,6 @@ REG_DIR=../camp-system node test/e2e-bridge.js    # 跨系統
 node test/loadtest.js <exec> <營隊ID> <Email>     # 正式環境壓測
 ```
 
-- browserN 主題：13 展延／驗收、14 六點修正、18–24 遊戲（18 寫死埠 8799；20 要獨立的預覽伺服器）、22 掃描、23 捷徑交接、24 工作人員遊戲入口、25 離線打開（sw.js）、31 計分自動連動＋密室、32 RPG、33 賭馬、34 投影工具列＋遊戲裡的分數榜＋編輯者開遊戲、36 CSP、37 共編接手、38 問答／搶答鈴／投票＋連線提示。
+- browserN 主題：13 展延／驗收、14 六點修正、18–24 遊戲（18 寫死埠 8799；20 要獨立的預覽伺服器）、22 掃描、23 捷徑交接、24 工作人員遊戲入口、25 離線打開（sw.js）、31 計分自動連動＋密室、32 RPG、33 賭馬、34 投影工具列＋遊戲裡的分數榜＋編輯者開遊戲、36 CSP、37 共編接手、38 問答／搶答鈴／投票＋連線提示、39 遊戲測試台。
 - 瀏覽器測試受實際時間影響：深夜跑 browser5/9/11/13 可能失敗，屬已知現象。
 - 改完要跑相關 browserN ＋ `run.js`，並在 HANDOFF.md 加一段（日期、改了什麼、測試數、這次改的 .gs）。
