@@ -313,6 +313,9 @@ var CampGame = (function () {
   }
   // 工作人員試玩：用玩家身分玩（先選一個小隊），資料放在「活動範圍-p」，跟正式分開
   var trial = !!actId && ((side === 'worker' && param('as') === 'player') || (side === 'staff' && (param('as') === 'player' || want !== 'worker'))), TQ = 'ia_gp_' + camp + '_' + actId;
+  // 遊戲測試台（bench.html）的玩家格：網址帶 vp=玩家代號、sq=小隊。跟一般試玩不一樣：資料和關主放在一起（關主看得到），所以只能用在測試模式的活動
+  var vp = trial ? param('vp').replace(/[^A-Za-z0-9]/g, '').slice(0, 6) : '', bench = !!vp;
+  if (window.top !== window) document.documentElement.classList.add('in-frame');
   function pickSquad(info) {
     var cfg = Object.assign({}, manifest.data || {}, info.activity.cfg || {}), n = Number(cfg.squads) || 8, have = store(TQ);
     if (have && Number(have) >= 1 && Number(have) <= n) return Promise.resolve(have);
@@ -341,7 +344,8 @@ var CampGame = (function () {
     if (info.activity && info.activity.pack !== g) throw new Error('這個活動連的是另一個遊戲（' + info.activity.pack + '）');
     var m = !trial && info.activity && info.activity.master;
     if (m && !m.ok) { store(MK, null); ticket = ''; }
-    var gate = trial ? pickSquad(info).then(function (q) { trialSq = q; }) : m && !m.ok ? masterLogin(info) : Promise.resolve(info);
+    if (bench && !(info.activity && info.activity.test)) throw new Error('測試台的玩家只能用在「測試模式」的活動（到遊戲測試台重新打開）');
+    var gate = bench ? Promise.resolve().then(function () { trialSq = String(Math.max(1, Math.min(999, Math.round(Number(param('sq')) || 1)))); }) : trial ? pickSquad(info).then(function (q) { trialSq = q; }) : m && !m.ok ? masterLogin(info) : Promise.resolve(info);
     return gate.then(function () { if (m && !trial) jset(MEK, info); return install(manifest, res[0].fresh); }).then(function (got) {
       var entry = clean(manifest.entry || 'game.js'), css = manifest.css ? clean(manifest.css) : '';
       if (got) got.files.forEach(function (f, i) { blobs[f] = URL.createObjectURL(got.blobs[i]); });
@@ -352,10 +356,11 @@ var CampGame = (function () {
 
   function start(d, info) {
     document.title = manifest.name || '營隊遊戲';
-    var me = trial ? Object.assign({}, info.me, { squad: trialSq }) : info.me, who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : 'u';
+    var VP = bench ? { p: vp, squad: trialSq, name: (param('vn') || '玩家 ' + vp).slice(0, 20) } : null;   // 測試台的虛擬玩家（後端 gameAs_）
+    var me = trial ? Object.assign({}, info.me, { squad: trialSq }, VP ? { name: VP.name, vp: vp } : {}) : info.me, who = (me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : 'u') + (VP ? '_' + vp : '');
     gameSubmit.who = me.sid ? 's' + me.sid : me.wid ? 'w' + me.wid : '';
     var act = info.activity, scope = act ? act.scope || act.id : '';   // 測試模式：範圍是 活動ID-t第幾次，結束測試後換新的，等於歸零
-    var chScope = trial ? scope + '-p' : scope;   // 試玩的資料（頻道、存檔）另外放；關主密鑰還是照活動範圍（host.scope）
+    var chScope = trial && !bench ? scope + '-p' : scope;   // 試玩的資料（頻道、存檔）另外放；關主密鑰還是照活動範圍（host.scope）
     var saveKey = 'ia_g_' + camp + '_' + g + (chScope ? '_' + chScope : '') + '_' + who;
     var signKey = 'ia_gk_' + camp + '_' + g + (scope ? '_' + scope : '');   // 關主密鑰（照活動範圍：測試模式換一次就是新的）
     var DAY = 86400000, TW = 8 * 3600000;
@@ -374,11 +379,11 @@ var CampGame = (function () {
         return t;
       },
       now: function () { return Date.now() + CLOCK_.off; },
-      sync: function (ch, o) { return gameSync(camp, ch, o); },
-      submit: function (ch, data) { return gameSubmit(camp, ch, data); },
+      sync: function (ch, o) { return gameSync(camp, ch, VP ? Object.assign({}, o, { as: VP }) : o); },
+      submit: function (ch, data) { return gameSubmit(camp, ch, data, VP || undefined); },
       // 這個頻道還排在手機裡、還沒送出去的結果（斷網時送的）→ [d, …]
-      queued: function (ch) { var q = jget(GS_KEY_, []); return (Array.isArray(q) ? q : []).filter(function (x) { return x.camp === camp && x.ch === ch; }).map(function (x) { return x.d; }); },
-      inbox: function (ch, since) { return api('gameInbox', camp, ch, since || 0); },
+      queued: function (ch) { var q = jget(GS_KEY_, []); return (Array.isArray(q) ? q : []).filter(function (x) { return x.camp === camp && x.ch === ch && (x.as ? x.as.p : '') === (VP ? VP.p : ''); }).map(function (x) { return x.d; }); },
+      inbox: function (ch, since) { return VP ? api('gameInbox', camp, ch, since || 0, VP) : api('gameInbox', camp, ch, since || 0); },
       // 密鑰先存在手機（signAll），產生時不用連線；沒存到的才連線拿
       sign: function (text, squad) {
         var all = jget(signKey, {}) || {}, have = all[text] && all[text][squad];
@@ -477,7 +482,7 @@ var CampGame = (function () {
     var showBar = view === 'show' || view === 'board' ? gameShowBar(host) : null;
     screen(h('div', null, h('div', { class: 'game-bar' }, back, act && !showBar ? h('span', { class: 'game-act' }, act.name) : null, boardBtn), showBar,
       act && act.test ? h('div', { class: 'game-testbar' }, '🧪 測試模式：跟正式一樣（日期當作今天），結束測試後全部歸零') : null,
-      trial ? h('div', { class: 'game-testbar' }, '🎮 試玩：第 ' + trialSq + ' 小隊（資料跟正式分開）　', h('a', { href: '#', onclick: function (ev) { ev.preventDefault(); store(TQ, null); location.reload(); } }, '換小隊')) : null, el));
+      bench ? h('div', { class: 'game-testbar' }, '🧪 測試台：' + VP.name + '・第 ' + trialSq + ' 小隊') : trial ? h('div', { class: 'game-testbar' }, '🎮 試玩：第 ' + trialSq + ' 小隊（資料跟正式分開）　', h('a', { href: '#', onclick: function (ev) { ev.preventDefault(); store(TQ, null); location.reload(); } }, '換小隊')) : null, el));
     if (view === 'board' && scoring) { document.body.classList.add('gb-showbody'); host.scoreboard(el, { big: true, tabs: true }); return; }
     gameNetPill(host);
     try { d.mount(el, host); } catch (e) { msg('遊戲出錯了', e.message); return; }

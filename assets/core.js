@@ -580,8 +580,8 @@ function signPad(o) {
 function gameSync(campId, ch, o) {
   o = o || {};
   var fast = o.fast || 1500, slow = o.slow || 8000, wait = fast, cursor = null, out = [], state, hasState = false, timer = null, running = false, stopped = false, errs = 0;
-  var dev = '';
-  try { dev = sessionStorage.getItem('ia_dev') || ''; if (!dev) { dev = Math.random().toString(36).slice(2, 8); sessionStorage.setItem('ia_dev', dev); } } catch (e) { dev = Math.random().toString(36).slice(2, 8); }
+  var dev = param('dev').replace(/[^A-Za-z0-9]/g, '').slice(0, 8);   // 測試台：同一個分頁裡的關主、玩家各用自己的裝置代號
+  if (!dev) try { dev = sessionStorage.getItem('ia_dev') || ''; if (!dev) { dev = Math.random().toString(36).slice(2, 8); sessionStorage.setItem('ia_dev', dev); } } catch (e) { dev = Math.random().toString(36).slice(2, 8); }
   var me = { me: null, send: send, setState: setState, stop: stop, now: function () { tick(0); } };
   function send(d) { out.push(d); tick(150); }
   function setState(st) { state = st; hasState = true; tick(150); }
@@ -599,6 +599,7 @@ function gameSync(campId, ch, o) {
     if (document.hidden) { tick(slow); return; }
     running = true;
     var batch = out.splice(0, 20), opts = { dev: dev };
+    if (o.as) opts.as = o.as;   // 測試台的虛擬玩家（工作人員、編輯者才有用）
     if (o.peek && !batch.length && !hasState) opts.peek = true;   // o.peek：只看不加入（例如看開獎結果），不會被算進頻道成員
     if (hasState) { opts.state = state; hasState = false; }
     var sentState = 'state' in opts;
@@ -646,10 +647,12 @@ gameSync.note = function (ok) {
  * 結果是 { id, sigOk }：內容帶 { signed, sig }（關主密鑰）時 sigOk 是伺服器驗的結果，沒有就是 null。
  */
 var GS_KEY_ = 'ia_gsq';
-function gameSubmit(campId, ch, d) {
+function gameSubmit(campId, ch, d, as) {
   var id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   var q = jget(GS_KEY_, []); if (!Array.isArray(q)) q = [];
-  q.push({ camp: campId, ch: ch, id: id, d: d, tok: IA.token, who: gameSubmit.who || '', at: Date.now() });
+  var item = { camp: campId, ch: ch, id: id, d: d, tok: IA.token, who: gameSubmit.who || '', at: Date.now() };
+  if (as) { item.as = as; item.fr = gameSubmit.frame; }   // 測試台的虛擬玩家：記是哪一格送的，各格只送自己的
+  q.push(item);
   if (q.length > 300) q = q.slice(-300);
   jset(GS_KEY_, q);
   gameSubmit.changed_();
@@ -657,6 +660,7 @@ function gameSubmit(campId, ch, d) {
 }
 gameSubmit.wait_ = {};
 gameSubmit.changed_ = function () { try { window.dispatchEvent(new Event('ia-net')); } catch (e) {} };   // 排隊的筆數變了（遊戲頁的連線提示會更新）
+gameSubmit.frame = typeof location !== 'undefined' ? param('dev').replace(/[^A-Za-z0-9]/g, '').slice(0, 8) : '';
 gameSubmit.who = '';   // 學員端／工作人員端打開時設成這個人（s學員代碼／w工作人員ID）
 gameSubmit.flush = function () {
   if (gameSubmit.busy_) return;
@@ -665,10 +669,11 @@ gameSubmit.flush = function () {
   var old = Date.now() - 4 * 86400000, all = q.filter(function (x) { return !(x.at < old); });
   if (all.length !== q.length) jset(GS_KEY_, all.length ? all : null);
   q = all.filter(function (x) { return gameSubmit.who && x.who ? x.who === gameSubmit.who : x.tok === IA.token; });
+  q = q.filter(function (x) { return (x.fr || '') === (x.as ? gameSubmit.frame : ''); });
   if (!q.length || !IA.token) return;
-  var head = q[0], batch = q.filter(function (x) { return x.camp === head.camp && x.ch === head.ch; }).slice(0, 20);
+  var head = q[0], batch = q.filter(function (x) { return x.camp === head.camp && x.ch === head.ch && (x.as ? x.as.p : '') === (head.as ? head.as.p : ''); }).slice(0, 20);
   gameSubmit.busy_ = true;
-  api('gameSubmit', head.camp, head.ch, batch.map(function (x) { return { id: x.id, d: x.d }; })).then(function (r) {
+  api('gameSubmit', head.camp, head.ch, batch.map(function (x) { return { id: x.id, d: x.d }; }), head.as || undefined).then(function (r) {
     gameSubmit.busy_ = false;
     var ids = {}; batch.forEach(function (x, i) { ids[x.id] = 1; var w = gameSubmit.wait_[x.id]; if (w) { w.ok({ id: x.id, sigOk: r && r.sigOk ? r.sigOk[i] : null }); delete gameSubmit.wait_[x.id]; } });
     jset(GS_KEY_, (jget(GS_KEY_, []) || []).filter(function (x) { return !ids[x.id]; }));

@@ -50,7 +50,7 @@ function bzScores(host, sc, mine, big) {
 /* ---------------- 學員 ---------------- */
 function bzPlayer(el, host, D) {
   var h = host.h, st = null, key = '', pressed = host.load('pressed', null), sender = null;
-  var squad = String(host.me && host.me.squad !== undefined && host.me.squad !== null ? host.me.squad : ''), myId = host.me.sid ? 's' + host.me.sid : host.me.wid ? 'w' + host.me.wid : 'u';
+  var squad = String(host.me && host.me.squad !== undefined && host.me.squad !== null ? host.me.squad : ''), myId = host.load('cid', '') || (host.me.sid ? 's' + host.me.sid : host.me.wid ? 'w' + host.me.wid : 'u');   // 自己在同步頻道裡的代號（送出按鈴時伺服器會告訴我）
   var head = h('div', { class: 'bz-head' }), btn = h('button', { class: 'bz-btn', type: 'button' }, h('span', { class: 'bz-btxt' }, '等待')), note = h('div', { class: 'bz-note' }), scores = h('div', { class: 'card bz-card' });
   el.appendChild(head); el.appendChild(h('div', { class: 'bz-stage' }, btn)); el.appendChild(note); el.appendChild(scores);
   head.appendChild(h('div', { class: 'bz-title' }, '🔔 ' + D.title)); head.appendChild(h('div', { class: 'small bz-sub' }, (host.me.name || '') + (squad ? '・第 ' + squad + ' 小隊' : '')));
@@ -63,7 +63,7 @@ function bzPlayer(el, host, D) {
     host.fx.buzz(80); host.fx.sound('buzz');
     // 用同步頻道送（比送出收件快很多）；送到了就收掉這條連線，不佔頻道
     if (sender) sender.stop();
-    var mySender = sender = host.sync(host.ch('in-buzz'), { fast: 600, slow: 3000, onOk: function (r, batch) { if (batch && batch.length) { mySender.stop(); if (sender === mySender) sender = null; } } });
+    var mySender = sender = host.sync(host.ch('in-buzz'), { fast: 600, slow: 3000, onOk: function (r, batch) { if (r && r.me) { myId = String(r.me).split('.')[0]; host.save('cid', myId); } if (batch && batch.length) { mySender.stop(); if (sender === mySender) sender = null; } } });
     mySender.send(d);
     key = ''; tick();
   }

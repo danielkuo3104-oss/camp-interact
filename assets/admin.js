@@ -78,6 +78,11 @@ A.navBuild = function () {
         onclick: A.openTab }, h('span', { class: 'side-dot' + (x[0] === 'worker' ? ' worker' : '') }), x[1] + ' ↗'));
     });
   }
+  // 遊戲測試台：一頁同時看關主、玩家、投影（會自動建立測試用的活動）
+  if (A.pool.some(function (p) { return p.pkg === 'schedule'; })) {
+    if (!(openSide('student') || openSide('worker'))) nav.appendChild(h('div', { class: 'grp' }, '打開頁面'));
+    nav.appendChild(h('a', { class: 'nav-open', href: 'bench.html?c=' + encodeURIComponent(A.camp), target: '_blank', title: '一頁同時看關主、玩家、投影畫面，測試每個遊戲資源包', onclick: A.openTab }, '🧪 遊戲測試台 ↗'));
+  }
   nav.appendChild(h('div', { class: 'grp' }, '管理'));
   nav.appendChild(item('packages', 'Package 管理'));
   nav.appendChild(item('events', '警示與通知', 'navEvents'));
