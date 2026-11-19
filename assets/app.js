@@ -42,12 +42,32 @@
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' }, h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '營隊互動'), h('h1', null, title), text ? h('p', { class: 'muted', style: { margin: 0 } }, text) : null, extra || null)));
   }
 
-  IA.onAuth = function () {
+  /** 登入失效（過期、帳號停用）：停掉所有計時器（不然「先顯示上次內容」會蓋在登入畫面上，還寫「離線」），清掉舊登入，說清楚要重新登入 */
+  IA.onAuth = function (err) {
     if (preview) { location.href = 'index.html?next=' + encodeURIComponent(location.pathname.split('/').pop() + location.search); return; }
+    var had = !!store(TK);
+    stopAll();
     store(TK, null);
     try { sessionStorage.removeItem(VK); } catch (e) {}
-    start();
+    jset(BK, null); jset(LK, null);   // 上次的內容是舊登入的，不要再拿出來顯示
+    if (!had) { start(); return; }
+    msgScreen('登入已過期', ((err && err.message) || '登入已過期') + '。請重新登入' + (side === 'student' ? '（或從報名系統的學員專區再按一次「進入營隊互動」）' : '') + '。',
+      h('button', { class: 'btn primary', onclick: start }, '重新登入'));
   };
+  /** 停掉畫面上的所有計時器、回到還沒載入的狀態 */
+  function stopAll() {
+    clearTimeout(S.early); S.early = null;
+    clearTimeout(S.timer); clearTimeout(S.liveT); clearTimeout(S.retryT);
+    S.boot = null; S.env = null; S.offline = false; S.offWhy = ''; S.retryN = 0; S.prefetched = false;
+    Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
+    window.onhashchange = null;
+  }
+  /** 連不上伺服器但手機有網路（Apps Script 冷啟動、暫時故障）：不能只等 online 事件（不會來），自己隔一段時間再試 */
+  function retryLater() {
+    clearTimeout(S.retryT);
+    S.retryN = (S.retryN || 0) + 1;
+    S.retryT = setTimeout(function () { if (S.offline && !document.hidden) boot(); }, Math.min(60000, 10000 * Math.pow(2, S.retryN - 1)));
+  }
 
   function start() {
     if (camp && root.querySelector('.wait-wrap') && jget(GK, '')) waitScreen('載入中…', '');
@@ -193,16 +213,18 @@
     else if (!preview) { try { ver = sessionStorage.getItem(VK) || ''; } catch (e) {} }
     if (!S.boot && !root.querySelector('.login-card')) waitScreen('載入中…', '');
     // 斷網（或網路很慢）時不要一直停在「載入中」：有上次存的內容就先顯示，連上了再換成最新的
-    var saved = !preview && !S.boot && jget(BK, null), early = null;
-    if (saved) early = setTimeout(function () {
-      early = null;
-      if (S.boot) return;
-      S.offline = true; show(saved);
+    // 手機有網路只是伺服器慢（久沒用，Apps Script 要冷啟動）：寫「正在連線」，不要寫「離線」
+    var saved = !preview && !S.boot && jget(BK, null);
+    clearTimeout(S.early); S.early = null;
+    if (saved) S.early = setTimeout(function () {
+      S.early = null;
+      if (S.boot || !store(TK)) return;   // 已經載好、或登入失效回到登入畫面了：不要蓋掉
+      S.offline = true; S.offWhy = navigator.onLine === false ? 'net' : 'slow'; show(saved);
     }, navigator.onLine === false ? 0 : 5000);
     // live：打開時順便把所有動態區塊的資料一起拿回來（少一次請求，很多人同時打開時不用排那麼久）
     api('frontBoot', camp, side, ver, simNow(), { live: true }).then(function (b) {
-      if (early) { clearTimeout(early); early = null; }
-      S.offline = false;
+      clearTimeout(S.early); S.early = null;
+      S.offline = false; S.offWhy = ''; S.retryN = 0; clearTimeout(S.retryT);
       if (b.camp) rememberLogo(b.camp.loadImg);
       if (b.me) gameSubmit.who = b.me.sid ? 's' + b.me.sid : b.me.wid ? 'w' + b.me.wid : '';
       if (!preview) setTimeout(function () { gameSubmit.flush(); }, 3000);   // 上次沒送出的遊戲結果（斷網、關掉 App）補送
@@ -215,13 +237,16 @@
       if (!preview) { try { sessionStorage.setItem(VK, b.snapshot.ver); } catch (e) {} jset(BK, Object.assign({}, b, { live: null })); }
       show(b);
     }, function (e) {
-      if (early) { clearTimeout(early); early = null; }
+      clearTimeout(S.early); S.early = null;
       if (S.verToast) { S.verToast = false; S.keepY = null; S.verTried = ''; }   // 自動換新版沒成功：下次更新再試
       var cached = !preview && jget(BK, null);
       if (e.code === 'NET' && cached) {
         // 網路回來時自動拿最新的
         window.addEventListener('online', function again() { window.removeEventListener('online', again); if (S.offline) boot(); });
-        if (S.offline && S.boot) return;   // 已經在顯示上次的內容了，不要重畫（不會跳回首頁）
+        retryLater();
+        var why = navigator.onLine === false ? 'net' : 'server', was = S.offWhy;
+        S.offWhy = why;
+        if (S.offline && S.boot) { if (was !== why) render(); return; }   // 已經在顯示上次的內容了，不要重畫（不會跳回首頁）；只換提示文字
         S.offline = true; show(cached); return;
       }
       msgScreen('無法載入', e.message, h('button', { class: 'btn primary', onclick: boot }, '重試'));
@@ -240,7 +265,7 @@
   function logoutBtn() {
     if (preview) return null;
     return h('button', { class: 'btn sm', onclick: function () {
-      api('logout').catch(function () {}); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {}
+      api('logout').catch(function () {}); stopAll(); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {}
       // 共用手機：上一個人的區塊資料也清掉，下一個人登入不會先看到
       jset(LK, null); Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
       start();
@@ -298,7 +323,11 @@
     if (n !== S.night) { S.night = n; S.env.night = n; render(); return; }
     loadLive();
   }
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.env) setTimeout(loadLive, Math.random() * 2000); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    if (S.offline && S.boot && store(TK)) { boot(); return; }   // 切回來時還在顯示上次內容：馬上再連一次
+    if (S.env) setTimeout(loadLive, Math.random() * 2000);
+  });
   // 整分鐘：現在線往下走、時間 +1（不用等下一次向伺服器拿資料）
   onMinute(function () { if (body && !document.hidden) Front.markNow(body); });   // 很多人一起打開手機時錯開一點
 
@@ -392,7 +421,7 @@
     var banners = [];
     if (preview) banners.push(h('div', { class: 'recall-banner row wrap', style: { gap: '8px' } }, h('span', { class: 'grow' }, preview === 'draft' ? '預覽：目前的草稿（還沒發布）' : '預覽：目前發布的第 ' + b.snapshot.ver + ' 版'), simBox()));
     if (b.recall) banners.push(h('div', { class: 'recall-banner' }, '營隊已結束，這裡是回憶模式：內容保留，不會再更新。'));
-    if (S.offline) banners.push(h('div', { class: 'recall-banner' }, '目前離線，顯示上次載入的內容。'));
+    if (S.offline) banners.push(h('div', { class: 'recall-banner' }, S.offWhy === 'slow' ? '正在連線，先顯示上次載入的內容…' : S.offWhy === 'server' ? '暫時連不上伺服器，先顯示上次載入的內容，稍後自動重試。' : '目前離線，顯示上次載入的內容。'));
     if (!preview && rs[0] && S.cur === rs[0].id && canInstall() && !store(IK)) banners.push(installBanner());
     if (S.night && side === 'worker') banners.push(h('div', { class: 'night-banner' }, icon('moon'), '夜間時段：學員端已切換為夜間模式'));
     body = h('div', { class: 'app-body' }, banners);
