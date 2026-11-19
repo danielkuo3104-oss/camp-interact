@@ -1159,3 +1159,48 @@ body.bench-body #root { display: block; max-width: none; padding: 0; }
 /* 在測試台的格子裡：不用「回營隊互動」、測試模式的說明（上面已經有了） */
 html.in-frame .game-back { display: none; }
 html.in-frame .game-testbar { display: none; }
+
+/* 回顧彩蛋：營隊結束後首頁的回顧卡 */
+.recap-card { background: linear-gradient(150deg, #3b2f63, #2f5d62 55%, #c0793a); }
+.recap-card .rc-note { opacity: .92; margin-top: 4px; white-space: pre-line; line-height: 1.6; }
+.recap-card .rc-links { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; position: relative; z-index: 1; }
+.recap-card .rc-link { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, .95); color: #1d2521; text-decoration: none; font-weight: 600; min-height: 44px; box-shadow: 0 2px 8px rgba(0, 0, 0, .15); transition: transform .15s; }
+.recap-card .rc-link:active { transform: scale(.98); }
+.recap-card .rc-ic { font-size: 20px; }
+.recap-card .rc-go { opacity: .5; }
+.recap-card .rc-soon { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.recap-card .rc-lock { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, .14); border: 1px dashed rgba(255, 255, 255, .45); }
+
+/* 版權聲明（前台頁尾）＋學員端點了的假當機（crashfx.js） */
+.app-copy { text-align: center; padding: 18px 0 6px; font-size: 11px; color: var(--muted); opacity: .7; }
+.app-copy-btn { background: none; border: 0; padding: 6px 10px; font: inherit; color: inherit; cursor: default; -webkit-tap-highlight-color: transparent; }
+.crx-layer { position: fixed; inset: 0; z-index: 2147483000; pointer-events: auto; }
+.crx-msg { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); font: 700 18px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+/* 雜訊閃爍 */
+.crx-glitch { animation: crx-jit .18s steps(2) infinite; }
+.crx-glitch .page-content > * { animation: crx-slice .35s steps(3) infinite; }
+.crx-glitch .page-content > *:nth-child(2n) { animation-duration: .27s; animation-direction: reverse; }
+@keyframes crx-jit { 0% { transform: translate(0, 0); filter: none; } 25% { transform: translate(-4px, 2px); filter: hue-rotate(90deg) saturate(3); } 50% { transform: translate(3px, -3px); filter: invert(.15) contrast(1.6); } 75% { transform: translate(-2px, -1px); filter: hue-rotate(-60deg); } 100% { transform: translate(2px, 3px); filter: none; } }
+@keyframes crx-slice { 0% { clip-path: inset(0 0 0 0); transform: translateX(0); } 33% { clip-path: inset(12% 0 40% 0); transform: translateX(-10px); } 66% { clip-path: inset(55% 0 8% 0); transform: translateX(12px); } 100% { clip-path: inset(0 0 0 0); transform: translateX(0); } }
+.crx-noise { background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .18) 0 2px, transparent 2px 4px); mix-blend-mode: multiply; }
+.crx-bars { position: absolute; inset: 0; background: linear-gradient(transparent 0 30%, rgba(255, 0, 80, .18) 30% 34%, transparent 34% 62%, rgba(0, 200, 255, .2) 62% 65%, transparent 65%); background-size: 100% 220%; animation: crx-roll .6s linear infinite; }
+@keyframes crx-roll { to { background-position: 0 220%; } }
+.crx-sig { color: #fff; background: rgba(0, 0, 0, .75); padding: 8px 14px; border-radius: 6px; letter-spacing: .08em; animation: crx-blink .4s steps(2) infinite; }
+@keyframes crx-blink { 50% { opacity: .2; } }
+/* 一張張被清空 */
+.crx-fall { transition: transform .7s cubic-bezier(.55, 0, .9, .4), opacity .7s; transform: translateY(110vh) rotate(var(--crx-r, 8deg)) !important; opacity: 0 !important; pointer-events: none; }
+.crx-clear.on { background: #000; }
+.crx-cursor { color: #c8c8c8; font-weight: 400; font-size: 15px; animation: crx-blink 1s steps(2) infinite; }
+/* 錯誤視窗 */
+.crx-win { position: absolute; width: min(280px, 78vw); background: #f0f0f0; color: #111; border: 1px solid #888; box-shadow: 3px 3px 0 rgba(0, 0, 0, .35); font: 13px/1.4 system-ui, sans-serif; animation: crx-pop .12s ease-out; }
+.crx-win-bar { display: flex; justify-content: space-between; background: linear-gradient(90deg, #0a246a, #3a6ea5); color: #fff; padding: 4px 8px; font-weight: 700; }
+.crx-win-body { padding: 14px 12px 8px; }
+.crx-win-btn { margin: 0 12px 10px auto; width: 72px; text-align: center; border: 1px solid #555; background: #ddd; padding: 3px 0; }
+@keyframes crx-pop { from { transform: scale(.6); opacity: 0; } }
+/* 藍色當機畫面 */
+.crx-bsod { background: #0078d7; color: #fff; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.crx-bs { max-width: 520px; font-family: system-ui, sans-serif; }
+.crx-bs-face { font-size: 96px; line-height: 1; margin-bottom: 18px; }
+.crx-bs-t { font-size: 20px; line-height: 1.5; }
+.crx-bs-p { font-size: 20px; margin: 18px 0; }
+.crx-bs-s { font-size: 13px; opacity: .85; }

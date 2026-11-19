@@ -240,7 +240,7 @@ var PkgAdmin = (function () {
 
   var TABS = {
     people: [['workers', '工作人員'], ['assign', '工作分配'], ['setup', '股別與活動'], ['squads', '小隊'], ['students', '學員'], ['rooms', '分房'], ['config', '設定']],
-    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['cards', '活動卡片'], ['rotations', '活動細流'], ['games', '遊戲資源包'], ['places', '場地'], ['flows', '流程清單'], ['config', '設定']],
+    schedule: [['items', '營期流程'], ['activities', '活動＆課程'], ['cards', '活動卡片'], ['rotations', '活動細流'], ['games', '遊戲資源包'], ['places', '場地'], ['flows', '流程清單'], ['recap', '回顧彩蛋'], ['config', '設定']],
     studentflow: [['items', '學員行程'], ['pending', '待處理變更'], ['config', '設定']],
     emergency: [['config', '聯絡與夜間設定'], ['flow', '處理流程圖'], ['watch', '守夜人員'], ['submissions', '自我評估切結書'], ['form', '表單格式']],
     courses: [['list', '課程'], ['config', '設定']],
@@ -2101,6 +2101,51 @@ var PkgAdmin = (function () {
         isEmpty: function (v) { return !String(v.name || '').trim(); },
         toData: function (v, r) { return { id: r.id, name: v.name, cat: v.cat }; }
       });
+    },
+    /** 回顧彩蛋：營隊結束後，學員首頁的「現在主題」換成回顧卡（影片、照片、雲端資料夾），每個連結可以各自設出現時間 */
+    recap: function (box, D) {
+      var rc = D.recap || { on: true, title: '', note: '', links: [] }, rows = (rc.links || []).map(function (x) { return Object.assign({}, x); });
+      var KINDS = [{ value: 'video', label: '🎬 影片' }, { value: 'photo', label: '📷 照片' }, { value: 'folder', label: '📁 雲端資料夾' }, { value: 'link', label: '🔗 其他連結' }];
+      var dis = { disabled: !R.canEdit };
+      var on = h('input', Object.assign({ type: 'checkbox', class: 'sw', checked: rc.on !== false }, dis));
+      var title = inp(rc.title, Object.assign({ placeholder: '營隊回顧', maxlength: 30 }, dis)), note = area(rc.note, Object.assign({ rows: 2, maxlength: 300, placeholder: '例如：謝謝大家這幾天的陪伴！回顧影片在這裡～' }, dis));
+      var list = h('div', { class: 'col', style: { gap: '8px' } });
+      var touch = function () { if (R.canEdit) takeLock(); };
+      var draw = function () {
+        clear(list);
+        if (!rows.length) list.appendChild(h('div', { class: 'muted small' }, '還沒有連結。加了連結才會出現回顧卡。'));
+        rows.forEach(function (x, i) {
+          var lb = inp(x.label, Object.assign({ placeholder: '例如：回顧影片', maxlength: 40 }, dis)), kd = sel(KINDS, x.kind || 'video', dis), url = inp(x.url, Object.assign({ placeholder: 'https://（YouTube、Google 雲端硬碟資料夾…）' }, dis)), at = inp(x.at, Object.assign({ type: 'datetime-local' }, dis));
+          lb.addEventListener('input', function () { x.label = lb.value; touch(); });
+          kd.addEventListener('change', function () { x.kind = kd.value; touch(); });
+          url.addEventListener('input', function () { x.url = url.value.trim(); touch(); });
+          at.addEventListener('change', function () { x.at = at.value; touch(); });
+          list.appendChild(h('div', { class: 'card col', style: { gap: '8px', padding: '12px' } },
+            h('div', { class: 'grid2' }, field('名稱', lb), field('類型', kd)), field('網址', url),
+            h('div', { class: 'row wrap', style: { alignItems: 'flex-end' } }, field('出現時間（空白＝營隊結束後）', at), R.canEdit ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { rows.splice(i, 1); touch(); draw(); } }, '刪除') : null)));
+        });
+      };
+      draw();
+      var save = function (e) {
+        busy(e.target, function () { return run('recap.save', { on: on.checked, title: title.value, note: note.value, links: rows }, { msg: '回顧彩蛋已儲存' }); }).catch(fail);
+      };
+      var simAt = (function () { var m = String(D.recapDefault || '').match(/^(\d{4})\/(\d\d)\/(\d\d) (\d\d):(\d\d)$/); if (!m) return ''; return new Date(Date.parse(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00+08:00') + 60000).toISOString(); })();
+      var later = rows.map(function (x) { return x.at ? Date.parse(x.at + ':00+08:00') : NaN; }).filter(isFinite);
+      var simLast = later.length ? new Date(Math.max.apply(null, later.concat(simAt ? [Date.parse(simAt)] : [])) + 60000).toISOString() : simAt;
+      var pv = function (iso) { return 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student&preview=pub' + (iso ? '&sim=' + encodeURIComponent(iso) : ''); };
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '10px' } }, '營隊結束後，學員首頁原本的「現在主題」會換成回顧卡，放回顧影片、照片或雲端資料夾的連結。影片和照片整理進度不同時，每個連結可以各自設出現時間；還沒到時間的只會顯示「幾點開放」，學員拿不到網址。'));
+      box.appendChild(h('div', { class: 'card col', style: { gap: '12px', padding: '14px', maxWidth: '720px' } },
+        h('label', { class: 'sw-wrap' }, on, h('span', { class: 'sw-k' }), h('span', null, '使用回顧彩蛋')),
+        h('div', { class: 'small muted' }, '預設出現時間：' + (D.recapDefault ? D.recapDefault + '（總流程最後一個項目結束）' : '還沒有流程，也沒有設定營期')),
+        field('標題', title), field('一段話（選填）', note),
+        h('div', null, h('b', null, '連結')), list,
+        h('div', { class: 'row wrap' },
+          R.canEdit ? h('button', { class: 'btn', type: 'button', onclick: function () { if (rows.length >= 12) { toast('最多 12 個連結', true); return; } rows.push({ label: '', kind: 'video', url: '', at: '' }); touch(); draw(); } }, '＋ 加一個連結') : null,
+          R.canEdit ? h('button', { class: 'btn primary', type: 'button', onclick: save }, '儲存') : null,
+          h('span', { class: 'grow' }),
+          simAt ? h('a', { class: 'btn', href: pv(simAt), target: '_blank', onclick: A.openTab, title: '用學員端預覽，模擬時間設在營隊結束後 1 分鐘' }, '預覽：營隊剛結束 ↗') : null,
+          simLast && simLast !== simAt ? h('a', { class: 'btn', href: pv(simLast), target: '_blank', onclick: A.openTab, title: '模擬時間設在最後一個連結出現後' }, '預覽：全部開放 ↗') : null),
+        h('div', { class: 'hint' }, '預覽前先按「儲存」；預覽看的是發布中的學員端，首頁要有「現在主題」區塊。')));
     },
     flows: function (box, D) {
       box.appendChild(bar(addBtn('新增流程', function () {
