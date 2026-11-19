@@ -77,6 +77,8 @@ A.navBuild = function () {
       if (openSide(x[0])) nav.appendChild(h('a', { class: 'nav-open', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + x[0] + '&preview=pub', target: '_blank', title: '用你的編輯者帳號打開' + x[1] + '（目前發布的版本），不用另外登入',
         onclick: A.openTab }, h('span', { class: 'side-dot' + (x[0] === 'worker' ? ' worker' : '') }), x[1] + ' ↗'));
     });
+    // 第一位報名的小彩蛋：直接用學員端預覽（不用先找到那位學員）
+    if (openSide('student')) nav.appendChild(h('a', { class: 'nav-open', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student&preview=pub&egg=first', target: '_blank', title: '學員端預覽第一位報名的人首頁看到的彩蛋（誰是第一位在「人員與分隊 → 學員」看）', onclick: A.openTab }, '🥇 預覽第一位彩蛋 ↗'));
   }
   // 遊戲測試台：一頁同時看關主、玩家、投影（會自動建立測試用的活動）
   if (A.pool.some(function (p) { return p.pkg === 'schedule'; })) {

@@ -2111,7 +2111,7 @@ var PkgAdmin = (function () {
       var dis = { disabled: !R.canEdit };
       var on = h('input', Object.assign({ type: 'checkbox', class: 'sw', checked: rc.on !== false }, dis));
       var title = inp(rc.title, Object.assign({ placeholder: '營隊回顧', maxlength: 30 }, dis)), note = area(rc.note, Object.assign({ rows: 2, maxlength: 300, placeholder: '例如：謝謝大家這幾天的陪伴！回顧影片在這裡～' }, dis));
-      var list = h('div', { class: 'col', style: { gap: '8px' } });
+      var list = h('div', { class: 'col', style: { gap: '12px' } });
       var touch = function () { if (R.canEdit) takeLock(); };
       var draw = function () {
         clear(list);
@@ -2122,9 +2122,10 @@ var PkgAdmin = (function () {
           kd.addEventListener('change', function () { x.kind = kd.value; touch(); });
           url.addEventListener('input', function () { x.url = url.value.trim(); touch(); });
           at.addEventListener('change', function () { x.at = at.value; touch(); });
-          list.appendChild(h('div', { class: 'card col', style: { gap: '8px', padding: '12px' } },
+          list.appendChild(h('div', { class: 'col', style: { gap: '12px', padding: '16px', border: '1px solid var(--line)', borderRadius: '14px', background: 'var(--surface-2, transparent)' } },
+            h('div', { class: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } }, h('b', { class: 'small' }, '連結 ' + (i + 1)), R.canEdit ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { rows.splice(i, 1); touch(); draw(); } }, '刪除') : null),
             h('div', { class: 'grid2' }, field('名稱', lb), field('類型', kd)), field('網址', url),
-            h('div', { class: 'row wrap', style: { alignItems: 'flex-end' } }, field('出現時間（空白＝營隊結束後）', at), R.canEdit ? h('button', { class: 'btn sm ghost', type: 'button', onclick: function () { rows.splice(i, 1); touch(); draw(); } }, '刪除') : null)));
+            h('div', { class: 'grid2' }, field('出現時間（空白＝營隊結束後）', at), h('span'))));
         });
       };
       draw();
@@ -2136,11 +2137,13 @@ var PkgAdmin = (function () {
       var simLast = later.length ? new Date(Math.max.apply(null, later.concat(simAt ? [Date.parse(simAt)] : [])) + 60000).toISOString() : simAt;
       var pv = function (iso) { return 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student&preview=pub' + (iso ? '&sim=' + encodeURIComponent(iso) : ''); };
       box.appendChild(h('div', { class: 'hint', style: { marginBottom: '10px' } }, '營隊結束後，學員首頁原本的「現在主題」會換成回顧卡，放回顧影片、照片或雲端資料夾的連結。影片和照片整理進度不同時，每個連結可以各自設出現時間；還沒到時間的只會顯示「幾點開放」，學員拿不到網址。'));
-      box.appendChild(h('div', { class: 'card col', style: { gap: '12px', padding: '14px', maxWidth: '720px' } },
-        h('label', { class: 'sw-wrap' }, on, h('span', { class: 'sw-k' }), h('span', null, '使用回顧彩蛋')),
-        h('div', { class: 'small muted' }, '預設出現時間：' + (D.recapDefault ? D.recapDefault + '（總流程最後一個項目結束）' : '還沒有流程，也沒有設定營期')),
+      box.appendChild(h('div', { class: 'card col', style: { gap: '18px', padding: '20px 22px', maxWidth: '760px' } },
+        h('div', { class: 'row wrap', style: { gap: '12px', alignItems: 'center' } },
+          h('label', { class: 'sw-wrap' }, on, h('span', { class: 'sw-k' })),
+          h('b', null, '使用回顧彩蛋'),
+          h('span', { class: 'small muted' }, '預設出現時間：' + (D.recapDefault ? D.recapDefault + '（總流程最後一個項目結束）' : '還沒有流程，也沒有設定營期'))),
         field('標題', title), field('一段話（選填）', note),
-        h('div', null, h('b', null, '連結')), list,
+        h('div', { style: { borderTop: '1px solid var(--line)', paddingTop: '14px' } }, h('b', null, '連結'), h('div', { class: 'small muted', style: { marginTop: '2px' } }, '每個連結可以各自設出現時間，空白就是營隊結束後')), list,
         h('div', { class: 'row wrap' },
           R.canEdit ? h('button', { class: 'btn', type: 'button', onclick: function () { if (rows.length >= 12) { toast('最多 12 個連結', true); return; } rows.push({ label: '', kind: 'video', url: '', at: '' }); touch(); draw(); } }, '＋ 加一個連結') : null,
           R.canEdit ? h('button', { class: 'btn primary', type: 'button', onclick: save }, '儲存') : null,
