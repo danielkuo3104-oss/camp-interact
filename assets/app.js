@@ -287,6 +287,9 @@
     S.env = { pages: snap.pages, blocks: snap.blocks.slice(), packages: snap.packages || {}, live: S.live, side: side, me: b.me, preview: !!preview, nav: nav,
       action: function (pkg, name, data) { return op('front.action', { camp: camp, target: { pkg: pkg, action: name, side: side }, data: data }); },
       reload: function () { loadLive(true); } };   // 按了操作（例如快速展延）：一定重拿
+    // 第一位報名的隱藏彩蛋（系統終端的彩蛋管理頁可以用 egg=first 預覽）
+    S.first = side === 'student' && !!((b.ext && b.ext.people && b.ext.people.first) || (preview && param('egg') === 'first' && eggOn('first')));
+    root.classList.toggle('egg-first', S.first);
     var em = b.ext && b.ext.emergency;
     S.nightCfg = em || null;
     S.night = em && em.nightStart ? nightNow() : !!(em && em.night);
@@ -298,6 +301,7 @@
     S.cur = start && Front.pageById(S.env, start) ? start : (home ? home.id : '');
     window.onhashchange = function () { var p = (location.hash.match(/#p=([\w]+)/) || [])[1]; if (p && p !== S.cur && Front.pageById(S.env, p)) { S.cur = p; render(); } else if (!p && home) { S.cur = home.id; render(); } };
     render();
+    if (S.first && window.CrashFx) CrashFx.firstThanks(camp, !!preview, eggFound);
     // 大約每分鐘更新一次，每個人隨機錯開（50～70 秒），不會所有手機在同一秒一起問伺服器
     clearTimeout(S.timer);
     var loop = function () { tick(); S.timer = setTimeout(loop, 50000 + Math.random() * 20000); };
@@ -387,7 +391,7 @@
       var s = 1 + Math.random() * 2.2;
       sky.appendChild(h('i', { style: { left: (Math.random() * 100).toFixed(1) + '%', top: (Math.random() * 70).toFixed(1) + '%', width: s.toFixed(1) + 'px', height: s.toFixed(1) + 'px', animationDelay: (Math.random() * 5).toFixed(2) + 's', animationDuration: (2.5 + Math.random() * 3).toFixed(2) + 's' } }));
     }
-    sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' }));
+    sky.appendChild(h('b', { class: 'meteor' })); sky.appendChild(h('b', { class: 'meteor m2' + (S.first ? ' egg-gold-m' : '') }));
     return sky;
   }
   /** 白天分四種背景：清晨、早上、中午、午後（到夜間模式）；分界時間在管理端「動畫管理」設定，預設 08:00／11:00／13:00 */
@@ -405,7 +409,17 @@
       var sz = 5 + Math.random() * 8, dur = 16 + Math.random() * 14;
       amb.appendChild(h('span', { class: 'pt', style: { left: (Math.random() * 100).toFixed(1) + '%', width: sz.toFixed(1) + 'px', height: sz.toFixed(1) + 'px', background: 'rgba(' + cols[i % cols.length] + ', .4)', animationDuration: dur.toFixed(1) + 's', animationDelay: '-' + (Math.random() * dur).toFixed(1) + 's' } }));
     }
+    if (S.first) { var g = 9, gd = 22; amb.appendChild(h('span', { class: 'pt egg-gold-pt', style: { left: (20 + Math.random() * 60).toFixed(1) + '%', width: g + 'px', height: g + 'px', animationDuration: gd + 's', animationDelay: '-' + (Math.random() * gd).toFixed(1) + 's' } })); }
     return amb;
+  }
+  /** 左上角的「營」：第一位報名的人看到的有一圈金光，點了有反應 */
+  function brandMark() {
+    if (!S.first) return h('span', { class: 'brand-mark' }, '營');
+    return h('span', { class: 'brand-mark egg-gold', onclick: function (e) {
+      var m = e.currentTarget; m.classList.remove('egg-pop'); void m.offsetWidth; m.classList.add('egg-pop');
+      toast('👀 被你發現了。這道光只為第一位報名的人亮著');
+      eggFound('first-logo');
+    } }, '營');
   }
   var body;
   function render() {
@@ -416,7 +430,7 @@
     var rootOf = cur;
     while (rootOf && rootOf.parent) rootOf = Front.pageById(S.env, rootOf.parent);
     var head = h('div', { class: 'app-head' },
-      cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : h('span', { class: 'brand-mark' }, '營'),
+      cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : brandMark(),
       h('div', { class: 'grow' }, h('div', { class: 'small muted' }, b.camp.name + (b.me && b.me.name ? ' · ' + b.me.name : '')), h('h1', null, cur ? cur.title : '')),
       h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, h('span', { class: 'rf-ic', 'aria-hidden': 'true' }, icon('refresh', 18)), h('span', { class: 'rf-tx' }, '重新整理')),
       logoutBtn());
@@ -430,9 +444,7 @@
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
-    if (window.CrashFx) body.appendChild(CrashFx.footer(side));   // 版權聲明（學員端點了有彩蛋）
-    // 第一位報名的小彩蛋：學員首頁最上面（管理端「人員與分隊 → 學員」可以用 egg=first 預覽）
-    if (window.CrashFx && side === 'student' && rs[0] && S.cur === rs[0].id && ((b.ext && b.ext.people && b.ext.people.first) || (preview && param('egg') === 'first'))) content.insertBefore(CrashFx.firstCard(camp, !!preview), content.firstChild);
+    if (window.CrashFx) body.appendChild(CrashFx.footer(side, { crash: eggOn('crash'), first: S.first, found: eggFound }));   // 版權聲明（學員端點了有彩蛋）
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
     var F = fx();
@@ -483,6 +495,14 @@
     loadLive();
   }
 
+  /** 隱藏彩蛋：系統終端有沒有關掉（舊後端沒有 eggs 設定＝開）；發現了回報給後端統計（預覽不算，每種在這個分頁只報一次） */
+  function eggOn(k) { var e = S.boot && S.boot.camp && S.boot.camp.eggs; return !e || e[k] !== false; }
+  var EGG_SENT = {};
+  function eggFound(egg) {
+    if (preview || EGG_SENT[egg]) return;
+    EGG_SENT[egg] = 1;
+    op('egg.found', { camp: camp, data: { egg: egg } }).catch(function () {});
+  }
   /** 預覽可以設定模擬時間：看某個時間點的「現在主題」、目前時程、夜間模式 */
   function simBox() {
     var v = simNow(), inp2 = h('input', { type: 'datetime-local', class: 'input', style: { width: '200px', height: '32px' } });

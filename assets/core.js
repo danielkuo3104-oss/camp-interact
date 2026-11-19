@@ -133,7 +133,8 @@ var OPK = {
   'pkg.update.prepare': ['package', 'create'], 'pkg.update.test': ['package', 'run'], 'pkg.update.apply': ['package', 'replace'],
   'pkg.migration.resume': ['package', 'run'], 'pkg.copy.delete': ['package', 'delete'], 'pkg.maintenance.enter': ['package', 'update'], 'pkg.maintenance.release': ['package', 'update'],
   'backup.create': ['backup', 'create'], 'backup.delete': ['backup', 'delete'], 'backup.restore': ['backup', 'restore'],
-  'front.action': ['front', 'create']
+  'front.action': ['front', 'create'],
+  'egg.found': ['front', 'create'], 'egg.settings': ['camp', 'update']
 };
 
 function rid(prefix, n) {

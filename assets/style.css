@@ -1205,15 +1205,13 @@ html.in-frame .game-testbar { display: none; }
 .crx-bs-p { font-size: 20px; margin: 18px 0; }
 .crx-bs-s { font-size: 13px; opacity: .85; }
 
-/* 第一位報名的小彩蛋（學員首頁最上面） */
-.first-egg { position: relative; overflow: hidden; text-align: center; background: linear-gradient(140deg, #fff7e0, #ffe7b8 55%, #ffd6e0); border: 1px solid #f3d38a; }
-.first-egg h2 { color: #7a4b00; margin: 6px 0 4px; }
-.first-egg .fe-t { color: #6b4a12; line-height: 1.6; }
-.first-egg .fe-medal { font-size: 48px; line-height: 1; animation: fe-medal 1.6s ease-in-out infinite alternate; }
-@keyframes fe-medal { from { transform: rotate(-8deg); } to { transform: rotate(8deg) scale(1.08); } }
-.first-egg::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .55) 50%, transparent 65%); transform: translateX(-120%); animation: fe-shine 4s 1s ease-in-out infinite; }
-@keyframes fe-shine { 60%, 100% { transform: translateX(120%); } }
+/* 第一位報名的隱藏彩蛋：彩帶、感謝、金色的「營」、金色光點、金色流星 */
 .fe-confetti { position: fixed; inset: 0; pointer-events: none; z-index: 2000; overflow: hidden; }
 .fe-confetti i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: fe-fall var(--d, 2.6s) var(--w, 0s) cubic-bezier(.25, .6, .45, 1) forwards; }
 @keyframes fe-fall { to { transform: translate(var(--x, 0), 105vh) rotate(var(--r, 540deg)); opacity: .9; } }
-@media (prefers-reduced-motion: reduce) { .first-egg .fe-medal, .first-egg::after { animation: none; } }
+.fe-thx { margin: 0; line-height: 1.7; }
+.brand-mark.egg-gold { box-shadow: 0 0 0 2px rgba(233, 178, 58, .75), 0 0 10px 2px rgba(246, 196, 83, .45); cursor: pointer; }
+.brand-mark.egg-pop { animation: egg-pop .6s ease-out; }
+@keyframes egg-pop { 40% { transform: scale(1.25) rotate(-8deg); box-shadow: 0 0 0 3px #f6c453, 0 0 22px 6px rgba(246, 196, 83, .8); } }
+.amb .pt.egg-gold-pt { background: radial-gradient(circle, #fff3c4 0%, #f6c453 55%, rgba(246, 196, 83, 0) 75%) !important; box-shadow: 0 0 8px 2px rgba(246, 196, 83, .55); }
+.sky .meteor.egg-gold-m { filter: sepia(1) saturate(6) hue-rotate(-5deg) brightness(1.2); }
