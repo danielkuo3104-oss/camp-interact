@@ -420,11 +420,11 @@ td.dt-merged textarea { color: var(--text-3); text-align: center; }
 .sched.flow .it { padding: 8px 10px; align-items: flex-start; }
 .it-main { min-width: 0; }
 .it-hd { flex-wrap: nowrap; min-width: 0; }
-.it-hd .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.it-hd .nm { white-space: normal; overflow-wrap: anywhere; min-width: 0; } /* 名稱一律完整顯示、太長就換行，不截成… */
 .it-hd .tag { flex-shrink: 0; }
-.it-sub { display: flex; gap: 6px; align-items: center; margin-top: 4px; white-space: nowrap; overflow: hidden; min-width: 0; }
+.it-sub { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; min-width: 0; }
 .it-sub .pill-place { flex-shrink: 1; min-width: 0; max-width: 10em; overflow: hidden; text-overflow: ellipsis; display: inline-block; line-height: 20px; }
-.it-sub .own { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.it-sub .own { font-size: 12.5px; color: var(--text-2); white-space: normal; overflow-wrap: anywhere; min-width: 0; flex: 0 1 auto; }
 .it-sub .own .ppl-k { min-width: 0; }
 .it-more { display: none; margin-top: 6px; }
 .sched .it.open .it-more { display: block; }
@@ -1064,7 +1064,7 @@ table.dt tr.now-tr td .nl-run { top: -1px; }
 .gb-row.up { animation: gb-up 1.2s ease-out; }
 @keyframes gb-up { 0% { background: rgba(255,213,79,.6); transform: scale(1.02); } }
 .gb-rk { text-align: center; font-weight: 800; }
-.gb-nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .gb-nm small { opacity: .6; }
+.gb-nm { white-space: normal; overflow-wrap: anywhere; min-width: 0; } .gb-nm small { opacity: .6; }
 .gb-bar { height: 8px; border-radius: 4px; background: rgba(127,127,127,.18); overflow: hidden; } .gb-bar i { display: block; height: 100%; background: var(--brand, #2f5d62); border-radius: 4px; transition: width .8s; }
 .gb-sc { text-align: right; font-variant-numeric: tabular-nums; }
 .gb-empty, .gb-foot { font-size: 12px; opacity: .65; text-align: center; padding: 6px; }
