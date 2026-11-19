@@ -401,10 +401,33 @@ A.views.log = function (m) {
   var t;
   q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(load, 400); });
   res.addEventListener('change', load);
+  if (A.info.isRoot) m.appendChild(errCard());
   m.appendChild(h('div', { class: 'row', style: { marginBottom: '10px' } }, h('div', { class: 'grow' }, q), h('div', { style: { width: '140px' } }, res)));
   m.appendChild(box);
   load();
 };
+/** 系統終端：最近的錯誤代碼（使用者看到「系統發生錯誤（代碼 E…）」時，用代碼在這裡查實際的錯誤；保留 6 小時、最多 40 筆，所有營隊一起） */
+function errCard() {
+  var box = h('div', { class: 'small muted' }, '載入中…'), find = inp('', { placeholder: '輸入代碼，例如 E09AB8E' });
+  var rows = [];
+  var draw = function () {
+    var k = find.value.trim().toUpperCase(), list = rows.filter(function (x) { return !k || x.code.indexOf(k) >= 0; });
+    clear(box);
+    if (!list.length) { box.appendChild(h('div', { class: 'small muted' }, rows.length ? '找不到這個代碼（只保留 6 小時內、最近 40 筆）' : '6 小時內沒有系統錯誤')); return; }
+    box.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, ['時間', '代碼', '呼叫', '誰', '錯誤'].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, list.map(function (x) {
+        return h('tr', null, h('td', { class: 'small', style: { whiteSpace: 'nowrap' } }, fmt(x.at)), h('td', null, h('code', null, x.code)), h('td', { class: 'small' }, x.fn),
+          h('td', { class: 'small' }, { root: '系統終端', staff: '編輯者', student: '學員', worker: '工作人員' }[x.who] || '—'),
+          h('td', { class: 'small' }, x.msg, x.stack ? h('details', null, h('summary', { class: 'muted' }, '程式位置'), h('pre', { class: 'small', style: { whiteSpace: 'pre-wrap', margin: 0 } }, x.stack)) : null));
+      })))));
+  };
+  var load = function () { api('recentErrors').then(function (r) { rows = r || []; draw(); }, function (e) { clear(box).appendChild(h('div', { class: 'small muted' }, '後端還沒更新（' + e.message + '）')); }); };
+  find.addEventListener('input', draw);
+  load();
+  return h('div', { class: 'card', style: { marginBottom: '12px' } },
+    h('div', { class: 'row', style: { alignItems: 'center', gap: '8px', marginBottom: '6px' } }, h('b', { class: 'grow' }, '🛠 最近的系統錯誤（只有你看得到）'), h('div', { style: { width: '200px' } }, find), h('button', { class: 'btn sm', onclick: load }, '重新整理')),
+    box);
+}
 
 /* ---------------- 隱藏彩蛋（只有系統終端） ---------------- */
 A.views.eggs = function (m) {
