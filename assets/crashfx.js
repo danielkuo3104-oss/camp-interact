@@ -7,7 +7,7 @@
  *   手機設定「減少動態效果」時只用不閃爍的兩種。
  * 全部只動畫面上的樣式，不碰資料；跑完把加上去的東西拿掉。
  *
- * 第一位報名的隱藏彩蛋（只有那位學員）：第一次登入的感謝（firstThanks）、版權聲明點了變金色彩帶；
+ * 第一位報名的隱藏彩蛋（只有那位學員）：第一次登入的感謝（firstThanks）、版權聲明一樣假當機，修好後多一場金色彩帶；
  *   其他藏在 app.js：「營」標誌發金光（點了有反應）、白天背景有一顆金色光點、夜間有一顆金色流星。
  */
 var CrashFx = (function () {
@@ -79,10 +79,10 @@ var CrashFx = (function () {
   };
 
   /** 開始壞掉；kind 可以指定（測試用），沒指定就隨機 */
-  function run(kind, force) {
+  function run(kind, force, after) {
     if (running) return false;
     var left = coolLeft();
-    if (left && !force) { if (window.toast) toast('系統正在自我修復，' + left + ' 秒後再試 🔧'); return false; }
+    if (left && !force) { if (!after && window.toast) toast('系統正在自我修復，' + left + ' 秒後再試 🔧'); return false; }
     var root = document.getElementById('root') || document.body;
     var list = reduced() ? ['popups', 'bsod'] : KINDS;
     kind = FX[kind] ? kind : pick(list);
@@ -91,13 +91,14 @@ var CrashFx = (function () {
     FX[kind](root, function () {
       running = false;
       document.documentElement.classList.remove('crx-on');
-      if (window.toast) toast('有些秘密，只有願意探索的人才能看見');
+      if (after) after();
+      else if (window.toast) toast('有些秘密，只有願意探索的人才能看見');
     });
     return kind;
   }
 
   /**
-   * 頁尾的版權聲明。o = { crash: 學員端點了假當機（彩蛋管理可以關）, first: 第一位報名（點了變金色彩帶）, found(egg): 回報發現了彩蛋 }
+   * 頁尾的版權聲明。o = { crash: 學員端點了假當機（彩蛋管理可以關）, first: 第一位報名（假當機之後多金色彩帶）, found(egg): 回報發現了彩蛋 }
    */
   function footer(side, o) {
     o = o || {};
@@ -107,10 +108,14 @@ var CrashFx = (function () {
     var b = el('button', 'app-copy-btn', txt);
     b.type = 'button';
     b.addEventListener('click', function () {
-      if (o.first) {   // 第一位報名：不是壞掉，是金色彩帶
-        confetti(true);
-        if (window.toast) toast('✨ 你果然是第一個發現的');
-        if (o.found) o.found('first-copy');
+      if (running) return;
+      if (o.first) {   // 第一位報名：一樣會壞掉（假當機還是同一個彩蛋），修好之後多一場金色彩帶；冷卻中或假當機關掉就直接金色彩帶
+        var gold = function () {
+          confetti(true);
+          if (window.toast) toast('✨ 你果然是第一個發現的');
+          if (o.found) o.found('first-copy');
+        };
+        if (o.crash && run(null, false, gold)) { if (o.found) o.found('crash'); } else gold();
         return;
       }
       if (run() && o.found) o.found('crash');
