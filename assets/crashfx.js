@@ -7,8 +7,8 @@
  *   手機設定「減少動態效果」時只用不閃爍的兩種。
  * 全部只動畫面上的樣式，不碰資料；跑完把加上去的東西拿掉。
  *
- * 另外放第一位報名的小彩蛋（firstCard）：報名後台名單第一筆的學員，首頁最上面有一張金色卡片，
- *   第一次看到會飄彩帶（之後同一支手機不再飄；預覽每次都飄）。
+ * 第一位報名的隱藏彩蛋（只有那位學員）：第一次登入的感謝（firstThanks）、版權聲明點了變金色彩帶；
+ *   其他藏在 app.js：「營」標誌發金光（點了有反應）、白天背景有一顆金色光點、夜間有一顆金色流星。
  */
 var CrashFx = (function () {
   var COOL_MS = 60000, DUR = 3000, CK = 'ia_crash_at';
@@ -91,38 +91,52 @@ var CrashFx = (function () {
     FX[kind](root, function () {
       running = false;
       document.documentElement.classList.remove('crx-on');
-      if (window.toast) toast('😆 開玩笑的，系統沒事');
+      if (window.toast) toast('有些秘密，只有願意探索的人才能看見');
     });
     return kind;
   }
 
-  /** 頁尾的版權聲明；學員端可以點 */
-  function footer(side) {
+  /**
+   * 頁尾的版權聲明。o = { crash: 學員端點了假當機（彩蛋管理可以關）, first: 第一位報名（點了變金色彩帶）, found(egg): 回報發現了彩蛋 }
+   */
+  function footer(side, o) {
+    o = o || {};
     var f = el('footer', 'app-copy');
     var txt = '© 2026 Daniel GUO';
-    if (side !== 'student') { f.textContent = txt; return f; }
+    if (side !== 'student' || !(o.crash || o.first)) { f.textContent = txt; return f; }
     var b = el('button', 'app-copy-btn', txt);
     b.type = 'button';
-    b.addEventListener('click', function () { run(); });
+    b.addEventListener('click', function () {
+      if (o.first) {   // 第一位報名：不是壞掉，是金色彩帶
+        confetti(true);
+        if (window.toast) toast('✨ 你果然是第一個發現的');
+        if (o.found) o.found('first-copy');
+        return;
+      }
+      if (run() && o.found) o.found('crash');
+    });
     f.appendChild(b);
     return f;
   }
 
-  /** 第一位報名的金色卡片；camp 用來記這支手機看過了沒 */
-  function firstCard(camp, preview) {
-    var c = el('div', 'fb first-egg');
-    var md = el('div', 'fe-medal', '🥇'); md.setAttribute('aria-hidden', 'true');
-    c.appendChild(md);
-    c.appendChild(el('h2', '', '你是本屆第一位報名的學員！'));
-    c.appendChild(el('div', 'fe-t', '謝謝你這麼早就決定加入我們，籌辦團隊都記得你 😉'));
-    var k = 'ia_first_seen_' + camp, seen = false;
-    try { seen = !!localStorage.getItem(k); if (!preview) localStorage.setItem(k, '1'); } catch (e) {}
-    if (preview || !seen) setTimeout(confetti, 300);
-    return c;
+  /** 第一位報名：第一次登入的感謝（這支手機只出現一次；預覽每次都出現） */
+  function firstThanks(camp, preview, found) {
+    var k = 'ia_first_thx_' + camp, seen = false;
+    try { seen = !!localStorage.getItem(k); } catch (e) {}
+    if (seen && !preview) return false;
+    try { if (!preview) localStorage.setItem(k, '1'); } catch (e) {}
+    setTimeout(function () {
+      confetti(false);
+      if (window.modal) modal({ title: '🥇 謝謝你第一個報名！', body: el('p', 'fe-thx', '你是這一屆第一位報名的學員。這個營隊裡藏了幾個只有你看得到的小東西，慢慢找吧 😉'), actions: [{ text: '好，我去找找', cls: 'primary' }] });
+      if (found) found('first-thanks');
+    }, 600);
+    return true;
   }
-  function confetti() {
+
+  /** 彩帶；gold＝全金色 */
+  function confetti(gold) {
     if (reduced()) return;
-    var box = el('div', 'fe-confetti'), colors = ['#f6b93b', '#e55039', '#4a69bd', '#60a3bc', '#78e08f', '#f78fb3'];
+    var box = el('div', 'fe-confetti'), colors = gold ? ['#f6c453', '#e9b23a', '#ffd97a', '#c9971f', '#fff1c1'] : ['#f6b93b', '#e55039', '#4a69bd', '#60a3bc', '#78e08f', '#f78fb3'];
     box.setAttribute('aria-hidden', 'true');
     for (var i = 0; i < 70; i++) {
       var p = el('i');
@@ -138,5 +152,5 @@ var CrashFx = (function () {
     setTimeout(function () { box.remove(); }, 5000);
   }
 
-  return { run: run, footer: footer, coolLeft: coolLeft, kinds: KINDS.slice(), firstCard: firstCard };
+  return { run: run, footer: footer, coolLeft: coolLeft, kinds: KINDS.slice(), firstThanks: firstThanks, confetti: confetti };
 })();

@@ -872,12 +872,10 @@ var PkgAdmin = (function () {
         var name = inp(''), squad = inp('', { type: 'number', min: 1 });
         form('手動新增學員', [field('姓名', name), field('小隊', squad), h('div', { class: 'hint' }, '正式學員請從報名系統同步；手動新增的學員不能從學員專區進入，只用於測試畫面。')], function () { return run('student.save', { name: name.value, squad: squad.value }, { action: 'create' }); });
       });
-      var fst = D.firstId ? D.students.filter(function (s) { return s.id === D.firstId; })[0] : null;
-      var pvFirst = h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student&preview=pub&egg=first', target: '_blank', onclick: A.openTab, title: '用學員端預覽第一位報名的人首頁看到的彩蛋' }, '🥇 預覽第一位彩蛋 ↗');
-      box.appendChild(bar(add, h('span', { class: 'hint' }, '有效 ' + active.length + ' 位'), h('span', { class: 'grow' }), fst ? h('span', { class: 'hint' }, '第一位報名：' + fst.data.name) : null, pvFirst));
-      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '報名系統是正式資料來源：互動系統只保存學員代碼、姓名、小隊、房間與是否有效，分隊、分房要在報名系統改。名單第一筆（後台最早寫入的報名）是「第一位報名」，他的學員首頁最上面有彩蛋。'));
+      box.appendChild(bar(add, h('span', { class: 'hint' }, '有效 ' + active.length + ' 位')));
+      box.appendChild(h('div', { class: 'hint', style: { marginBottom: '8px' } }, '報名系統是正式資料來源：互動系統只保存學員代碼、姓名、小隊、房間與是否有效，分隊、分房要在報名系統改。'));
       box.appendChild(table(['學員代碼', '姓名', '小隊', '房間', '狀態'], D.students.slice().sort(function (a, b) { return (Number(a.data.squad) || 99) - (Number(b.data.squad) || 99); }).map(function (s) {
-        return h('tr', null, h('td', { class: 'small' }, s.id), h('td', null, s.data.name), h('td', null, s.data.squad || '—'), h('td', null, s.data.room || '—'), h('td', null, s.data.active === false ? h('span', { class: 'tag' }, '無效（取消／候補）') : h('span', { class: 'tag ok' }, '有效'), s.data.manual ? h('span', { class: 'tag info', style: { marginLeft: '4px' } }, '手動') : null, s.id === D.firstId ? h('span', { class: 'tag warn', style: { marginLeft: '4px' }, title: '報名後台名單的第一筆（依報名寫入順序）；首頁有彩蛋' }, '🥇 第一位報名') : null));
+        return h('tr', null, h('td', { class: 'small' }, s.id), h('td', null, s.data.name), h('td', null, s.data.squad || '—'), h('td', null, s.data.room || '—'), h('td', null, s.data.active === false ? h('span', { class: 'tag' }, '無效（取消／候補）') : h('span', { class: 'tag ok' }, '有效'), s.data.manual ? h('span', { class: 'tag info', style: { marginLeft: '4px' } }, '手動') : null));
       }), '還沒有學員。到「營隊設定」完成串接後按「從報名後台同步」。'));
     },
     rooms: function (box, D) {

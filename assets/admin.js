@@ -77,8 +77,6 @@ A.navBuild = function () {
       if (openSide(x[0])) nav.appendChild(h('a', { class: 'nav-open', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=' + x[0] + '&preview=pub', target: '_blank', title: '用你的編輯者帳號打開' + x[1] + '（目前發布的版本），不用另外登入',
         onclick: A.openTab }, h('span', { class: 'side-dot' + (x[0] === 'worker' ? ' worker' : '') }), x[1] + ' ↗'));
     });
-    // 第一位報名的小彩蛋：直接用學員端預覽（不用先找到那位學員）
-    if (openSide('student')) nav.appendChild(h('a', { class: 'nav-open', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student&preview=pub&egg=first', target: '_blank', title: '學員端預覽第一位報名的人首頁看到的彩蛋（誰是第一位在「人員與分隊 → 學員」看）', onclick: A.openTab }, '🥇 預覽第一位彩蛋 ↗'));
   }
   // 遊戲測試台：一頁同時看關主、玩家、投影（會自動建立測試用的活動）
   if (A.pool.some(function (p) { return p.pkg === 'schedule'; })) {
@@ -91,6 +89,7 @@ A.navBuild = function () {
   nav.appendChild(item('members', '成員與權限'));
   nav.appendChild(item('log', '操作紀錄'));
   if (A.isAdmin()) nav.appendChild(item('settings', '營隊設定與備份'));
+  if (I.isRoot) nav.appendChild(item('eggs', '🥚 隱藏彩蛋'));   // 只有系統終端（Daniel）看得到
   A.navMark();
 };
 A.navMark = function () {
@@ -404,6 +403,46 @@ A.views.log = function (m) {
   res.addEventListener('change', load);
   m.appendChild(h('div', { class: 'row', style: { marginBottom: '10px' } }, h('div', { class: 'grow' }, q), h('div', { style: { width: '140px' } }, res)));
   m.appendChild(box);
+  load();
+};
+
+/* ---------------- 隱藏彩蛋（只有系統終端） ---------------- */
+A.views.eggs = function (m) {
+  if (!A.info.isRoot) { A.views.home(m); return; }
+  A.title(m, '🥚 隱藏彩蛋', '只有你（系統終端）看得到這一頁。回顧彩蛋在「營期流程與活動 → 回顧彩蛋」，一般編輯者也能設定。');
+  var box = h('div', { class: 'col', style: { gap: '14px', maxWidth: '860px' } });
+  m.appendChild(box);
+  var pv = function (q, t) { return h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=student&preview=pub' + q, target: '_blank', onclick: A.openTab }, t); };
+  var load = function () {
+    api('eggStats', A.camp).then(function (r) {
+      clear(box);
+      var sw = function (k, label, hint) {
+        var c = h('input', { type: 'checkbox', class: 'sw', checked: !!r.cfg[k] });
+        c.addEventListener('change', function () {
+          var d = {}; d[k] = c.checked;
+          A.op('egg.settings', { data: d }).then(function () { toast(c.checked ? '已打開' : '已關掉'); }, function (e) { c.checked = !c.checked; fail(e); });
+        });
+        return h('div', { class: 'row wrap', style: { gap: '12px', alignItems: 'center' } }, h('label', { class: 'sw-wrap' }, c, h('span', { class: 'sw-k' })), h('b', null, label), h('span', { class: 'small muted grow' }, hint));
+      };
+      box.appendChild(h('div', { class: 'card col', style: { gap: '14px', padding: '18px 20px' } },
+        h('b', null, '開關'),
+        sw('crash', '版權聲明假當機', '學員端點頁尾「© 2026 Daniel GUO」，隨機 3 秒壞掉，冷卻 1 分鐘'),
+        sw('first', '第一位報名', '只有第一位有效報名的學員：第一次登入感謝、發金光的「營」、版權聲明變金色彩帶、金色光點、金色流星')));
+      box.appendChild(h('div', { class: 'card col', style: { gap: '10px', padding: '18px 20px' } },
+        h('b', null, '第一位報名'),
+        h('div', null, r.firstName ? '目前是「' + r.firstName + '」（報名後台名單裡第一位有效報名；取消或候補會由下一位遞補，每次同步更新）' : h('span', { class: 'muted' }, '還不知道是誰：到「人員與分隊」按「從報名後台同步」')),
+        h('div', { class: 'row wrap' }, pv('&egg=first', '🥇 預覽他看到的樣子 ↗'), pv('', '預覽一般學員 ↗'))));
+      box.appendChild(h('div', { class: 'card col', style: { gap: '10px', padding: '18px 20px' } },
+        h('b', null, '有多少人發現'),
+        h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, ['彩蛋', '發現人數', '其中學員', '總次數', '誰'].map(function (x) { return h('th', null, x); }))),
+          h('tbody', null, r.kinds.map(function (k) {
+            return h('tr', null, h('td', null, k.name), h('td', null, h('b', null, k.people)), h('td', null, k.students), h('td', null, k.times),
+              h('td', { class: 'small' }, k.who.length ? h('details', null, h('summary', null, k.who.slice(0, 3).map(function (x) { return x.name; }).join('、') + (k.who.length > 3 ? '…等 ' + k.who.length + ' 人' : '')),
+                h('div', { class: 'col', style: { gap: '2px', marginTop: '6px' } }, k.who.map(function (x) { return h('div', null, x.name + (x.kind === 'worker' ? '（工作人員）' : '') + '　第一次 ' + fmt(x.at) + (x.n > 1 ? '　共 ' + x.n + ' 次' : '')); }))) : h('span', { class: 'muted' }, '還沒有人')));
+          })))),
+        h('div', { class: 'hint' }, '預覽和編輯者自己點的不算；同一個人同一種彩蛋算一人，次數另外記。')));
+    }, function (e) { clear(box).appendChild(h('div', { class: 'card empty' }, e.message || '讀不到彩蛋資料（後端可能還沒貼 Eggs.gs）')); });
+  };
   load();
 };
 
