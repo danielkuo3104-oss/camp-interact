@@ -284,6 +284,21 @@ var Front = (function () {
     if (mode !== 'detail' && !o.edit) el.addEventListener('click', function () { openAct(info, env, el); });
     return el;
   }
+  /** 回顧彩蛋：營隊結束後首頁換成回顧卡（影片、照片、雲端資料夾）；還沒到時間的只顯示幾點開放 */
+  var RECAP_IC = { video: '🎬', photo: '📷', folder: '📁', link: '🔗' };
+  function recapCard(d) {
+    var links = (d.links || []).filter(function (x) { return /^https:/i.test(String(x.url || '')); });
+    return h('div', { class: 'theme-card recap-card' },
+      h('div', { class: 'k' }, '✨ 營隊彩蛋'), h('h2', null, waveText(d.title || '營隊回顧')),
+      d.note ? h('div', { class: 'rc-note' }, d.note) : null,
+      links.length ? h('div', { class: 'rc-links' }, links.map(function (x) {
+        return h('a', { class: 'rc-link', href: x.url, target: '_blank', rel: 'noopener' }, h('span', { class: 'rc-ic', 'aria-hidden': 'true' }, RECAP_IC[x.kind] || '🔗'), h('span', { class: 'grow' }, x.label), h('span', { class: 'rc-go', 'aria-hidden': 'true' }, '↗'));
+      })) : null,
+      (d.soon || []).length ? h('div', { class: 'rc-soon' }, d.soon.map(function (x) {
+        return h('div', { class: 'rc-lock' }, h('span', { 'aria-hidden': 'true' }, '🔒'), h('span', { class: 'grow' }, x.label), h('span', { class: 'small' }, x.at ? x.at.slice(5) + ' 開放' : '整理中'));
+      })) : null,
+      !links.length && !(d.soon || []).length ? h('div', { class: 'rc-note' }, '回顧整理中，敬請期待') : null);
+  }
   /** 現在主題的標題：每個字輪流跳一下 */
   function waveText(s) {
     return h('span', { class: 'wave' }, Array.from(String(s)).map(function (ch, i) { return h('span', { style: '--d:' + i }, ch); }));
@@ -733,6 +748,7 @@ var Front = (function () {
   var VIEWS = {
     schedule: {
       theme: function (d, b, env) {
+        if (d.mode === 'recap') return recapCard(d);
         if (d.act && d.mode && d.mode !== 'none') return actCard(Object.assign({}, d.act, { name: d.name || d.act.name }), env, 'theme', { label: '現在主題 · ' + hm0(d.time || '') + (d.end ? '–' + hm0(d.end) : ''), prog: themeProg(d) });
         if (d.mode === 'none' || !d.mode) return h('div', { class: 'theme-card free' }, h('div', { class: 'k' }, '現在'), h('h2', null, '自由時間'), h('div', { style: { opacity: 0.85 } }, '有需要請找隊輔'));
         return h('div', { class: 'theme-card' }, h('div', { class: 'k' }, h('i', { class: 'live-dot', 'aria-hidden': 'true' }), '現在主題 · ' + (d.time || '') + (d.end ? '–' + d.end : '')), h('h2', null, waveText(d.name || '')),

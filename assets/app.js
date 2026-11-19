@@ -15,6 +15,8 @@
   var S = { t0: Date.now(), flipAt: Date.now() + 30000, boot: null, env: null, cur: '', stack: [], live: {}, timer: null, offline: false, night: false, scrolled: {} };
   var LK = 'ia_live_' + camp + '_' + side;
   SIM_OK_ = !!preview;
+  // 管理端的「預覽回顧彩蛋」：網址帶 sim= 就用那個模擬時間打開
+  if (preview && param('sim') && isFinite(Date.parse(param('sim')))) { try { sessionStorage.setItem('ia_sim', new Date(param('sim')).toISOString()); } catch (e) {} }
 
   root.classList.toggle('worker', side === 'worker');
   // 工作人員端換靛藍色，和學員端分開（彈出視窗掛在 body 上，所以加在 html）
@@ -428,6 +430,9 @@
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
+    if (window.CrashFx) body.appendChild(CrashFx.footer(side));   // 版權聲明（學員端點了有彩蛋）
+    // 第一位報名的小彩蛋：學員首頁最上面（管理端「人員與分隊 → 學員」可以用 egg=first 預覽）
+    if (window.CrashFx && side === 'student' && rs[0] && S.cur === rs[0].id && ((b.ext && b.ext.people && b.ext.people.first) || (preview && param('egg') === 'first'))) content.insertBefore(CrashFx.firstCard(camp, !!preview), content.firstChild);
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
     var F = fx();
