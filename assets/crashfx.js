@@ -6,6 +6,9 @@
  *   冷卻 1 分鐘（存在手機上，重新整理也算），避免活動中被一直點。
  *   手機設定「減少動態效果」時只用不閃爍的兩種。
  * 全部只動畫面上的樣式，不碰資料；跑完把加上去的東西拿掉。
+ *
+ * 另外放第一位報名的小彩蛋（firstCard）：報名後台名單第一筆的學員，首頁最上面有一張金色卡片，
+ *   第一次看到會飄彩帶（之後同一支手機不再飄；預覽每次都飄）。
  */
 var CrashFx = (function () {
   var COOL_MS = 60000, DUR = 3000, CK = 'ia_crash_at';
@@ -105,5 +108,35 @@ var CrashFx = (function () {
     return f;
   }
 
-  return { run: run, footer: footer, coolLeft: coolLeft, kinds: KINDS.slice() };
+  /** 第一位報名的金色卡片；camp 用來記這支手機看過了沒 */
+  function firstCard(camp, preview) {
+    var c = el('div', 'fb first-egg');
+    var md = el('div', 'fe-medal', '🥇'); md.setAttribute('aria-hidden', 'true');
+    c.appendChild(md);
+    c.appendChild(el('h2', '', '你是本屆第一位報名的學員！'));
+    c.appendChild(el('div', 'fe-t', '謝謝你這麼早就決定加入我們，籌辦團隊都記得你 😉'));
+    var k = 'ia_first_seen_' + camp, seen = false;
+    try { seen = !!localStorage.getItem(k); if (!preview) localStorage.setItem(k, '1'); } catch (e) {}
+    if (preview || !seen) setTimeout(confetti, 300);
+    return c;
+  }
+  function confetti() {
+    if (reduced()) return;
+    var box = el('div', 'fe-confetti'), colors = ['#f6b93b', '#e55039', '#4a69bd', '#60a3bc', '#78e08f', '#f78fb3'];
+    box.setAttribute('aria-hidden', 'true');
+    for (var i = 0; i < 70; i++) {
+      var p = el('i');
+      p.style.left = (Math.random() * 100) + '%';
+      p.style.background = colors[i % colors.length];
+      p.style.setProperty('--x', (Math.random() * 160 - 80).toFixed(0) + 'px');
+      p.style.setProperty('--r', (Math.random() * 900 - 450).toFixed(0) + 'deg');
+      p.style.setProperty('--d', (2.2 + Math.random() * 1.8).toFixed(2) + 's');
+      p.style.setProperty('--w', (Math.random() * 0.8).toFixed(2) + 's');
+      box.appendChild(p);
+    }
+    document.body.appendChild(box);
+    setTimeout(function () { box.remove(); }, 5000);
+  }
+
+  return { run: run, footer: footer, coolLeft: coolLeft, kinds: KINDS.slice(), firstCard: firstCard };
 })();

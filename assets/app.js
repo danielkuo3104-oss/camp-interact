@@ -402,6 +402,8 @@
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
     if (window.CrashFx) body.appendChild(CrashFx.footer(side));   // 版權聲明（學員端點了有彩蛋）
+    // 第一位報名的小彩蛋：學員首頁最上面（管理端「人員與分隊 → 學員」可以用 egg=first 預覽）
+    if (window.CrashFx && side === 'student' && rs[0] && S.cur === rs[0].id && ((b.ext && b.ext.people && b.ext.people.first) || (preview && param('egg') === 'first'))) content.insertBefore(CrashFx.firstCard(camp, !!preview), content.firstChild);
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
     var F = fx();
