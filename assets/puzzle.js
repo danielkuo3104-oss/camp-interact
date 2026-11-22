@@ -5,15 +5,15 @@
  *   圖：assets/puzzle/（day／night 背景、envelope 信封、letter 手寫信、pisces 雙魚魔法陣、fish 魚），Daniel 生成的。
  *
  *   入口：左上角「營」剛好敲 7 下（兩下間隔超過 2 秒就重算）。不到 7 下跳「要不要再多敲幾下」，超過 7 下沒反應；
- *         剛好 7 下時標誌逐漸裂開，2 秒內沒有第 8 下就進田園。田園過關後這個入口鎖起來。
+ *         剛好 7 下時標誌逐漸裂開，1 秒內沒有第 8 下就進田園。田園過關後這個入口鎖起來。
  *   田園：一封信遞進來 → 點開 → 圈出 4 個錯字（夜中兩魚）→ 進入夜晚 → 在夜空點雙魚座 → 兩隻魚浮上來給提示。
  *   中世紀入口：學員「個人資訊」／工作人員「小隊資料」那一頁滑到底，繼續往下沉，海底有一扇石門。
  */
 var Puzzle = (function () {
   var E = null;            // { camp, side, preview, state: {stage, page}, changed() }
   var knock = { n: 0, t: null, el: null }, busy = false, box = null;
-  var GAP = 2000, NEED = 7, IMG = 'assets/puzzle/';
-  var queue = Promise.resolve();   // 點信：一個一個送（後端照順序存），畫面不用等
+  var GAP = 1000, NEED = 7, LOCK = 5,   // LOCK：解開中世紀（第 5 關）之前都能敲「營」回田園看線索
+     IMG = 'assets/puzzle/';
 
   function init(o) { E = o; }
   function on() { return !!(E && E.state); }
@@ -28,13 +28,13 @@ var Puzzle = (function () {
   /* ---------------- 入口：「營」敲 7 下 ---------------- */
   /** 「營」標誌：還沒過田園的人，標誌偶爾晃一下吸引點擊 */
   function decorate(mark) {
-    if (!on() || stage() >= 3) return mark;
+    if (!on() || stage() >= 3) return mark;   // 田園過了就不晃（但還能敲 7 下回田園看線索）
     mark.classList.add('pz-lure');
     return mark;
   }
   /** 每點一下「營」都呼叫（第一位報名的金光提示照舊，次數照算） */
   function tap(mark) {
-    if (!on() || stage() >= 3 || busy) return;
+    if (!on() || stage() >= LOCK || busy) return;
     clearTimeout(knock.t);
     knock.n++; knock.el = mark;
     if (knock.n === NEED) mark.classList.add('pz-crack');
@@ -52,13 +52,13 @@ var Puzzle = (function () {
       busy = false;
       if (mark) mark.classList.remove('pz-crack', 'pz-break');
       setStage(v.stage);
-      open(v);
+      open(v, 'rural');
     }, function (e) { busy = false; if (mark) mark.classList.remove('pz-crack', 'pz-break'); if (!/沒有反應|沒有這個功能/.test(e.message)) toast(e.message, true); });
   }
 
   /* ---------------- 大廳 ---------------- */
   function close() { if (box) { box.remove(); box = null; document.documentElement.classList.remove('pz-open'); } }
-  function open(v) {
+  function open(v, mode) {
     close();
     preload();
     box = el('div', 'pz-lobby');
@@ -67,19 +67,24 @@ var Puzzle = (function () {
     box.appendChild(x);
     document.body.appendChild(box);
     document.documentElement.classList.add('pz-open');
-    draw(v, true);
+    draw(v, true, mode);
   }
-  function draw(v, first) {
+  /** mode 'rural'：已經到中世紀的人回田園看線索 */
+  function draw(v, first, mode) {
     if (!box) return;
     [].slice.call(box.children).forEach(function (c) { if (!c.classList.contains('pz-close')) c.remove(); });
-    box.className = 'pz-lobby ' + (v.stage >= 4 ? 'pz-medieval' : v.stage >= 2 ? 'pz-rural pz-night' : 'pz-rural');
-    if (v.stage >= 4) { medieval(); return; }
+    var castle = v.stage >= 4 && mode !== 'rural';
+    box.className = 'pz-lobby ' + (castle ? 'pz-medieval' : v.stage >= 2 ? 'pz-rural pz-night' : 'pz-rural');
+    if (castle) { medieval(v); return; }
     box.appendChild(scene());
     if (v.stage === 1) envelope(v, first);
     else { box.appendChild(sky(v)); letterIcon(v); }
+    if (v.stage >= 4) box.appendChild(hop('🏰', '回到城堡', function () { draw(v, false); }));
   }
+  /** 田園和城堡之間的小按鈕 */
+  function hop(icon, text, fn) { var b = el('button', 'pz-hop'); b.type = 'button'; b.appendChild(el('span', '', icon)); b.appendChild(el('span', '', text)); b.onclick = fn; return b; }
   /** 先把圖載進來（進大廳時） */
-  function preload() { ['day.webp', 'night.webp', 'envelope.webp', 'letter.webp', 'pisces.webp', 'fish.webp'].forEach(function (f) { var i = new Image(); i.src = IMG + f; }); }
+  function preload() { ['day.webp', 'night.webp', 'envelope.webp', 'letter.webp', 'pisces.webp', 'fish.webp', 'door-open.webp'].forEach(function (f) { var i = new Image(); i.src = IMG + f; }); }
   /** 田園的畫：白天、夜晚兩張疊著，天黑時夜晚那張慢慢浮上來；晚上有螢火蟲 */
   function scene() {
     var s = el('div', 'pz-scene');
@@ -123,44 +128,60 @@ var Puzzle = (function () {
     if (readOnly) { var x = el('button', 'pz-paper-x', '收起來'); x.type = 'button'; x.onclick = function () { p.remove(); }; p.appendChild(x); }
     else wrap.onclick = pick;
     box.appendChild(p);
-    var done = false;
+    var sending = false, need = v.need || 4;
+    // 玩家先自己用鉛筆圈（馬上出現、再點一次擦掉），圈滿就一起送後端；中的變紅圈，沒中的擦掉
     function pick(e) {
-      if (done) return;
+      if (sending) return;
       var b = wrap.getBoundingClientRect(), x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      // 點下去馬上有一圈鉛筆痕（不代表對錯），後端說中了才畫紅圈
-      var t = el('i', 'pz-tap'); t.style.left = (x * 100) + '%'; t.style.top = (y * 100) + '%';
-      wrap.appendChild(t); setTimeout(function () { t.remove(); }, 900);
-      var data = { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
-      queue = queue.then(function () {
-        if (done) return;
-        return call('typo', data).then(function (r) {
-          if (!r.hit) return;                    // 點到正常的字：沒有反應
-          if (r.r && !wrap.querySelector('.pz-ring[data-k="' + r.r.join(',') + '"]')) { ring(wrap, L, r.r, true); wrap.lastChild.dataset.k = r.r.join(','); }
-          if (r.done) { done = true; nightfall(p, r.view); }
-        }, function (e2) { toast(e2.message, true); });
-      });
+      var hitMark = [].slice.call(wrap.querySelectorAll('.pz-mark')).filter(function (m) { return Math.abs(m._x - x) * b.width < 22 && Math.abs(m._y - y) * b.height < 22; })[0];
+      if (hitMark) { hitMark.remove(); return; }
+      var m = el('i', 'pz-mark'); m._x = x; m._y = y;
+      m.style.left = (x * 100) + '%'; m.style.top = (y * 100) + '%';
+      wrap.appendChild(m);
+      var marks = wrap.querySelectorAll('.pz-mark'), red = wrap.querySelectorAll('.pz-ring').length;
+      if (marks.length + red >= need) send([].slice.call(marks));
+    }
+    function send(marks) {
+      sending = true;
+      wrap.classList.add('pz-checking');
+      var pts = marks.map(function (m) { return { x: Math.round(m._x * 10000) / 10000, y: Math.round(m._y * 10000) / 10000 }; });
+      call('typo', { pts: pts }).then(function (r) {
+        sending = false; wrap.classList.remove('pz-checking');
+        var hits = r.hits || [];
+        marks.forEach(function (m, k) {
+          var rr = hits[k];
+          if (rr && !wrap.querySelector('.pz-ring[data-k="' + rr.join(',') + '"]')) { ring(wrap, L, rr, true); wrap.lastChild.dataset.k = rr.join(','); m.remove(); }
+          else if (rr) m.remove();
+          else { m.classList.add('pz-erase'); setTimeout(function () { m.remove(); }, 600); }
+        });
+        if (r.done) nightfall(p, r.view);
+      }, function (e2) { sending = false; wrap.classList.remove('pz-checking'); toast(e2.message, true); });
     }
   }
-  /** 四個錯字飛出來排成「夜中兩魚」，天慢慢暗下來 */
+  /** 四個錯字都圈到：信收起來，天慢慢暗下來 */
   function nightfall(p, v) {
     setStage(2);
-    var word = el('div', 'pz-word');
-    (v.word || '').split('').forEach(function (ch, k) { var s = el('span', '', ch); s.style.animationDelay = (k * 0.35) + 's'; word.appendChild(s); });
     setTimeout(function () {
       p.classList.add('pz-fold');
-      box.appendChild(word);
-      setTimeout(function () { box.classList.add('pz-dusk'); }, 1600);
-      setTimeout(function () { word.remove(); draw(v); }, reduced() ? 1800 : 4600);
-    }, 900);
+      box.classList.add('pz-dusk');
+      setTimeout(function () { draw(v); }, reduced() ? 600 : 2600);
+    }, 700);
   }
 
-  /* 夜空 */
+  /* 夜空：每個星座都有連線（不標名字），玩家要點出雙魚座 */
+  function svgEl(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
   function sky(v) {
-    var wrap = el('div', 'pz-sky'), svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    var wrap = el('div', 'pz-sky'), svg = svgEl('svg');
     svg.setAttribute('viewBox', '0 0 1000 657'); svg.setAttribute('class', 'pz-sky-svg');
     // 背景的小星星只是裝飾（每次隨機），答案在後端
     for (var i = 0; i < 90; i++) svg.appendChild(dot(Math.random() * 1000, Math.random() * 657, 0.6 + Math.random() * 0.9, 'pz-faint'));
+    var groups = (v.cons || []).map(function (ls, gi) {
+      var g = svgEl('g'); g.setAttribute('class', 'pz-con');
+      ls.forEach(function (l) { var a = v.stars[l[0]], b = v.stars[l[1]]; if (a && b) g.appendChild(seg(a, b, 'pz-cline')); });
+      svg.appendChild(g);
+      return { g: g, ls: ls };
+    });
     (v.stars || []).forEach(function (s) { svg.appendChild(dot(s[0] * 1000, s[1] * 657, 2.1, 'pz-star')); });
     if (v.lines) { drawLines(svg, v); sigil(svg, v); }
     wrap.appendChild(svg);
@@ -170,31 +191,47 @@ var Puzzle = (function () {
         if (busy) return;
         var r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
         if (x < 0 || x > 1 || y < 0 || y > 1) return;
-        var tp = dot(x * 1000, y * 657, 9, 'pz-tapstar'); svg.appendChild(tp); setTimeout(function () { tp.remove(); }, 900);   // 點下去馬上有反應
+        var tp = dot(x * 1000, y * 657, 9, 'pz-tapstar'); svg.appendChild(tp); setTimeout(function () { tp.remove(); }, 900);
+        // 點下去馬上亮起最近的那個星座（只是畫面；對不對由後端判斷）
+        var near = nearest(groups, v.stars, x * 1000, y * 657);
+        if (near) near.g.classList.add('pz-con-on');
         busy = true;
         call('star', { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }).then(function (res) {
           busy = false;
-          if (!res.hit) return;                  // 點錯的地方：沒有反應
+          if (!res.hit) { if (near) { near.g.classList.remove('pz-con-on'); near.g.classList.add('pz-con-no'); setTimeout(function () { near.g.classList.remove('pz-con-no'); }, 700); } return; }
           setStage(3);
           wrap.classList.remove('pz-pickable'); wrap.onclick = null;
           drawLines(svg, res.view, true);
           sigil(svg, res.view, true);
           setTimeout(function () { fish(res.view); }, reduced() ? 300 : 2600);
-        }, function (e2) { busy = false; toast(e2.message, true); });
+        }, function (e2) { busy = false; if (near) near.g.classList.remove('pz-con-on'); toast(e2.message, true); });
       };
     }
     if (v.stage >= 3) setTimeout(function () { fish(v, true); }, 50);
     return wrap;
   }
-  function dot(x, y, r, cls) { var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); c.setAttribute('cx', x.toFixed(1)); c.setAttribute('cy', y.toFixed(1)); c.setAttribute('r', r); c.setAttribute('class', cls); return c; }
+  function seg(a, b, cls) { var ln = svgEl('line'); ln.setAttribute('x1', a[0] * 1000); ln.setAttribute('y1', a[1] * 657); ln.setAttribute('x2', b[0] * 1000); ln.setAttribute('y2', b[1] * 657); ln.setAttribute('class', cls); return ln; }
+  /** 點的位置最靠近哪一個星座（60 單位內） */
+  function nearest(groups, stars, px, py) {
+    var best = null, bd = 60;
+    groups.forEach(function (gr) {
+      gr.ls.forEach(function (l) {
+        var a = stars[l[0]], b = stars[l[1]]; if (!a || !b) return;
+        var ax = a[0] * 1000, ay = a[1] * 657, dx = b[0] * 1000 - ax, dy = b[1] * 657 - ay, L2 = dx * dx + dy * dy;
+        var t = L2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2)) : 0;
+        var d = Math.sqrt(Math.pow(ax + t * dx - px, 2) + Math.pow(ay + t * dy - py, 2));
+        if (d < bd) { bd = d; best = gr; }
+      });
+    });
+    return best;
+  }
+  function dot(x, y, r, cls) { var c = svgEl('circle'); c.setAttribute('cx', x.toFixed(1)); c.setAttribute('cy', y.toFixed(1)); c.setAttribute('r', r); c.setAttribute('class', cls); return c; }
   function drawLines(svg, v, anim) {
     (v.lines || []).forEach(function (l, k) {
       var a = v.stars[l[0]], b = v.stars[l[1]]; if (!a || !b) return;
-      var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      ln.setAttribute('x1', a[0] * 1000); ln.setAttribute('y1', a[1] * 657); ln.setAttribute('x2', b[0] * 1000); ln.setAttribute('y2', b[1] * 657);
-      ln.setAttribute('class', 'pz-line' + (anim && !reduced() ? ' pz-draw' : ''));
+      var ln = seg(a, b, 'pz-line' + (anim && !reduced() ? ' pz-draw' : ''));
       if (anim) ln.style.animationDelay = (k * 0.08) + 's';
-      svg.insertBefore(ln, svg.firstChild);
+      svg.appendChild(ln);
     });
   }
   /** 找到雙魚座：星座後面浮出雙魚魔法陣 */
@@ -227,7 +264,8 @@ var Puzzle = (function () {
   }
 
   /* 中世紀（建造中） */
-  function medieval() {
+  function medieval(v) {
+    box.appendChild(hop('🌙', '回田園看線索', function () { draw(v, false, 'rural'); }));
     var m = el('div', 'pz-castle');
     m.appendChild(el('div', 'pz-castle-art', '🏰'));
     m.appendChild(el('p', '', '石門後面是一座還在建造中的城堡。'));
@@ -246,11 +284,13 @@ var Puzzle = (function () {
     var a = el('div', 'pz-abyss');
     for (var i = 0; i < 18; i++) { var b = el('i', 'pz-bubble-up'); b.style.left = (5 + Math.random() * 90).toFixed(1) + '%'; b.style.animationDelay = (-Math.random() * 9).toFixed(1) + 's'; b.style.animationDuration = (6 + Math.random() * 6).toFixed(1) + 's'; a.appendChild(b); }
     var door = el('button', 'pz-door'); door.type = 'button'; door.setAttribute('aria-label', '石門');
-    door.appendChild(el('span', 'pz-door-ring'));
+    var shut = el('img', 'pz-door-shut'), opened = el('img', 'pz-door-opened');
+    shut.src = IMG + 'door.webp'; opened.src = IMG + 'door-open.webp'; shut.alt = opened.alt = ''; shut.loading = opened.loading = 'lazy';
+    door.appendChild(el('i', 'pz-door-light')); door.appendChild(opened); door.appendChild(shut);
     door.onclick = function () {
       if (busy) return;
       busy = true; door.classList.add('pz-door-open');
-      call('gate').then(function (v) { busy = false; setStage(v.stage); setTimeout(function () { open(v); door.classList.remove('pz-door-open'); }, reduced() ? 0 : 900); },
+      call('gate').then(function (v) { busy = false; setTimeout(function () { open(v); door.classList.remove('pz-door-open'); setStage(v.stage); }, reduced() ? 0 : 1500); },   // 門開完、大廳蓋上去之後才重畫頁面（不然畫面會跳回頂端）
         function (e) { busy = false; door.classList.remove('pz-door-open'); toast(e.message, true); });
     };
     a.appendChild(door);
