@@ -6,7 +6,7 @@
  * 不管：後端 API（Apps Script，跨網域 POST）、games/（game.js 自己存資源包）。
  * 第一次要在有網路時打開過一次，之後才能離線打開。
  */
-var CACHE = 'ia-shell-v5';
+var CACHE = 'ia-shell-v6';
 var SHELL = ['./', 'index.html', 'app.html', 'game.html', 'camps.html', 'admin.html', 'bench.html',
   'assets/style.css', 'assets/config.js', 'assets/core.js', 'assets/richtext.js', 'assets/render.js', 'assets/app.js', 'assets/game.js',
   'assets/qrcode.min.js', 'assets/staff.js', 'assets/camps.js', 'assets/admin.js', 'assets/editor.js', 'assets/pkgadmin.js', 'assets/fxadmin.js', 'assets/login.js', 'assets/admin-boot.js', 'assets/camps-boot.js', 'assets/bench.js', 'assets/crashfx.js', 'assets/puzzle.js',

@@ -1,7 +1,8 @@
 /* 營隊互動系統　© 2026 Daniel GUO. All rights reserved. */
 /**
  * 隱藏解謎彩蛋（前台）。後端 Puzzle.gs；設計見解謎方案文件。目前做到田園結束＋中世紀的石門。
- *   答案都在後端：這裡只送「點了第幾個字」「點了夜空哪裡」，對不對、下一關的內容都由後端給。
+ *   答案都在後端：這裡只送「點了信的哪裡」「點了夜空哪裡」，對不對、下一關的內容都由後端給。
+ *   圖：assets/puzzle/（day／night 背景、envelope 信封、letter 手寫信、pisces 雙魚魔法陣、fish 魚），Daniel 生成的。
  *
  *   入口：左上角「營」剛好敲 7 下（兩下間隔超過 2 秒就重算）。不到 7 下跳「要不要再多敲幾下」，超過 7 下沒反應；
  *         剛好 7 下時標誌逐漸裂開，2 秒內沒有第 8 下就進田園。田園過關後這個入口鎖起來。
@@ -11,7 +12,8 @@
 var Puzzle = (function () {
   var E = null;            // { camp, side, preview, state: {stage, page}, changed() }
   var knock = { n: 0, t: null, el: null }, busy = false, box = null;
-  var GAP = 2000, NEED = 7;
+  var GAP = 2000, NEED = 7, IMG = 'assets/puzzle/';
+  var queue = Promise.resolve();   // 點信：一個一個送（後端照順序存），畫面不用等
 
   function init(o) { E = o; }
   function on() { return !!(E && E.state); }
@@ -58,6 +60,7 @@ var Puzzle = (function () {
   function close() { if (box) { box.remove(); box = null; document.documentElement.classList.remove('pz-open'); } }
   function open(v) {
     close();
+    preload();
     box = el('div', 'pz-lobby');
     box.setAttribute('role', 'dialog');
     var x = el('button', 'pz-close', '✕'); x.type = 'button'; x.setAttribute('aria-label', '離開'); x.onclick = close;
@@ -71,16 +74,19 @@ var Puzzle = (function () {
     [].slice.call(box.children).forEach(function (c) { if (!c.classList.contains('pz-close')) c.remove(); });
     box.className = 'pz-lobby ' + (v.stage >= 4 ? 'pz-medieval' : v.stage >= 2 ? 'pz-rural pz-night' : 'pz-rural');
     if (v.stage >= 4) { medieval(); return; }
-    box.appendChild(scene(v));
+    box.appendChild(scene());
     if (v.stage === 1) envelope(v, first);
     else { box.appendChild(sky(v)); letterIcon(v); }
   }
-  /** 田園的畫：天空、遠山、田、小屋（夜裡窗戶的燈熄了） */
+  /** 先把圖載進來（進大廳時） */
+  function preload() { ['day.webp', 'night.webp', 'envelope.webp', 'letter.webp', 'pisces.webp', 'fish.webp'].forEach(function (f) { var i = new Image(); i.src = IMG + f; }); }
+  /** 田園的畫：白天、夜晚兩張疊著，天黑時夜晚那張慢慢浮上來；晚上有螢火蟲 */
   function scene() {
     var s = el('div', 'pz-scene');
     s.setAttribute('aria-hidden', 'true');
-    ['pz-sun', 'pz-moon', 'pz-hill h1', 'pz-hill h2', 'pz-field', 'pz-house', 'pz-tree t1', 'pz-tree t2', 'pz-fence'].forEach(function (c) { s.appendChild(el('i', c)); });
-    for (var i = 0; i < 40; i++) { var d = el('b', 'pz-dust'); d.style.left = (Math.random() * 100).toFixed(1) + '%'; d.style.top = (Math.random() * 55).toFixed(1) + '%'; d.style.animationDelay = (-Math.random() * 6).toFixed(1) + 's'; s.appendChild(d); }
+    s.appendChild(el('i', 'pz-bg pz-bg-day'));
+    s.appendChild(el('i', 'pz-bg pz-bg-night'));
+    for (var i = 0; i < 26; i++) { var d = el('b', 'pz-dust'); d.style.left = (Math.random() * 100).toFixed(1) + '%'; d.style.top = (62 + Math.random() * 34).toFixed(1) + '%'; d.style.animationDelay = (-Math.random() * 6).toFixed(1) + 's'; s.appendChild(d); }
     return s;
   }
 
@@ -88,41 +94,52 @@ var Puzzle = (function () {
   function envelope(v, first) {
     var env = el('button', 'pz-envelope' + (first && !reduced() ? ' pz-slide' : ''));
     env.type = 'button'; env.setAttribute('aria-label', '一封信');
-    env.appendChild(el('span', 'pz-seal', '✉'));
-    env.onclick = function () { env.remove(); letter(v); };
+    var im = el('img'); im.src = IMG + 'envelope.webp'; im.alt = ''; im.draggable = false;
+    env.appendChild(im);
+    env.onclick = function () { env.classList.add('pz-opening'); setTimeout(function () { env.remove(); letter(v); }, reduced() ? 0 : 450); };
     box.appendChild(env);
   }
   function letterIcon(v) {
-    var b = el('button', 'pz-letter-ic', '✉'); b.type = 'button'; b.setAttribute('aria-label', '再看一次信');
+    var b = el('button', 'pz-letter-ic'); b.type = 'button'; b.setAttribute('aria-label', '再看一次信');
+    var im = el('img'); im.src = IMG + 'envelope.webp'; im.alt = ''; b.appendChild(im);
     b.onclick = function () { letter(v, true); };
     box.appendChild(b);
   }
+  /** 錯字的圈（位置是後端給的像素，換成百分比） */
+  function ring(wrap, L, r, anim) {
+    var c = el('i', 'pz-ring' + (anim && !reduced() ? ' pz-ring-draw' : ''));
+    c.style.left = ((r[0] - 10) / L.w * 100) + '%'; c.style.top = ((r[1] - 8) / L.h * 100) + '%';
+    c.style.width = ((r[2] + 20) / L.w * 100) + '%'; c.style.height = ((r[3] + 16) / L.h * 100) + '%';
+    wrap.appendChild(c);
+  }
   function letter(v, readOnly) {
     var old = box.querySelector('.pz-paper'); if (old) old.remove();
-    var p = el('div', 'pz-paper'), n = 0, found = {};
-    (v.found || []).forEach(function (i) { found[i] = 1; });
-    v.letter.forEach(function (para, k) {
-      var line = el('p', k === 0 ? 'pz-hi' : k === v.letter.length - 1 ? 'pz-sign' : '');
-      for (var j = 0; j < para.length; j++) {
-        var c = el('span', 'pz-ch' + (found[n] ? ' pz-circled' : ''), para.charAt(j));
-        c.dataset.i = n;
-        if (!readOnly) c.onclick = pick;
-        line.appendChild(c); n++;
-      }
-      p.appendChild(line);
-    });
+    var L = v.letter, p = el('div', 'pz-paper'), wrap = el('div', 'pz-sheet');
+    var im = el('img'); im.src = L.src; im.alt = '一封手寫信'; im.draggable = false;
+    wrap.style.aspectRatio = L.w + ' / ' + L.h;
+    wrap.appendChild(im);
+    (v.found || []).forEach(function (r) { ring(wrap, L, r); });
+    p.appendChild(wrap);
     if (readOnly) { var x = el('button', 'pz-paper-x', '收起來'); x.type = 'button'; x.onclick = function () { p.remove(); }; p.appendChild(x); }
+    else wrap.onclick = pick;
     box.appendChild(p);
+    var done = false;
     function pick(e) {
-      var c = e.currentTarget, i = Number(c.dataset.i);
-      if (c.classList.contains('pz-circled') || busy) return;
-      busy = true;
-      call('typo', { i: i }).then(function (r) {
-        busy = false;
-        if (!r.hit) return;                      // 點到正常的字：沒有反應
-        c.classList.add('pz-circled');
-        if (r.done) nightfall(p, r.view);
-      }, function (e2) { busy = false; toast(e2.message, true); });
+      if (done) return;
+      var b = wrap.getBoundingClientRect(), x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      // 點下去馬上有一圈鉛筆痕（不代表對錯），後端說中了才畫紅圈
+      var t = el('i', 'pz-tap'); t.style.left = (x * 100) + '%'; t.style.top = (y * 100) + '%';
+      wrap.appendChild(t); setTimeout(function () { t.remove(); }, 900);
+      var data = { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
+      queue = queue.then(function () {
+        if (done) return;
+        return call('typo', data).then(function (r) {
+          if (!r.hit) return;                    // 點到正常的字：沒有反應
+          if (r.r && !wrap.querySelector('.pz-ring[data-k="' + r.r.join(',') + '"]')) { ring(wrap, L, r.r, true); wrap.lastChild.dataset.k = r.r.join(','); }
+          if (r.done) { done = true; nightfall(p, r.view); }
+        }, function (e2) { toast(e2.message, true); });
+      });
     }
   }
   /** 四個錯字飛出來排成「夜中兩魚」，天慢慢暗下來 */
@@ -134,8 +151,8 @@ var Puzzle = (function () {
       p.classList.add('pz-fold');
       box.appendChild(word);
       setTimeout(function () { box.classList.add('pz-dusk'); }, 1600);
-      setTimeout(function () { word.remove(); draw(v); }, reduced() ? 1800 : 4200);
-    }, 700);
+      setTimeout(function () { word.remove(); draw(v); }, reduced() ? 1800 : 4600);
+    }, 900);
   }
 
   /* 夜空 */
@@ -145,7 +162,7 @@ var Puzzle = (function () {
     // 背景的小星星只是裝飾（每次隨機），答案在後端
     for (var i = 0; i < 90; i++) svg.appendChild(dot(Math.random() * 1000, Math.random() * 657, 0.6 + Math.random() * 0.9, 'pz-faint'));
     (v.stars || []).forEach(function (s) { svg.appendChild(dot(s[0] * 1000, s[1] * 657, 2.1, 'pz-star')); });
-    if (v.lines) drawLines(svg, v);
+    if (v.lines) { drawLines(svg, v); sigil(svg, v); }
     wrap.appendChild(svg);
     if (v.stage === 2) {
       wrap.classList.add('pz-pickable');
@@ -153,6 +170,7 @@ var Puzzle = (function () {
         if (busy) return;
         var r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
         if (x < 0 || x > 1 || y < 0 || y > 1) return;
+        var tp = dot(x * 1000, y * 657, 9, 'pz-tapstar'); svg.appendChild(tp); setTimeout(function () { tp.remove(); }, 900);   // 點下去馬上有反應
         busy = true;
         call('star', { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }).then(function (res) {
           busy = false;
@@ -160,7 +178,8 @@ var Puzzle = (function () {
           setStage(3);
           wrap.classList.remove('pz-pickable'); wrap.onclick = null;
           drawLines(svg, res.view, true);
-          setTimeout(function () { fish(res.view); }, reduced() ? 300 : 2200);
+          sigil(svg, res.view, true);
+          setTimeout(function () { fish(res.view); }, reduced() ? 300 : 2600);
         }, function (e2) { busy = false; toast(e2.message, true); });
       };
     }
@@ -178,13 +197,29 @@ var Puzzle = (function () {
       svg.insertBefore(ln, svg.firstChild);
     });
   }
+  /** 找到雙魚座：星座後面浮出雙魚魔法陣 */
+  function sigil(svg, v, anim) {
+    var xs = [], ys = [];
+    (v.lines || []).forEach(function (l) { l.forEach(function (i) { var s = v.stars[i]; if (s) { xs.push(s[0] * 1000); ys.push(s[1] * 657); } }); });
+    if (!xs.length) return;
+    var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+    var size = Math.max(Math.max.apply(null, xs) - Math.min.apply(null, xs), Math.max.apply(null, ys) - Math.min.apply(null, ys)) * 1.15;
+    var im = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    im.setAttribute('href', IMG + 'pisces.webp');
+    im.setAttribute('x', (cx - size / 2).toFixed(1)); im.setAttribute('y', (cy - size / 2).toFixed(1));
+    im.setAttribute('width', size.toFixed(1)); im.setAttribute('height', size.toFixed(1));
+    im.setAttribute('class', 'pz-sigil' + (anim && !reduced() ? ' pz-sigil-in' : ''));
+    im.style.transformOrigin = cx.toFixed(1) + 'px ' + cy.toFixed(1) + 'px';
+    svg.insertBefore(im, svg.firstChild);
+  }
   /** 兩隻魚浮上來，各說一句 */
   function fish(v, still) {
     if (!box || box.querySelector('.pz-fishes')) return;
     var f = el('div', 'pz-fishes' + (still || reduced() ? '' : ' pz-rise'));
     (v.fish || []).forEach(function (t, k) {
       var one = el('div', 'pz-fish f' + (k + 1));
-      one.appendChild(el('div', 'pz-fish-body', '🐟'));
+      var body = el('div', 'pz-fish-body'), im = el('img'); im.src = IMG + 'fish.webp'; im.alt = ''; body.appendChild(im);
+      one.appendChild(body);
       one.appendChild(el('div', 'pz-bubble', t));
       f.appendChild(one);
     });
