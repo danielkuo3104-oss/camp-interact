@@ -128,45 +128,37 @@ var Puzzle = (function () {
     if (readOnly) { var x = el('button', 'pz-paper-x', '收起來'); x.type = 'button'; x.onclick = function () { p.remove(); }; p.appendChild(x); }
     else wrap.onclick = pick;
     box.appendChild(p);
-    var sending = false, need = v.need || 4;
-    // 玩家先自己用鉛筆圈（馬上出現、再點一次擦掉），圈滿就一起送後端；中的變紅圈，沒中的擦掉
+    [].slice.call(wrap.querySelectorAll('.pz-ring')).forEach(function (c, k) { if (v.found[k]) c.dataset.k = v.found[k].join(','); });
+    var spots = v.spots || [], need = v.need || 4, q = Promise.resolve(), last = null, done = false;
+    // 錯字位置在手機上直接判斷（Daniel 11/22：點到附近馬上出紅圈），每圈到一個在背景送後端記進度
     function pick(e) {
-      if (sending) return;
+      if (done) return;
       var b = wrap.getBoundingClientRect(), x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      var hitMark = [].slice.call(wrap.querySelectorAll('.pz-mark')).filter(function (m) { return Math.abs(m._x - x) * b.width < 22 && Math.abs(m._y - y) * b.height < 22; })[0];
-      if (hitMark) { hitMark.remove(); return; }
-      var m = el('i', 'pz-mark'); m._x = x; m._y = y;
-      m.style.left = (x * 100) + '%'; m.style.top = (y * 100) + '%';
-      wrap.appendChild(m);
-      var marks = wrap.querySelectorAll('.pz-mark'), red = wrap.querySelectorAll('.pz-ring').length;
-      if (marks.length + red >= need) send([].slice.call(marks));
-    }
-    function send(marks) {
-      sending = true;
-      wrap.classList.add('pz-checking');
-      var pts = marks.map(function (m) { return { x: Math.round(m._x * 10000) / 10000, y: Math.round(m._y * 10000) / 10000 }; });
-      call('typo', { pts: pts }).then(function (r) {
-        sending = false; wrap.classList.remove('pz-checking');
-        var hits = r.hits || [];
-        marks.forEach(function (m, k) {
-          var rr = hits[k];
-          if (rr && !wrap.querySelector('.pz-ring[data-k="' + rr.join(',') + '"]')) { ring(wrap, L, rr, true); wrap.lastChild.dataset.k = rr.join(','); m.remove(); }
-          else if (rr) m.remove();
-          else { m.classList.add('pz-erase'); setTimeout(function () { m.remove(); }, 600); }
-        });
-        if (r.done) nightfall(p, r.view);
-      }, function (e2) { sending = false; wrap.classList.remove('pz-checking'); toast(e2.message, true); });
+      var px = x * L.w, py = y * L.h, pad = 14, hit = null;
+      spots.forEach(function (r) { if (!hit && px >= r[0] - pad && px <= r[0] + r[2] + pad && py >= r[1] - pad && py <= r[1] + r[3] + pad) hit = r; });
+      if (!hit) {   // 沒中：淡淡的鉛筆圈一下就消失
+        var m = el('i', 'pz-mark pz-erase'); m.style.left = (x * 100) + '%'; m.style.top = (y * 100) + '%';
+        wrap.appendChild(m); setTimeout(function () { m.remove(); }, 650);
+        return;
+      }
+      if (wrap.querySelector('.pz-ring[data-k="' + hit.join(',') + '"]')) return;
+      ring(wrap, L, hit, true); wrap.lastChild.dataset.k = hit.join(',');
+      var pt = { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
+      last = q = q.then(function () { return call('typo', { pts: [pt] }); }).catch(function (e2) { toast(e2.message, true); return {}; });
+      if (wrap.querySelectorAll('.pz-ring').length >= need) { done = true; nightfall(p, last); }
     }
   }
   /** 四個錯字都圈到：信收起來，天慢慢暗下來 */
-  function nightfall(p, v) {
-    setStage(2);
-    setTimeout(function () {
-      p.classList.add('pz-fold');
-      box.classList.add('pz-dusk');
-      setTimeout(function () { draw(v); }, reduced() ? 600 : 2600);
-    }, 700);
+  function nightfall(p, wait) {
+    var t0 = Date.now(), ms = reduced() ? 1300 : 3300;
+    setTimeout(function () { p.classList.add('pz-fold'); box.classList.add('pz-dusk'); }, 700);
+    // 動畫照跑；後端記好（拿到夜空）再畫
+    Promise.resolve(wait).then(function (r) {
+      var go = function (v) { setTimeout(function () { setStage(2); draw(v); }, Math.max(0, ms - (Date.now() - t0))); };
+      if (r && r.view) go(r.view);
+      else call('view').then(function (v) { if (v.stage >= 2) go(v); else { toast('連線不穩，再試一次', true); draw(v); } }, function (e) { toast(e.message, true); });
+    });
   }
 
   /* 夜空：每個星座都有連線（不標名字），玩家要點出雙魚座 */
