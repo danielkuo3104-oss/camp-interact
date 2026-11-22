@@ -1268,7 +1268,7 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-letter-ic img { display: block; width: 100%; }
 
 /* 夜空 */
-.pz-sky { position: absolute; left: 0; right: 0; top: 4%; height: 56%; display: grid; place-items: center; z-index: 2; }
+.pz-sky { position: absolute; left: 0; right: 0; top: calc(max(14px, env(safe-area-inset-top)) + 52px); height: 52%; display: grid; place-items: center; z-index: 2; }
 .pz-sky-svg { width: 100%; height: 100%; overflow: visible; }
 .pz-sky.pz-pickable { cursor: crosshair; }
 .pz-faint { fill: #cfd8ff; opacity: .55; animation: pz-twinkle 4s ease-in-out infinite; }
