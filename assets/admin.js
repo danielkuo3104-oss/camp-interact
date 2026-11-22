@@ -450,7 +450,9 @@ A.views.eggs = function (m) {
       box.appendChild(h('div', { class: 'card col', style: { gap: '14px', padding: '18px 20px' } },
         h('b', null, '開關'),
         sw('crash', '版權聲明假當機', '學員端點頁尾「© 2026 Daniel GUO」，隨機 3 秒壞掉，冷卻 1 分鐘'),
-        sw('first', '第一位報名', '只有第一位有效報名的學員：第一次登入感謝、發金光的「營」、版權聲明變金色彩帶、金色光點、金色流星')));
+        sw('first', '第一位報名', '只有第一位有效報名的學員：第一次登入感謝、發金光的「營」、版權聲明變金色彩帶、金色光點、金色流星'),
+        sw('puzzle', '隱藏解謎', '學員、工作人員都能玩：「營」剛好敲 7 下進田園。關掉時只有你的預覽能玩')));
+      box.appendChild(puzzleCard(r.puzzle || [], pv, load));
       box.appendChild(h('div', { class: 'card col', style: { gap: '10px', padding: '18px 20px' } },
         h('b', null, '第一位報名'),
         h('div', null, r.firstName ? '目前是「' + r.firstName + '」（報名後台名單裡第一位有效報名；取消或候補會由下一位遞補，每次同步更新）' : h('span', { class: 'muted' }, '還不知道是誰：到「人員與分隊」按「從報名後台同步」')),
@@ -468,6 +470,29 @@ A.views.eggs = function (m) {
   };
   load();
 };
+
+/** 隱藏解謎：每個人到第幾關、重設 */
+function puzzleCard(list, pv, reload) {
+  var ST = ['還沒進來', '田園：歡迎信', '田園：夜空', '田園過關（找石門）', '中世紀'];
+  var reset = function (who, name) {
+    confirmBox('重設解謎進度', '把「' + name + '」的解謎進度清掉，從頭開始？', '重設', true).then(function (ok) {
+      if (ok) A.op('puzzle.reset', { data: { who: who } }).then(function () { toast('已重設'); reload(); }, fail);
+    });
+  };
+  var wpv = h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=worker&preview=pub', target: '_blank', onclick: A.openTab }, '預覽工作人員端 ↗');
+  return h('div', { class: 'card col', style: { gap: '10px', padding: '18px 20px' } },
+    h('b', null, '🧩 隱藏解謎進度'),
+    h('div', { class: 'small muted' }, '目前做到：田園（敲 7 下 → 歡迎信圈 4 個錯字 → 夜空點雙魚座 → 兩隻魚提示）→ 個人資訊／小隊資料滑到底的石門 → 中世紀（建造中）。答案都在後端。'),
+    list.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, ['誰', '到哪', '點錯／點擊次數', '進田園', '最後', ''].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, list.map(function (x) {
+        var nm = x.kind === 'root' ? '你的預覽' : (x.name || x.who) + (x.kind === 'worker' ? '（工作人員）' : '');
+        return h('tr', null, h('td', null, nm), h('td', null, h('b', null, ST[x.stage] || ('第 ' + x.stage + ' 關'))), h('td', null, x.tries || 0),
+          h('td', { class: 'small' }, x.t1 ? fmt(x.t1) : ''), h('td', { class: 'small' }, x.at ? fmt(x.at) : ''),
+          h('td', null, h('button', { class: 'btn sm', onclick: function () { reset(x.who, nm); } }, '重設')));
+      })))) : h('div', { class: 'muted' }, '還沒有人進來。'),
+    h('div', { class: 'row wrap' }, pv('', '預覽學員端 ↗'), wpv, h('button', { class: 'btn', onclick: function () { reset('', '你的預覽'); } }, '重設我的預覽')),
+    h('div', { class: 'hint' }, '預覽是你自己的進度（學員端、工作人員端共用一份）。'));
+}
 
 /* ---------------- 營隊設定與備份 ---------------- */
 A.views.settings = function (m) {

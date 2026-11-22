@@ -290,6 +290,8 @@
     // 第一位報名的隱藏彩蛋（系統終端的彩蛋管理頁可以用 egg=first 預覽）
     S.first = side === 'student' && !!((b.ext && b.ext.people && b.ext.people.first) || (preview && param('egg') === 'first' && eggOn('first')));
     root.classList.toggle('egg-first', S.first);
+    // 隱藏解謎（Puzzle.gs）：有開、或系統終端預覽才有 state
+    if (window.Puzzle) Puzzle.init({ camp: camp, side: side, preview: !!preview, state: (b.ext && b.ext.people && b.ext.people.puzzle) || null, changed: function () { render(); } });
     var em = b.ext && b.ext.emergency;
     S.nightCfg = em || null;
     S.night = em && em.nightStart ? nightNow() : !!(em && em.night);
@@ -414,12 +416,17 @@
   }
   /** 左上角的「營」：第一位報名的人看到的有一圈金光，點了有反應 */
   function brandMark() {
-    if (!S.first) return h('span', { class: 'brand-mark' }, '營');
-    return h('span', { class: 'brand-mark egg-gold', onclick: function (e) {
-      var m = e.currentTarget; m.classList.remove('egg-pop'); void m.offsetWidth; m.classList.add('egg-pop');
-      toast('👀 被你發現了。這道光只為第一位報名的人亮著');
-      eggFound('first-logo');
+    var P = window.Puzzle;
+    var m = h('span', { class: 'brand-mark' + (S.first ? ' egg-gold' : ''), onclick: function (e) {
+      var el = e.currentTarget;
+      if (S.first) {
+        el.classList.remove('egg-pop'); void el.offsetWidth; el.classList.add('egg-pop');
+        toast('👀 被你發現了。這道光只為第一位報名的人亮著');
+        eggFound('first-logo');
+      }
+      if (P) P.tap(el);   // 隱藏解謎的入口：剛好敲 7 下
     } }, '營');
+    return P ? P.decorate(m) : m;
   }
   var body;
   function render() {
@@ -444,6 +451,7 @@
     var content = h('div', { class: 'col page-content', style: { gap: '12px' } });
     body.appendChild(content);
     Front.page(content, S.cur, S.env);
+    if (window.Puzzle && Puzzle.isGatePage(S.env.blocks, S.cur)) body.appendChild(Puzzle.abyss());   // 滑到底再往下沉：石門
     if (window.CrashFx) body.appendChild(CrashFx.footer(side, { crash: eggOn('crash'), first: S.first, found: eggFound }));   // 版權聲明（學員端點了有彩蛋）
     // 緊急聯絡維持不動；其他頁背景有慢慢飄的光暈，夜間模式是星空和流星
     var hasEm = calmMark(content);
