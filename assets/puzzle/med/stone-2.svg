@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+<path d="M60 70 L120 34 L184 62 L206 130 L170 196 L92 206 L40 150Z" fill="#e9e3d3" stroke="#1f3a68" stroke-width="5" stroke-linejoin="round"/>
+<path d="M60 70 L104 96 L184 62 M104 96 L92 206" fill="none" stroke="#1f3a68" stroke-width="2" opacity=".5"/>
+<path class="rune" d="M120 78 L104 112 L124 112 L108 150" fill="none" stroke="#1f3a68" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" transform="translate(4 8)"/>
+</svg>

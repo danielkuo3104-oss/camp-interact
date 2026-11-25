@@ -473,7 +473,7 @@ A.views.eggs = function (m) {
 
 /** 隱藏解謎：每個人到第幾關、重設 */
 function puzzleCard(list, pv, reload) {
-  var ST = ['還沒進來', '田園：歡迎信', '田園：夜空', '田園過關（找石門）', '中世紀'];
+  var ST = ['還沒進來', '田園：歡迎信', '田園：夜空', '田園過關（找石門）', '中世紀', '中世紀過關'];
   var reset = function (who, name) {
     confirmBox('重設解謎進度', '把「' + name + '」的解謎進度清掉，從頭開始？', '重設', true).then(function (ok) {
       if (ok) A.op('puzzle.reset', { data: { who: who } }).then(function () { toast('已重設'); reload(); }, fail);
@@ -482,11 +482,11 @@ function puzzleCard(list, pv, reload) {
   var wpv = h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=worker&preview=pub', target: '_blank', onclick: A.openTab }, '預覽工作人員端 ↗');
   return h('div', { class: 'card col', style: { gap: '10px', padding: '18px 20px' } },
     h('b', null, '🧩 隱藏解謎進度'),
-    h('div', { class: 'small muted' }, '目前做到：田園（敲 7 下 → 歡迎信圈 4 個錯字 → 夜空點雙魚座 → 兩隻魚提示）→ 個人資訊／小隊資料滑到底的石門 → 中世紀（建造中）。答案都在後端。'),
+    h('div', { class: 'small muted' }, '目前做到：田園（敲 7 下 → 歡迎信圈 4 個錯字 → 夜空點雙魚座 → 兩隻魚提示）→ 個人資訊／小隊資料滑到底的石門 → 中世紀（四顆浮石提示 → 找四把鑰匙 → 機關輪）。答案都在後端。'),
     list.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 't' }, h('thead', null, h('tr', null, ['誰', '到哪', '點錯／點擊次數', '進田園', '最後', ''].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, list.map(function (x) {
         var nm = x.kind === 'root' ? '你的預覽' : (x.name || x.who) + (x.kind === 'worker' ? '（工作人員）' : '');
-        return h('tr', null, h('td', null, nm), h('td', null, h('b', null, ST[x.stage] || ('第 ' + x.stage + ' 關'))), h('td', null, x.tries || 0),
+        return h('tr', null, h('td', null, nm), h('td', null, h('b', null, ST[x.stage] || ('第 ' + x.stage + ' 關')), x.stage === 4 ? h('span', { class: 'small muted' }, '（鑰匙 ' + (x.keys || 0) + '/4）') : null), h('td', null, x.tries || 0),
           h('td', { class: 'small' }, x.t1 ? fmt(x.t1) : ''), h('td', { class: 'small' }, x.at ? fmt(x.at) : ''),
           h('td', null, h('button', { class: 'btn sm', onclick: function () { reset(x.who, nm); } }, '重設')));
       })))) : h('div', { class: 'muted' }, '還沒有人進來。'),
