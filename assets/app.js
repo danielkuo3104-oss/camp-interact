@@ -415,7 +415,7 @@
     return amb;
   }
   /** 左上角的「營」：第一位報名的人看到的有一圈金光，點了有反應 */
-  function brandMark() {
+  function brandMark(home) {
     var P = window.Puzzle;
     var m = h('span', { class: 'brand-mark' + (S.first ? ' egg-gold' : ''), onclick: function (e) {
       var el = e.currentTarget;
@@ -424,7 +424,7 @@
         toast('👀 被你發現了。這道光只為第一位報名的人亮著');
         eggFound('first-logo');
       }
-      if (P) P.tap(el);   // 隱藏解謎的入口：剛好敲 7 下
+      if (P) P.tap(el, home);   // 隱藏解謎的入口：剛好敲 7 下；到中世紀時，首頁的「營」藏著火的鑰匙
     } }, '營');
     return P ? P.decorate(m) : m;
   }
@@ -437,7 +437,7 @@
     var rootOf = cur;
     while (rootOf && rootOf.parent) rootOf = Front.pageById(S.env, rootOf.parent);
     var head = h('div', { class: 'app-head' },
-      cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : brandMark(),
+      cur && cur.parent ? h('button', { class: 'btn ghost sm', onclick: function () { history.back(); }, 'aria-label': '返回' }, icon('back')) : brandMark(!!(rs[0] && S.cur === rs[0].id)),
       h('div', { class: 'grow' }, h('div', { class: 'small muted' }, b.camp.name + (b.me && b.me.name ? ' · ' + b.me.name : '')), h('h1', null, cur ? cur.title : '')),
       h('button', { class: 'btn ghost sm refresh-btn', title: '重新整理（拿最新內容）', 'aria-label': '重新整理', onclick: refresh }, h('span', { class: 'rf-ic', 'aria-hidden': 'true' }, icon('refresh', 18)), h('span', { class: 'rf-tx' }, '重新整理')),
       logoutBtn());

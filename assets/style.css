@@ -1341,9 +1341,11 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-med-done .pz-med-full { opacity: 1; }
 .pz-seek { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 1.5px solid rgba(31, 58, 104, .55); pointer-events: none; animation: pz-tap .8s ease-out forwards; }
 /* 浮石：淡淡的光暈、慢慢浮動（不要太顯眼） */
-.pz-stone { position: absolute; aspect-ratio: 1; transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; z-index: 2; animation: pz-float 6s ease-in-out infinite; -webkit-tap-highlight-color: transparent; }
+.pz-stone { position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; z-index: 2; animation: pz-float 6s ease-in-out infinite; -webkit-tap-highlight-color: transparent; }
 .pz-stone::before { content: ''; position: absolute; inset: -18%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 246, 200, .55), rgba(170, 200, 255, .18) 55%, transparent 72%); animation: pz-halo 4.5s ease-in-out infinite; pointer-events: none; }
-.pz-stone img { position: relative; display: block; width: 100%; height: 100%; pointer-events: none; }
+.pz-stone img { position: relative; display: block; width: 100%; height: auto; pointer-events: none; }
+.pz-stone.pz-lit-in img { animation: pz-litin 1.6s ease-out; }
+@keyframes pz-litin { from { filter: brightness(2.2) saturate(0); } }
 @keyframes pz-float { 50% { transform: translate(-50%, calc(-50% - 7px)) rotate(2deg); } }
 @keyframes pz-halo { 50% { opacity: .45; transform: scale(.92); } }
 /* 點浮石：移到中央、甦醒、吟唱 */
@@ -1369,12 +1371,13 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-keyfly { position: fixed; z-index: 9; width: 64px; height: 64px; margin: -32px 0 0 -32px; pointer-events: none; filter: drop-shadow(0 0 10px #fff3b0); animation: pz-keyup 1.2s ease-out both; transition: left .9s cubic-bezier(.5, 0, .3, 1), top .9s cubic-bezier(.5, 0, .3, 1), transform .9s, opacity .9s; }
 .pz-keyfly.go { transform: scale(.7); }
 @keyframes pz-keyup { from { transform: scale(.2) translateY(20px); opacity: 0; } 60% { transform: scale(1.25) translateY(-12px); opacity: 1; } }
-.pz-tray { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 9; display: flex; gap: 10px; padding: 8px 12px; border-radius: 18px; background: rgba(31, 58, 104, .18); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); transition: opacity .8s; }
-.pz-pouch { width: 52px; height: 52px; border-radius: 12px; border: 1.5px dashed rgba(31, 58, 104, .35); display: grid; place-items: center; touch-action: none; }
+.pz-medieval .pz-hop span:last-child { display: none; }   /* 城堡上方放袋子，回田園只留圖示 */
+.pz-tray { position: absolute; left: 50%; top: max(12px, env(safe-area-inset-top)); transform: translateX(-50%); z-index: 9; display: flex; gap: 8px; padding: 6px 10px; border-radius: 16px; background: rgba(243, 236, 220, .82); box-shadow: 0 2px 10px rgba(31, 58, 104, .18); transition: opacity .8s; }
+.pz-pouch { width: 44px; height: 44px; border-radius: 12px; border: 1.5px dashed rgba(31, 58, 104, .35); display: grid; place-items: center; touch-action: none; }
 .pz-pouch img { width: 88%; height: 88%; pointer-events: none; }
 .pz-pouch[data-k] { border-style: solid; background: rgba(255, 250, 235, .55); }
 .pz-pouch.pz-pending img { opacity: 0; }
-.pz-tray-drag { background: rgba(255, 245, 220, .14); }
+.pz-tray-drag { background: rgba(60, 48, 30, .55); }
 .pz-tray-drag .pz-pouch[data-k] { cursor: grab; box-shadow: 0 0 12px rgba(255, 230, 160, .6); }
 .pz-pouch.pz-lift img, .pz-pouch.pz-used img { opacity: .15; }
 .pz-pouch.pz-used { cursor: default; box-shadow: none; }
@@ -1399,9 +1402,11 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-wheel-end .pz-gem { opacity: 1; animation: pz-halo 2.4s ease-in-out infinite; }
 @keyframes pz-gem { from { opacity: 0; transform: scale(.3); } 60% { opacity: 1; transform: scale(1.6); } to { opacity: 1; transform: none; } }
 /* 槽：鑰匙的剪影（同一張圖），放對了亮起來、鑰匙嵌進去 */
-.pz-slot { position: absolute; cursor: pointer; }
-.pz-slot img { width: 100%; height: 100%; filter: brightness(0) opacity(.55) drop-shadow(0 0 1px rgba(255, 230, 170, .6)); transition: filter .35s; pointer-events: none; }
-.pz-slot-on img { filter: drop-shadow(0 0 8px #ffe28a) drop-shadow(0 0 2px #fff); animation: pz-snap .35s ease-out; }
+.pz-slot { position: absolute; cursor: pointer; pointer-events: auto; border-radius: 50%; }
+.pz-slot img { width: 100%; height: 100%; opacity: 0; transition: filter .35s; pointer-events: none; }   /* 凹槽畫在內環圖上，放對了鑰匙才出現 */
+.pz-slot-shape img { opacity: 1; filter: brightness(0) opacity(.55) drop-shadow(0 0 1px rgba(255, 230, 170, .6)); }
+.pz-tray-drag ~ .pz-wheel .pz-slot:not(.pz-slot-on) { box-shadow: inset 0 0 14px rgba(255, 226, 150, .25); }
+.pz-slot-on img { opacity: 1; filter: drop-shadow(0 0 8px #ffe28a) drop-shadow(0 0 2px #fff); animation: pz-snap .35s ease-out; }
 @keyframes pz-snap { from { transform: scale(1.25); } }
 .pz-quake { animation: pz-quake .18s linear infinite; }
 @keyframes pz-quake { 25% { transform: translate(1px, -1px); } 75% { transform: translate(-1px, 1px); } }
@@ -1413,7 +1418,15 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-next-in { animation: pz-in 1s ease-out; }
 .pz-muted { opacity: .7; font-size: 15px; }
 
+/* 鑰匙在點的地方浮出來（首頁的「營」、田園的月亮、水車、風車）：點了才收下 */
+.pz-reveal { position: fixed; z-index: 9600; width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0; border: 0; background: none; cursor: pointer; animation: pz-keyup 1.2s ease-out both, pz-bob 2.4s ease-in-out 1.2s infinite; transition: left .9s cubic-bezier(.5, 0, .3, 1), top .9s cubic-bezier(.5, 0, .3, 1), transform .9s, opacity .9s; -webkit-tap-highlight-color: transparent; }
+.pz-reveal::before { content: ''; position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 244, 196, .85), rgba(255, 210, 120, .25) 45%, transparent 70%); animation: pz-halo 2.2s ease-in-out infinite; pointer-events: none; }
+.pz-reveal img { position: relative; display: block; width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 0 8px #fff3b0); }
+.pz-reveal.take { animation: none; transform: translateY(-60px) scale(.3) rotate(200deg); opacity: 0; }
+.pz-reveal.take.home { transform: scale(.55); opacity: .2; }
+@keyframes pz-bob { 50% { transform: translateY(-6px); } }
+
 @media (prefers-reduced-motion: reduce) {
-  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake { animation: none; }
+  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before { animation: none; }
   .pz-lobby, .pz-paper { animation-duration: .01s; }
 }
