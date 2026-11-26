@@ -1426,7 +1426,55 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-reveal.take.home { transform: scale(.55); opacity: .2; }
 @keyframes pz-bob { 50% { transform: translateY(-6px); } }
 
+/* 捲軸：第一次進中世紀的開場（封蠟捲軸落下 → 攤開 → 傳說浮現 → 問翻譯 → 八符印），之後左上角可以再打開 */
+.pz-scroll-ic { position: absolute; left: 12px; top: max(10px, env(safe-area-inset-top)); z-index: 9; width: 54px; padding: 0; border: 0; background: none; cursor: pointer; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .45)); animation: pz-float 5s ease-in-out infinite; -webkit-tap-highlight-color: transparent; }
+.pz-scroll-ic img { display: block; width: 100%; height: auto; pointer-events: none; }
+.pz-scroll-ic-in { animation: pz-icpulse .9s ease-out; }
+@keyframes pz-icpulse { 40% { transform: scale(1.25); filter: drop-shadow(0 0 12px #ffe7a8); } }
+.pz-scroll { position: absolute; inset: 0; z-index: 12; }
+.pz-scroll .pz-veil { z-index: 0; }
+.pz-roll { position: fixed; left: 50%; top: 44%; width: min(52vw, 280px); transform: translate(-50%, -50%); z-index: 2; pointer-events: none; animation: pz-rolldrop 1.4s cubic-bezier(.25, .9, .3, 1.1) both; transition: transform .8s ease-in, opacity .8s; filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .5)); }
+.pz-roll-glow { animation: pz-rolldrop 1.4s cubic-bezier(.25, .9, .3, 1.1) both, pz-rollglow 1.2s ease-in-out infinite alternate; }
+.pz-roll-gone { transform: translate(-50%, -50%) scale(1.35) rotate(18deg); opacity: 0; }
+@keyframes pz-rolldrop { from { transform: translate(-50%, -160%) rotate(-40deg) scale(.6); opacity: 0; } 60% { opacity: 1; } }
+@keyframes pz-rollglow { to { filter: drop-shadow(0 0 18px #ffd98a) drop-shadow(0 0 40px rgba(255, 190, 90, .6)); } }
+.pz-parch { position: fixed; left: 50%; top: calc(46% - 20px); z-index: 1; width: min(92vw, 52vh, 520px); aspect-ratio: 2 / 3; transform: translate(-50%, -50%); background: center / 100% 100% no-repeat; opacity: 0; filter: drop-shadow(0 12px 28px rgba(0, 0, 0, .55)); transition: transform .6s ease-in, opacity .6s; }
+.pz-scroll-open .pz-parch, .pz-scroll-quick .pz-parch { opacity: 1; }
+.pz-scroll-open .pz-parch { animation: pz-unroll 1.3s cubic-bezier(.3, .7, .2, 1) both; }
+.pz-scroll-quick .pz-parch { animation: pz-unroll .5s ease-out both; }
+@keyframes pz-unroll { from { opacity: .4; clip-path: inset(46% 0 46% 0); } 15% { opacity: 1; } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+.pz-scroll-shut .pz-parch { animation: none; opacity: 0; transform: translate(-50%, -50%) scale(.06); }
+.pz-scroll-shut .pz-scroll-bar, .pz-scroll-shut .pz-ask, .pz-scroll-shut .pz-scroll-tip { opacity: 0; }
+.pz-parch-in { position: absolute; left: 8%; right: 8%; top: 9%; bottom: 12.5%; }
+.pz-legend { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.pz-quill { position: absolute; left: -3%; right: -3%; height: 4px; margin-top: -2px; border-radius: 4px; pointer-events: none; background: radial-gradient(ellipse at center, #fff8d8, rgba(255, 214, 120, .65) 40%, transparent 72%); box-shadow: 0 0 14px 4px rgba(255, 220, 140, .45); }
+.pz-quill::after { content: ''; position: absolute; inset: -8px 0; background: repeating-linear-gradient(90deg, transparent 0 18px, rgba(255, 246, 200, .9) 18px 20px, transparent 20px 37px); filter: blur(1px); animation: pz-sparkle .5s linear infinite; opacity: .7; }
+@keyframes pz-sparkle { to { background-position: 37px 0; } }
+.pz-ask { position: fixed; left: 50%; bottom: max(22px, calc(env(safe-area-inset-bottom) + 14px)); z-index: 3; width: min(88vw, 380px); transform: translateX(-50%); padding: 14px 16px; border-radius: 16px; background: rgba(28, 20, 8, .82); color: #fbf3dc; text-align: center; box-shadow: 0 0 24px rgba(255, 210, 140, .35); animation: pz-askin .9s ease-out both, pz-askbob 3s ease-in-out .9s infinite; transition: opacity .5s; }
+.pz-ask p { margin: 0 0 12px; font-size: 15px; line-height: 1.6; letter-spacing: .04em; }
+.pz-ask button { margin: 0 6px; padding: 8px 18px; border-radius: 999px; border: 1px solid rgba(255, 230, 170, .6); background: transparent; color: #fbf3dc; font: inherit; font-size: 15px; cursor: pointer; }
+.pz-ask .pz-ask-yes { background: linear-gradient(#d8a64a, #a8722a); border-color: #f3d08a; color: #fff; }
+.pz-ask.off { opacity: 0; pointer-events: none; }
+@keyframes pz-askin { from { opacity: 0; transform: translate(-50%, 30px); } }
+@keyframes pz-askbob { 50% { transform: translate(-50%, -5px); } }
+.pz-sigils { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 2.5% 2.5%; height: 100%; }
+.pz-sigil-card { width: 30.5%; padding: 0; border: 0; background: none; cursor: pointer; transition: opacity .8s, transform .8s cubic-bezier(.3, 1.4, .5, 1); -webkit-tap-highlight-color: transparent; }
+.pz-sigil-card img { display: block; width: 100%; height: auto; pointer-events: none; }
+.pz-sigil-wait { opacity: 0; transform: scale(.5) translateY(14px); }
+.pz-sigil-in img { animation: pz-sigilglow 1.6s ease-out; }
+@keyframes pz-sigilglow { from { filter: brightness(2.4) drop-shadow(0 0 14px #fff1b8); } }
+.pz-sigil-big { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(8, 10, 20, .7); animation: pz-in .3s ease-out; transition: opacity .3s; cursor: pointer; }
+.pz-sigil-big img { width: min(80vw, 60vh, 420px); height: auto; filter: drop-shadow(0 0 22px rgba(255, 220, 150, .45)); }
+.pz-sigil-big.off { opacity: 0; }
+.pz-scroll-bar { position: fixed; left: 50%; bottom: max(14px, calc(env(safe-area-inset-bottom) + 8px)); z-index: 2; transform: translateX(-50%); display: flex; gap: 6px; padding: 5px; border-radius: 999px; background: rgba(28, 20, 8, .72); opacity: 0; pointer-events: none; transition: opacity .6s; white-space: nowrap; }
+.pz-scroll-ready .pz-scroll-bar { opacity: 1; pointer-events: auto; }
+.pz-tab { padding: 7px 13px; border: 0; border-radius: 999px; background: transparent; color: #f3e6c6; font: inherit; font-size: 14px; cursor: pointer; }
+.pz-tab.on { background: #f3e6c6; color: #4a3417; }
+.pz-fold-btn { border-left: 1px solid rgba(243, 230, 198, .3); border-radius: 0 999px 999px 0; }
+.pz-scroll-tip { position: fixed; left: 0; right: 0; bottom: calc(max(14px, env(safe-area-inset-bottom) + 8px) + 48px); z-index: 2; margin: 0; text-align: center; color: #f3e6c6; font-size: 13px; text-shadow: 0 1px 3px #000; transition: opacity .8s; pointer-events: none; }
+.pz-scroll-tip.off { opacity: 0; }
+
 @media (prefers-reduced-motion: reduce) {
-  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before { animation: none; }
+  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before, .pz-scroll-ic, .pz-ask, .pz-quill::after { animation: none; }
   .pz-lobby, .pz-paper { animation-duration: .01s; }
 }
