@@ -36,7 +36,7 @@ var Puzzle = (function () {
   /** 每點一下「營」都呼叫（第一位報名的金光提示照舊，次數照算）；home = 現在在首頁 */
   function tap(mark, home) {
     if (!on() || stage() >= LOCK || busy) return;
-    if (home && stage() === 4) brandKey(mark);
+    if (stage() === 4) brandKey(mark);   // 哪一頁的「營」都可以（Daniel 11/26：去過田園的人都知道從這裡進）
     clearTimeout(knock.t);
     knock.n++; knock.el = mark;
     if (knock.n === NEED) mark.classList.add('pz-crack');
@@ -536,7 +536,7 @@ var Puzzle = (function () {
     var tabs = S.pages.map(function (p) { return { id: p.id, label: p.label }; }).concat([{ id: 'sigils', label: '八符印' }]);
     tabs.forEach(function (t) {
       var b = el('button', 'pz-tab', t.label); b.type = 'button'; b.dataset.p = t.id;
-      b.onclick = function (e) { e.stopPropagation(); show(t.id, false); };
+      b.onclick = function (e) { e.stopPropagation(); show(t.id, true); };   // 每次切過去都重新浮現一次（點一下跳到結尾）
       bar.appendChild(b);
     });
     var fold = el('button', 'pz-tab pz-fold-btn', '收起'); fold.type = 'button';
@@ -550,12 +550,12 @@ var Puzzle = (function () {
       else {
         var pg = S.pages.filter(function (p) { return p.id === id; })[0] || S.pages[0];
         var im = el('img', 'pz-legend'); im.src = pg.src; im.alt = ''; im.draggable = false; inner.appendChild(im);
-        if (anim && !fast) inkIn(sc, im, id === 'en' ? 15000 : 11000, done); else if (done) done();
+        if (anim && !fast) inkIn(sc, im, (id === 'en' ? 15000 : 11000) * (first ? 1 : 0.5), done); else if (done) done();   // 開場慢慢來；之後再看快一半
       }
     }
     if (!first) {
       lay.classList.add('pz-scroll-quick', 'pz-scroll-ready');
-      show(sc.page, false);
+      show(sc.page, true);   // 從左上角打開：魔法文字再浮現一次（Daniel 11/26：動畫不要只有第一次）
       return;
     }
     // 開場：捲軸落下 → 封蠟發光 → 攤開
