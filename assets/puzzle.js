@@ -36,7 +36,7 @@ var Puzzle = (function () {
   /** 每點一下「營」都呼叫（第一位報名的金光提示照舊，次數照算）；home = 現在在首頁 */
   function tap(mark, home) {
     if (!on() || stage() >= LOCK || busy) return;
-    if (home && stage() === 4) brandKey(mark);
+    if (stage() === 4) brandKey(mark);   // 哪一頁的「營」都可以（Daniel 11/26：去過田園的人都知道從這裡進）
     clearTimeout(knock.t);
     knock.n++; knock.el = mark;
     if (knock.n === NEED) mark.classList.add('pz-crack');
