@@ -61,7 +61,7 @@ var Puzzle = (function () {
 
   /* 中世紀的鑰匙：火在首頁的「營」、月在田園的月亮、水車、風車。藏在哪後端在第 4 關就給（v.med.hide），
    * 手機上直接判斷、鑰匙馬上浮出來；puzzle.seek 排隊在背景送（機關輪、重新整理畫面都排在它後面，進度才不會亂） */
-  var sq = Promise.resolve();
+  var sq = Promise.resolve(), asking = {};
   function after(fn) { var p = sq.then(fn); sq = p.catch(function () {}); return p; }
   function send(data) { return after(function () { return call('seek', data); }).catch(function (e) { if (!/沒有反應/.test(e.message)) toast(e.message, true); }); }
   function haveKey(id) { return on() && (E.state.keys || []).indexOf(id) >= 0; }
@@ -85,7 +85,19 @@ var Puzzle = (function () {
   }
   /** 首頁點「營」：還沒拿過那把鑰匙就馬上浮出來 */
   function brandKey(mark) {
-    var b = E.state.brand; if (!b || haveKey(b.id)) return;
+    var b = E.state.brand;
+    if (!b) {   // 後端還沒給（例如還是舊版 Puzzle.gs）：問一次
+      if (asking.brand || haveKey('fire')) return;
+      asking.brand = true; knock.quiet = true;
+      after(function () { return call('seek', { in: 'brand' }); }).then(function (res) {
+        if (!res || !res.hit) { gotKey('fire'); return; }
+        gotKey(res.hit);
+        var k = ((res.view && res.view.med && res.view.med.keys) || []).filter(function (q) { return q.id === res.hit; })[0], r = mark.getBoundingClientRect();
+        if (k) reveal(k.src, r.left + r.width / 2, r.bottom + 46, document.body);
+      }, function () { asking.brand = false; });
+      return;
+    }
+    if (haveKey(b.id)) return;
     knock.quiet = true;   // 這一下不跳「要不要再多敲幾下」
     gotKey(b.id); E.state.brand = null;
     send({ in: 'brand' });
@@ -198,7 +210,7 @@ var Puzzle = (function () {
     else wrap.onclick = pick;
     box.appendChild(p);
     [].slice.call(wrap.querySelectorAll('.pz-ring')).forEach(function (c, k) { if (v.found[k]) c.dataset.k = v.found[k].join(','); });
-    var spots = v.spots || [], need = v.need || 4, q = Promise.resolve(), last = null, done = false;
+    var spots = v.spots || [], need = v.need || 4, last = null, done = false;
     // 錯字位置在手機上直接判斷（Daniel 11/22：點到附近馬上出紅圈），每圈到一個在背景送後端記進度
     function pick(e) {
       if (done) return;
@@ -214,15 +226,21 @@ var Puzzle = (function () {
       if (wrap.querySelector('.pz-ring[data-k="' + hit.join(',') + '"]')) return;
       ring(wrap, L, hit, true); wrap.lastChild.dataset.k = hit.join(',');
       var pt = { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
-      last = q = q.then(function () { return call('typo', { pts: [pt] }); }).catch(function (e2) { toast(e2.message, true); return {}; });
-      if (wrap.querySelectorAll('.pz-ring').length >= need) { done = true; nightfall(p, last); }
+      last = after(function () { return call('typo', { pts: [pt] }); }).catch(function (e2) { toast(e2.message, true); return {}; });   // 排隊在背景送（點星星也排在後面）
+      if (wrap.querySelectorAll('.pz-ring').length >= need) { done = true; nightfall(p, last, v); }
     }
   }
   /** 四個錯字都圈到：信收起來，天慢慢暗下來 */
-  function nightfall(p, wait) {
+  function nightfall(p, wait, v) {
     var t0 = Date.now(), ms = reduced() ? 1300 : 3300;
     setTimeout(function () { p.classList.add('pz-fold'); box.classList.add('pz-dusk'); }, 700);
-    // 動畫照跑；後端記好（拿到夜空）再畫
+    // 星星在第 1 關就有：天黑動畫跑完直接畫夜空，不等後端（進度在背景排隊送）
+    if (v && v.stars && v.cons) {
+      var v2 = Object.assign({}, v, { stage: 2, found: (v.spots || []).slice() });
+      delete v2.spots;
+      setTimeout(function () { if (!box) return; setStage(2); draw(v2); }, ms);
+      return;
+    }
     Promise.resolve(wait).then(function (r) {
       var go = function (v) { setTimeout(function () { setStage(2); draw(v); }, Math.max(0, ms - (Date.now() - t0))); };
       if (r && r.view) go(r.view);
@@ -257,7 +275,7 @@ var Puzzle = (function () {
         var near = nearest(groups, v.stars, x * 1000, y * 657);
         if (near) near.g.classList.add('pz-con-on');
         busy = true;
-        call('star', { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }).then(function (res) {
+        after(function () { return call('star', { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }); }).then(function (res) {   // 排在錯字後面
           busy = false;
           if (!res.hit) { if (near) { near.g.classList.remove('pz-con-on'); near.g.classList.add('pz-con-no'); setTimeout(function () { near.g.classList.remove('pz-con-no'); }, 700); } return; }
           setStage(3);
@@ -440,11 +458,11 @@ var Puzzle = (function () {
         lines.appendChild(p);
       });
       root.appendChild(lines);
-      timer = setTimeout(back, fast ? 6000 : (total + 3.5) * 1000);
+      ready = setTimeout(function () { lines.classList.add('pz-chant-done'); }, (fast ? 0 : total + 0.9) * 1000);   // 唸完不會自己收回，再點一次才收（Daniel 11/26）
     }, fast ? 50 : 950);
-    var timer = null, gone = false;
+    var ready = null, gone = false;
     function back() {
-      if (gone) return; gone = true; clearTimeout(timer);
+      if (gone) return; gone = true; clearTimeout(ready);
       lines.classList.add('off'); f.classList.remove('pz-awake'); veil.classList.remove('on');
       f.style.transform = 'none';
       setTimeout(function () { f.remove(); veil.remove(); lines.remove(); b.style.visibility = ''; if (med) med.busy = false; }, fast ? 50 : 900);
@@ -565,18 +583,16 @@ var Puzzle = (function () {
       }, fast ? 0 : 1600);
     }
   }
-  /** 文字由上而下像魔法一樣浮現（一條發光的線往下掃，掃過的地方字慢慢出現） */
+  /** 文字由上而下慢慢浮現 */
   function inkIn(sc, im, ms, done) {
-    var q = el('i', 'pz-quill'); im.parentNode.appendChild(q);
     var t0 = performance.now(), end = false, cur = med;
     function set(p) {
       var a = (p * 112 - 12).toFixed(2), b = (p * 112).toFixed(2), m = 'linear-gradient(to bottom, #000 ' + a + '%, rgba(0,0,0,.35) ' + ((+a + +b) / 2).toFixed(2) + '%, transparent ' + b + '%)';
       im.style.webkitMaskImage = m; im.style.maskImage = m;
-      q.style.top = Math.min(100, p * 112 - 6) + '%';
     }
     function finish() {
       if (end) return; end = true; sc.skip = null;
-      im.style.webkitMaskImage = im.style.maskImage = 'none'; q.remove();
+      im.style.webkitMaskImage = im.style.maskImage = 'none';
       if (done) done();
     }
     sc.skip = finish;

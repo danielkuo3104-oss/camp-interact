@@ -1268,7 +1268,7 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-letter-ic img { display: block; width: 100%; }
 
 /* 夜空 */
-.pz-sky { position: absolute; left: 0; right: 0; top: calc(max(14px, env(safe-area-inset-top)) + 52px); height: 52%; display: grid; place-items: center; z-index: 2; }
+.pz-sky { position: absolute; left: 0; right: 0; top: calc(max(14px, env(safe-area-inset-top)) + 54px); height: 52%; display: grid; place-items: center; z-index: 2; }
 .pz-sky-svg { width: 100%; height: 100%; overflow: visible; }
 .pz-sky.pz-pickable { cursor: crosshair; }
 .pz-faint { fill: #cfd8ff; opacity: .55; animation: pz-twinkle 4s ease-in-out infinite; }
@@ -1362,11 +1362,12 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-mote { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; border-radius: 50%; background: #fff6cf; box-shadow: 0 0 6px #fff1b0; opacity: 0; }
 .pz-awake .pz-mote { animation: pz-mote 2.6s ease-out infinite; }
 @keyframes pz-mote { 0% { opacity: 0; transform: rotate(var(--a)) translateY(-20%); } 20% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-90px); } }
-.pz-chant { position: fixed; z-index: 8; left: 50%; top: 58%; width: min(86vw, 420px); transform: translateX(-50%); text-align: center; color: #fbf3dc; font-size: 18px; line-height: 1.8; letter-spacing: .08em; text-shadow: 0 0 12px rgba(160, 190, 255, .9), 0 0 2px #000; transition: opacity .7s; }
+.pz-chant { position: fixed; z-index: 8; left: 50%; top: 58%; width: min(86vw, 420px); transform: translateX(-50%); text-align: center; color: #fbf3dc; font-size: 18px; line-height: 1.8; letter-spacing: .08em; text-shadow: 0 0 2px #000, 0 1px 3px rgba(0, 0, 0, .8), 0 0 14px rgba(120, 160, 255, .55); transition: opacity .7s; }
+.pz-chant-done::after { content: '點一下收起'; display: block; margin-top: 6px; font-size: 12px; letter-spacing: .1em; opacity: .6; text-shadow: 0 1px 2px #000; animation: pz-in 1s ease-out; }
 .pz-chant p { margin: 0 0 10px; }
 .pz-chant span, .pz-next span { display: inline-block; opacity: 0; animation: pz-rune-in .9s ease-out forwards; }
 .pz-chant.off { opacity: 0; }
-@keyframes pz-rune-in { from { opacity: 0; filter: blur(6px); transform: translateY(6px); } 60% { opacity: 1; color: #fff8d8; } to { opacity: 1; filter: none; transform: none; } }
+@keyframes pz-rune-in { from { opacity: 0; transform: translateY(6px); } 60% { opacity: 1; color: #fff8d8; } to { opacity: 1; transform: none; } }   /* 不用模糊：每個字都一樣清楚 */
 /* 找到鑰匙：浮出來、飛進下面的袋子 */
 .pz-keyfly { position: fixed; z-index: 9; width: 64px; height: 64px; margin: -32px 0 0 -32px; pointer-events: none; filter: drop-shadow(0 0 10px #fff3b0); animation: pz-keyup 1.2s ease-out both; transition: left .9s cubic-bezier(.5, 0, .3, 1), top .9s cubic-bezier(.5, 0, .3, 1), transform .9s, opacity .9s; }
 .pz-keyfly.go { transform: scale(.7); }
@@ -1427,7 +1428,7 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 @keyframes pz-bob { 50% { transform: translateY(-6px); } }
 
 /* 捲軸：第一次進中世紀的開場（封蠟捲軸落下 → 攤開 → 傳說浮現 → 問翻譯 → 八符印），之後左上角可以再打開 */
-.pz-scroll-ic { position: absolute; left: 12px; top: max(10px, env(safe-area-inset-top)); z-index: 9; width: 54px; padding: 0; border: 0; background: none; cursor: pointer; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .45)); animation: pz-float 5s ease-in-out infinite; -webkit-tap-highlight-color: transparent; }
+.pz-scroll-ic { position: absolute; left: 12px; top: calc(max(14px, env(safe-area-inset-top)) + 54px); z-index: 9; width: 54px; padding: 0; border: 0; background: none; cursor: pointer; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .45)); animation: pz-bob 4s ease-in-out infinite; -webkit-tap-highlight-color: transparent; }
 .pz-scroll-ic img { display: block; width: 100%; height: auto; pointer-events: none; }
 .pz-scroll-ic-in { animation: pz-icpulse .9s ease-out; }
 @keyframes pz-icpulse { 40% { transform: scale(1.25); filter: drop-shadow(0 0 12px #ffe7a8); } }
@@ -1447,9 +1448,6 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-scroll-shut .pz-scroll-bar, .pz-scroll-shut .pz-ask, .pz-scroll-shut .pz-scroll-tip { opacity: 0; }
 .pz-parch-in { position: absolute; left: 8%; right: 8%; top: 9%; bottom: 12.5%; }
 .pz-legend { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-.pz-quill { position: absolute; left: -3%; right: -3%; height: 4px; margin-top: -2px; border-radius: 4px; pointer-events: none; background: radial-gradient(ellipse at center, #fff8d8, rgba(255, 214, 120, .65) 40%, transparent 72%); box-shadow: 0 0 14px 4px rgba(255, 220, 140, .45); }
-.pz-quill::after { content: ''; position: absolute; inset: -8px 0; background: repeating-linear-gradient(90deg, transparent 0 18px, rgba(255, 246, 200, .9) 18px 20px, transparent 20px 37px); filter: blur(1px); animation: pz-sparkle .5s linear infinite; opacity: .7; }
-@keyframes pz-sparkle { to { background-position: 37px 0; } }
 .pz-ask { position: fixed; left: 50%; bottom: max(22px, calc(env(safe-area-inset-bottom) + 14px)); z-index: 3; width: min(88vw, 380px); transform: translateX(-50%); padding: 14px 16px; border-radius: 16px; background: rgba(28, 20, 8, .82); color: #fbf3dc; text-align: center; box-shadow: 0 0 24px rgba(255, 210, 140, .35); animation: pz-askin .9s ease-out both, pz-askbob 3s ease-in-out .9s infinite; transition: opacity .5s; }
 .pz-ask p { margin: 0 0 12px; font-size: 15px; line-height: 1.6; letter-spacing: .04em; }
 .pz-ask button { margin: 0 6px; padding: 8px 18px; border-radius: 999px; border: 1px solid rgba(255, 230, 170, .6); background: transparent; color: #fbf3dc; font: inherit; font-size: 15px; cursor: pointer; }
@@ -1475,6 +1473,6 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-scroll-tip.off { opacity: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before, .pz-scroll-ic, .pz-ask, .pz-quill::after { animation: none; }
+  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before, .pz-scroll-ic, .pz-ask { animation: none; }
   .pz-lobby, .pz-paper { animation-duration: .01s; }
 }
