@@ -1477,8 +1477,8 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-focus.pz-pop { animation: pz-in .6s ease-out; }
 .pz-word { position: relative; width: min(76vw, 340px); margin: 6px auto 0; }
 .pz-word img { display: block; width: 100%; height: auto; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .55)); }
-.pz-glow { position: absolute; top: 2%; bottom: 2%; border-radius: 45%; background: radial-gradient(ellipse at center, rgba(255, 250, 225, .42), rgba(255, 240, 190, .16) 55%, transparent 72%); mix-blend-mode: screen; pointer-events: none; animation: pz-glow 3.6s ease-in-out infinite; }
-@keyframes pz-glow { 50% { opacity: .45; } }
+.pz-glow { position: absolute; top: -6%; bottom: -6%; margin: 0 -4%; border-radius: 45%; background: radial-gradient(ellipse at center, rgba(255, 252, 230, .8), rgba(255, 236, 170, .38) 45%, rgba(255, 220, 130, .1) 65%, transparent 74%); mix-blend-mode: screen; pointer-events: none; animation: pz-glow 2.4s ease-in-out infinite; }
+@keyframes pz-glow { 50% { opacity: .55; transform: scale(.94); } }
 .pz-word-in { animation: pz-word-in 1.2s cubic-bezier(.2, .8, .3, 1) both; }
 @keyframes pz-word-in { from { opacity: 0; transform: translateY(14px) scale(.92); filter: brightness(1.8); } }
 .pz-tray { cursor: pointer; }
@@ -1516,12 +1516,31 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .pz-nudge .pz-gal-in { animation: pz-hum .08s linear 5; }
 .pz-gal-word { position: absolute; left: 0; right: 0; top: calc(38% + 90px); pointer-events: none; }
 .pz-keyfly.pz-hover { animation: pz-bob 2s ease-in-out infinite; }
-.pz-half { pointer-events: none; transition: transform 1.3s cubic-bezier(.3, .7, .2, 1), top 1.6s ease-in, opacity 1.5s; }
-.pz-half-l { clip-path: polygon(0 0, 54% 0, 46% 100%, 0 100%); }
-.pz-half-r { clip-path: polygon(54% 0, 100% 0, 100% 100%, 46% 100%); }
-.pz-half-l.go { transform: translate(calc(-50% - 30px), -50%) rotate(-8deg); }
-.pz-half-r.go { transform: translate(calc(-50% + 30px), -50%) rotate(8deg); }
-.pz-half.sink { top: 130%; opacity: 0; }
+.pz-half { pointer-events: none; transition: transform 1.6s cubic-bezier(.2, .9, .3, 1), top 2s cubic-bezier(.55, 0, .9, .45), opacity 1.8s ease-in; }
+.pz-half-l { transform-origin: 30% 80%; }
+.pz-half-r { transform-origin: 70% 80%; }
+.pz-half-l.go { transform: translate(calc(-50% - 22px), calc(-50% + 8px)) rotate(-6deg); }
+.pz-half-r.go { transform: translate(calc(-50% + 22px), calc(-50% + 14px)) rotate(7deg); }
+.pz-half-l.sink { top: 140%; opacity: 0; transform: translate(calc(-50% - 60px), -50%) rotate(-28deg); }
+.pz-half-r.sink { top: 145%; opacity: 0; transform: translate(calc(-50% + 60px), -50%) rotate(32deg); }
+.pz-cleft { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pz-cleft polyline { fill: none; stroke: #fff3c8; stroke-width: .9; stroke-linejoin: bevel; vector-effect: non-scaling-stroke; stroke-dasharray: 160; stroke-dashoffset: 160; filter: drop-shadow(0 0 3px #ffd77a) drop-shadow(0 0 8px #ffb54a); animation: pz-crackdraw .7s ease-out forwards; }
+.pz-cleft polyline { stroke-width: 3px; }
+@keyframes pz-crackdraw { to { stroke-dashoffset: 0; } }
+.pz-cracking .pz-ring-o, .pz-cracking .pz-ring-i { animation: pz-hum .06s linear 14; }
+.pz-half .pz-cleft polyline { animation: none; stroke-dashoffset: 0; opacity: .85; }
+.pz-shard { position: fixed; z-index: 11; margin: -4px 0 0 -4px; background: linear-gradient(135deg, #a08a68, #5a4a35); clip-path: polygon(50% 0, 100% 40%, 80% 100%, 10% 85%, 0 30%); pointer-events: none; animation: pz-shard 1.7s cubic-bezier(.3, .1, .7, 1) both; }
+@keyframes pz-shard { 0% { transform: translate(0, 0) rotate(0); opacity: 1; } 25% { transform: translate(calc(var(--dx) * .5), -30px) rotate(calc(var(--rz) * .3)); } 100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rz)); opacity: 0; } }
+.pz-gal-hint { width: min(84vw, 380px); margin: 10px auto 0; text-align: center; color: #f3e6c6; font-size: 14px; line-height: 1.7; letter-spacing: .05em; text-shadow: 0 1px 3px #000; }
+.pz-gal-hint p { margin: 0 0 2px; }
+.pz-gal-saybtn { position: absolute; left: 50%; bottom: max(22px, calc(env(safe-area-inset-bottom) + 12px)); transform: translateX(-50%); z-index: 2; padding: 8px 16px; border: 1px solid rgba(243, 230, 198, .35); border-radius: 999px; background: rgba(255, 255, 255, .06); color: #f3e6c6; font: inherit; font-size: 14px; cursor: pointer; }
+.pz-gal-saybtn.on { background: #f3e6c6; color: #3a2a12; }
+.pz-gal-said { position: absolute; left: 50%; top: 50%; z-index: 2; width: min(86vw, 420px); transform: translate(-50%, -50%); padding: 16px 18px; border-radius: 14px; background: rgba(30, 24, 12, .92); border: 1px solid rgba(243, 230, 198, .25); color: #fbf3dc; text-align: center; font-size: 16px; line-height: 1.75; letter-spacing: .05em; opacity: 0; pointer-events: none; transition: opacity .5s; }
+.pz-gal-said p { margin: 0 0 6px; transition: opacity .8s; }
+.pz-gal-said p:last-child { margin: 0; }
+.pz-gal-said p.pz-dim { opacity: .32; }
+.pz-gal-saying .pz-gal-said { opacity: 1; pointer-events: auto; }
+.pz-gal-saying .pz-gal-key { opacity: .15 !important; }
 .pz-next.pz-tap-on::after { content: '點一下繼續'; display: block; margin-top: 8px; font-size: 12px; letter-spacing: .1em; opacity: .6; animation: pz-in 1s ease-out; }
 .pz-next.off { opacity: 0; transition: opacity .7s; }
 .pz-next { cursor: pointer; }
@@ -1545,6 +1564,6 @@ html.pz-open, html.pz-open body { overflow: hidden; }
 .fake-out b { font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before, .pz-scroll-ic, .pz-ask, .pz-glow, .pz-shadow img, .pz-gal-key, .pz-drip-dot, .pz-keyfly.pz-hover, .pz-pouch.pz-glowkey { animation: none; }
+  .pz-cracking .pz-ring-o, .pz-cracking .pz-ring-i, .pz-shard, .brand-mark.pz-lure, .brand-mark.pz-crack, .pz-dust, .pz-envelope, .pz-faint, .pz-fish-body, .pz-bubble-up, .pz-castle-art, .pz-sigil, .pz-stone, .pz-stone::before, .pz-focus.pz-awake img, .pz-awake .pz-mote, .pz-quake, .pz-reveal, .pz-reveal::before, .pz-scroll-ic, .pz-ask, .pz-glow, .pz-shadow img, .pz-gal-key, .pz-drip-dot, .pz-keyfly.pz-hover, .pz-pouch.pz-glowkey { animation: none; }
   .pz-lobby, .pz-paper { animation-duration: .01s; }
 }

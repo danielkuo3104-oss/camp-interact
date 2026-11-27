@@ -290,8 +290,19 @@ var Puzzle = (function () {
         // 點下去馬上亮起最近的那個星座（只是畫面；對不對由後端判斷）
         var near = nearest(groups, v.stars, x * 1000, y * 657);
         if (near) near.g.classList.add('pz-con-on');
+        if (v.pick !== undefined && v.pick !== null && v.cons && v.cons[v.pick]) {   // 哪一個是雙魚座在手機上就知道（Daniel 11/28：馬上有反應），背景再送後端記
+          if (!near || groups.indexOf(near) !== v.pick) { if (near) { near.g.classList.remove('pz-con-on'); near.g.classList.add('pz-con-no'); setTimeout(function () { near.g.classList.remove('pz-con-no'); }, 700); } return; }
+          var ls = v.cons[v.pick], v3 = Object.assign({}, v, { stage: 3, lines: ls }), st0 = v.stars[ls[0][0]];
+          setStage(3);
+          wrap.classList.remove('pz-pickable'); wrap.onclick = null;
+          drawLines(svg, v3, true); sigil(svg, v3, true);
+          var fishV = v3;
+          after(function () { return call('star', { x: st0[0], y: st0[1] }); }).then(function (res) { if (!fishV.fish && res && res.view) fishV = res.view; }, function (e2) { if (!/沒有反應/.test(e2.message)) toast(e2.message, true); });   // 送雙魚座的一顆星（後端一定判斷得到）
+          setTimeout(function () { if (fishV.fish) fish(fishV); else after(function () { if (fishV.fish) fish(fishV); }); }, reduced() ? 300 : 2600);
+          return;
+        }
         busy = true;
-        after(function () { return call('star', { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }); }).then(function (res) {   // 排在錯字後面
+        after(function () { return call('star', { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }); }).then(function (res) {   // 舊版後端：等後端判斷
           busy = false;
           if (!res.hit) { if (near) { near.g.classList.remove('pz-con-on'); near.g.classList.add('pz-con-no'); setTimeout(function () { near.g.classList.remove('pz-con-no'); }, 700); } return; }
           setStage(3);
@@ -456,7 +467,6 @@ var Puzzle = (function () {
     var r = b ? b.getBoundingClientRect() : { left: window.innerWidth / 2 - 40, top: window.innerHeight * 0.36 - 40, width: 80, height: 80 }, root = med.root;
     var veil = el('div', 'pz-veil'), f = el('div', 'pz-focus'), im = el('img');
     im.src = s.lit || s.src; im.alt = ''; f.appendChild(im);
-    for (var i = 0; i < 14; i++) { var m = el('b', 'pz-mote'); m.style.setProperty('--a', (i * 360 / 14) + 'deg'); m.style.animationDelay = (i * 0.13).toFixed(2) + 's'; f.appendChild(m); }
     f.style.left = r.left + 'px'; f.style.top = r.top + 'px'; f.style.width = r.width + 'px'; f.style.height = r.height + 'px';
     root.appendChild(veil); root.appendChild(f);
     if (b && s.src) markHeard(s.src);   // 聽過這顆浮石：它的鑰匙才找得到
@@ -537,7 +547,7 @@ var Puzzle = (function () {
     }
     t.onclick = function () {
       if (!med || t.classList.contains('pz-tray-drag') || med.wheel) return;
-      if (med.noTap) { med.noTap = false; return; }
+      if (Date.now() < (med.noTap || 0)) return;   // 剛拖完或剛打開（同一下的 click）：不要再開一次
       gallery();
     };
   }
@@ -549,6 +559,13 @@ var Puzzle = (function () {
   }
   /** 後四把：下一把要找的（一把接一把） */
   function laterNext(M) { var h = M.later || []; return (M.chain || []).filter(function (c) { return h.indexOf(c.id) < 0; })[0] || null; }
+  /** 鑰匙的提示文字：後四把在鏈裡，前四把是對應浮石的吟唱 */
+  function hintOf(M, k) {
+    if (!k) return [];
+    if (k.hint) return k.hint;
+    var s = (M.stones || []).filter(function (q) { return q.word && k.word && q.word.src === k.word.src; })[0];
+    return (s && s.hint) || [];
+  }
   function wordOf(M, id) { var k = (M.keys || []).concat(M.chain || []).filter(function (q) { return q.id === id; })[0]; return k && k.word; }
   /** 英文藝術字：要取的那個字母上面一層淡淡的光 */
   function wordEl(w) {
@@ -629,7 +646,7 @@ var Puzzle = (function () {
     function pos(e) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; aim = { x: e.clientX, y: e.clientY + (k.id === 'light' ? -beamLen() : 56) }; }
     c.onpointermove = function (e) {
       if (!g) return;
-      if (!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 8) { moved = true; g.style.display = ''; c.classList.add('pz-lift'); med.noTap = true; buzz(10); loop(); }
+      if (!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 8) { moved = true; g.style.display = ''; c.classList.add('pz-lift'); med.noTap = Date.now() + 1e9; buzz(10); loop(); }
       pos(e);
     };
     function loop() {
@@ -644,14 +661,14 @@ var Puzzle = (function () {
       });
     }
     function stop(back) {
-      cancelAnimationFrame(raf); var gg = g; g = null; c.classList.remove('pz-lift'); if (!gg) return;
+      cancelAnimationFrame(raf); var gg = g; g = null; c.classList.remove('pz-lift'); if (med && moved) med.noTap = Date.now() + 500; if (!gg) return;
       if (!back) { gg.remove(); return; }
       var r = c.getBoundingClientRect(); gg.classList.add('back'); gg.style.left = (r.left + r.width / 2) + 'px'; gg.style.top = (r.top + r.height / 2) + 'px';
       setTimeout(function () { gg.remove(); }, 400);
     }
     c.onpointerup = c.onpointercancel = function () {
       if (!g) return;
-      if (!moved) { stop(false); med.noTap = true; gallery(); return; }
+      if (!moved) { stop(false); med.noTap = Date.now() + 500; gallery(); return; }
       stop(true);
     };
   }
@@ -676,17 +693,31 @@ var Puzzle = (function () {
       return it;
     });
     g.appendChild(word);
-    g.onclick = function () { if (sel) unpick(); else shut(); };
+    // 轉輪的話（Daniel 11/28）：解開後收在鑰匙庫，可以切換查看；集齊八把，「還有鑰匙」那句變暗；進了工業，「出口才是入口」那句也變暗
+    var said = null;
+    if (M.done && M.next && M.next.length) {
+      said = el('div', 'pz-gal-said');
+      M.next.forEach(function (t, i) { var q = el('p', '', t); if ((i === 1 && all.length >= 8) || (i === 2 && stage() >= 6)) q.classList.add('pz-dim'); said.appendChild(q); });
+      var sb = el('button', 'pz-gal-saybtn', '⚙ 轉輪的話'); sb.type = 'button';
+      sb.onclick = function (e) { e.stopPropagation(); if (sel) unpick(); var on2 = !g.classList.contains('pz-gal-saying'); g.classList.toggle('pz-gal-saying', on2); sb.classList.toggle('on', on2); if (on2) tone(392, 900, 'triangle', 0.025); };
+      g.appendChild(said); g.appendChild(sb);
+    }
+    g.onclick = function () { if (g.classList.contains('pz-gal-saying')) { g.classList.remove('pz-gal-saying'); var b2 = g.querySelector('.pz-gal-saybtn'); if (b2) b2.classList.remove('on'); return; } if (sel) unpick(); else shut(); };
     cur.root.appendChild(g); cur.gal = g;
     requestAnimationFrame(function () { requestAnimationFrame(function () { g.classList.add('on'); }); });
     tone(330, 900, 'sine', 0.03);
-    function showWord(w) { word.textContent = ''; if (w) { var we = wordEl(w); we.classList.add('pz-word-in'); word.appendChild(we); } }
+    function showWord(w, k) {
+      word.textContent = ''; if (w) { var we = wordEl(w); we.classList.add('pz-word-in'); word.appendChild(we); }
+      var hs = hintOf(cur.M, k);
+      if (hs.length) { var hp = el('div', 'pz-gal-hint pz-word-in'); hs.forEach(function (t) { hp.appendChild(el('p', '', t)); }); word.appendChild(hp); }   // 提示文字也在（不然聽過就忘了，Daniel 11/28）
+    }
     function pick(it) {
       if (sel === it) { flip(it); return; }
       if (sel) unpick();
+      g.classList.remove('pz-gal-saying'); var b3 = g.querySelector('.pz-gal-saybtn'); if (b3) b3.classList.remove('on');
       sel = it; it.b.classList.add('on'); it.b.style.left = '50%'; it.b.style.top = '38%';
       buzz(10); tone(660, 700, 'triangle', 0.03);
-      showWord(it.flip ? lightC.word : it.k.word);
+      showWord(it.flip ? lightC.word : it.k.word, it.flip ? lightC : it.k);
     }
     function unpick() { var it = sel; sel = null; it.b.classList.remove('on'); it.b.style.left = it.home.l.toFixed(2) + '%'; it.b.style.top = it.home.t.toFixed(2) + '%'; word.textContent = ''; }
     function flip(it) {
@@ -698,7 +729,7 @@ var Puzzle = (function () {
         setTimeout(function () { if (med !== cur) return; shut(true); gain(lightC, 0, 0, true); chant(null, lightC, function () { if (med === cur) drawTray(); }); }, 1100);
         return;
       }
-      showWord(it.flip ? lightC.word : it.k.word);
+      showWord(it.flip ? lightC.word : it.k.word, it.flip ? lightC : it.k);
     }
     function shut(fast) { if (cur.gal !== g) return; cur.gal = null; g.classList.remove('on'); setTimeout(function () { g.remove(); }, fast ? 0 : 500); }
   }
@@ -1005,19 +1036,49 @@ var Puzzle = (function () {
       var im = el('img', 'pz-keyfly pz-hover'); im.src = k.src; im.alt = ''; im.style.left = (r.left + r.width / 2) + 'px'; im.style.top = (r.top + r.height / 2) + 'px';
       cur.root.appendChild(im); return { el: im, id: k.id };
     }).filter(Boolean);
-    var halves = [0, 1].map(function (i) {
-      var hh = W.wrap.cloneNode(true); hh.classList.add('pz-half', i ? 'pz-half-r' : 'pz-half-l');
-      [].forEach.call(hh.querySelectorAll('.pz-slot img'), function (q) { q.remove(); });
-      cur.root.appendChild(hh); return hh;
-    });
-    W.wrap.style.visibility = 'hidden';
-    if (!fast) { tone(70, 1800, 'sawtooth', 0.03, 40); buzz([40, 30, 80]); }
-    requestAnimationFrame(function () { requestAnimationFrame(function () { halves.forEach(function (hh) { hh.classList.add('go'); }); }); });
+    // 裂痕：沿著鋸齒線發光、轉盤抖動；0.9 秒後才真的裂開
+    var CR = [[52, 0], [47, 11], [55, 22], [48, 33], [56, 45], [46, 57], [54, 68], [47, 80], [53, 90], [50, 100]];
+    var svg = svgEl('svg'); svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('preserveAspectRatio', 'none'); svg.setAttribute('class', 'pz-cleft');
+    var pl = svgEl('polyline'); pl.setAttribute('points', CR.map(function (q) { return q.join(','); }).join(' ')); svg.appendChild(pl);
+    W.wrap.appendChild(svg); W.wrap.classList.add('pz-cracking');
+    if (!fast) { tone(1400, 160, 'square', 0.03, 300); buzz([60, 40, 30]); setTimeout(function () { tone(90, 900, 'sawtooth', 0.04, 45); }, 250); }
+    var halves = [];
+    setTimeout(function () {
+      if (med !== cur) return;
+      var left = 'polygon(0 0, ' + CR.map(function (q) { return q[0] + '% ' + q[1] + '%'; }).join(', ') + ', 0 100%)';
+      var right = 'polygon(' + CR.map(function (q) { return q[0] + '% ' + q[1] + '%'; }).join(', ') + ', 100% 100%, 100% 0)';
+      halves = [left, right].map(function (cp, i) {
+        var hh = W.wrap.cloneNode(true); hh.classList.remove('pz-cracking'); hh.classList.add('pz-half', i ? 'pz-half-r' : 'pz-half-l');
+        hh.style.clipPath = hh.style.webkitClipPath = cp;
+        [].forEach.call(hh.querySelectorAll('.pz-slot img'), function (q) { q.remove(); });
+        cur.root.appendChild(hh); return hh;
+      });
+      W.wrap.style.visibility = 'hidden';
+      if (!fast) {
+        tone(55, 2000, 'sawtooth', 0.04, 30); buzz([80, 40, 120]);
+        var r = W.wrap.getBoundingClientRect();
+        for (var i = 0; i < 16; i++) {   // 碎石從裂口噴出、往下掉
+          var q = CR[1 + Math.floor(Math.random() * 8)], sh = el('i', 'pz-shard');
+          sh.style.left = (r.left + r.width * q[0] / 100) + 'px'; sh.style.top = (r.top + r.height * q[1] / 100) + 'px';
+          var sz = 4 + Math.random() * 9; sh.style.width = sh.style.height = sz.toFixed(1) + 'px';
+          sh.style.setProperty('--dx', ((Math.random() < 0.5 ? -1 : 1) * (30 + Math.random() * 110)).toFixed(0) + 'px');
+          sh.style.setProperty('--dy', (80 + Math.random() * 260).toFixed(0) + 'px');
+          sh.style.setProperty('--rz', ((Math.random() - 0.5) * 720).toFixed(0) + 'deg');
+          sh.style.animationDelay = (Math.random() * 0.15).toFixed(2) + 's';
+          cur.root.appendChild(sh); (function (x) { setTimeout(function () { x.remove(); }, 1900); })(sh);
+        }
+      }
+      requestAnimationFrame(function () { requestAnimationFrame(function () { halves.forEach(function (hh) { hh.classList.add('go'); }); }); });
+    }, fast ? 0 : 900);
     var hint = nextHint(M.next || [], fast), ready = false;
     setTimeout(function () { if (med !== cur) return; ready = true; hint.classList.add('pz-tap-on'); }, fast ? 0 : (hint.t + 1) * 1000);
     W.veil.onclick = hint.onclick = function () { if (ready) { ready = false; go(); } };
     function go() {
-      hint.classList.add('off'); setTimeout(function () { hint.remove(); }, 700);
+      // 轉輪的話縮小飛進上面的鑰匙庫（之後點鑰匙庫可以再看）
+      var tr = cur.tray.getBoundingClientRect(), hr = hint.getBoundingClientRect();
+      hint.style.transition = 'transform 1s cubic-bezier(.5, 0, .3, 1), opacity 1s';
+      hint.style.transform = 'translate(calc(-50% + ' + ((tr.left + tr.width / 2) - (hr.left + hr.width / 2)).toFixed(0) + 'px), ' + ((tr.top + tr.height / 2) - (hr.top + hr.height / 2)).toFixed(0) + 'px) scale(.06)';
+      hint.style.opacity = '0'; setTimeout(function () { hint.remove(); }, 1000);
       halves.forEach(function (hh) { hh.classList.add('sink'); }); setTimeout(function () { halves.forEach(function (hh) { hh.remove(); }); }, fast ? 0 : 1700);
       W.veil.classList.remove('on'); setTimeout(function () { W.veil.remove(); }, 900);
       W.wrap.remove(); cur.wheel = null; cur.root.classList.remove('pz-summoning');
