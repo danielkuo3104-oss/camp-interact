@@ -479,6 +479,18 @@ function puzzleCard(list, pv, reload) {
       if (ok) A.op('puzzle.reset', { data: { who: who } }).then(function () { toast('已重設'); reload(); }, fail);
     });
   };
+  // 恢復到哪一步（Daniel 11/28）：0～6，'4k' 中世紀四把都找到、'5k' 中世紀過關＋後四把都找到
+  var STEPS = [['1', '田園：歡迎信'], ['2', '田園：夜空'], ['3', '田園過關（找石門）'], ['4', '中世紀（剛進來）'], ['4k', '中世紀：四把鑰匙都找到'], ['5', '中世紀過關（轉輪解開）'], ['5k', '中世紀：八把鑰匙都找到'], ['6', '工業']];
+  var restore = function (who, name) {
+    var sel = h('select', { class: 'input sm', 'aria-label': '恢復到哪一步' }, h('option', { value: '' }, '恢復到…'), STEPS.map(function (x) { return h('option', { value: x[0] }, x[1]); }));
+    sel.onchange = function () {
+      var v = sel.value, lb = (STEPS.filter(function (x) { return x[0] === v; })[0] || [])[1]; sel.value = ''; if (!v) return;
+      confirmBox('恢復解謎進度', '把「' + name + '」的進度設成「' + lb + '」？（之前那一步以前的都算完成，之後的清掉）', '恢復', false).then(function (ok) {
+        if (ok) A.op('puzzle.setstep', { data: { who: who, step: v } }).then(function () { toast('已恢復到：' + lb); reload(); }, fail);
+      });
+    };
+    return sel;
+  };
   var wpv = h('a', { class: 'btn', href: 'app.html?c=' + encodeURIComponent(A.camp) + '&s=worker&preview=pub', target: '_blank', onclick: A.openTab }, '預覽工作人員端 ↗');
   return h('div', { class: 'card col', style: { gap: '10px', padding: '18px 20px' } },
     h('b', null, '🧩 隱藏解謎進度'),
@@ -488,9 +500,9 @@ function puzzleCard(list, pv, reload) {
         var nm = x.kind === 'root' ? '你的預覽' : (x.name || x.who) + (x.kind === 'worker' ? '（工作人員）' : '');
         return h('tr', null, h('td', null, nm), h('td', null, h('b', null, ST[x.stage] || ('第 ' + x.stage + ' 關')), x.stage === 4 || x.stage === 5 ? h('span', { class: 'small muted' }, '（鑰匙 ' + (x.keys || 0) + '/' + (x.stage === 4 ? 4 : 8) + '）') : null), h('td', null, x.tries || 0),
           h('td', { class: 'small' }, x.t1 ? fmt(x.t1) : ''), h('td', { class: 'small' }, x.at ? fmt(x.at) : ''),
-          h('td', null, h('button', { class: 'btn sm', onclick: function () { reset(x.who, nm); } }, '重設')));
+          h('td', null, h('div', { class: 'row', style: { gap: '6px', flexWrap: 'nowrap' } }, restore(x.who, nm), h('button', { class: 'btn sm', onclick: function () { reset(x.who, nm); } }, '重設'))));
       })))) : h('div', { class: 'muted' }, '還沒有人進來。'),
-    h('div', { class: 'row wrap' }, pv('', '預覽學員端 ↗'), wpv, h('button', { class: 'btn', onclick: function () { reset('', '你的預覽'); } }, '重設我的預覽')),
+    h('div', { class: 'row wrap' }, pv('', '預覽學員端 ↗'), wpv, h('button', { class: 'btn', onclick: function () { reset('', '你的預覽'); } }, '重設我的預覽'), restore('', '你的預覽')),
     h('div', { class: 'hint' }, '預覽是你自己的進度（學員端、工作人員端共用一份）。'));
 }
 
