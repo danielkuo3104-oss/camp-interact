@@ -74,11 +74,17 @@ var Puzzle = (function () {
     var M = v && v.med; if (!M) return null;
     var ar = where === 'rural' ? 1672 / 941 : M.h / M.w, hit = null;
     (M.hide || []).forEach(function (k) {
-      if (hit || k.find.in !== where || haveKey(k.id)) return;
+      if (hit || k.find.in !== where || haveKey(k.id) || !heard(k.lit)) return;   // 沒點過那顆浮石：鑰匙藏的地方點了也沒反應（Daniel 11/27：不然亂按就有了）
       k.find.at.forEach(function (c) { var dx = x - c[0], dy = (y - c[1]) * ar; if (!hit && Math.sqrt(dx * dx + dy * dy) <= c[2]) hit = k; });
     });
     return hit;
   }
+  /** 點過哪幾顆浮石（聽過提示）：存在手機上（ia_pz_heard_<營隊>，浮石圖的網址）；從石門第一次進中世紀時清掉 */
+  function heardList() { try { return JSON.parse(localStorage.getItem('ia_pz_heard_' + E.camp) || '[]'); } catch (e) { return []; } }
+  function heard(lit) { if (!lit) return true; var src = lit.replace(/stonec-/, 'stone-'); return heardList().indexOf(src) >= 0 || (med && med.heard && med.heard.indexOf(src) >= 0); }
+  function markHeard(src) { if (med) med.heard = (med.heard || []).concat([src]); var l = heardList(); if (l.indexOf(src) < 0) l.push(src); try { localStorage.setItem('ia_pz_heard_' + E.camp, JSON.stringify(l)); } catch (e) {} }
+  /** 從石門第一次進中世紀：捲軸開場要播、浮石要重新聽 */
+  function freshMed() { try { localStorage.removeItem('ia_pz_scroll_' + E.camp); localStorage.removeItem('ia_pz_heard_' + E.camp); } catch (e) {} }
   /** 把找到的鑰匙記進畫面資料（藏的清單拿掉、鑰匙清單加上、對應的浮石變彩色） */
   function takeKey(v, k) {
     var M = v.med; gotKey(k.id);
@@ -100,7 +106,7 @@ var Puzzle = (function () {
       }, function () { asking.brand = false; });
       return;
     }
-    if (haveKey(b.id)) return;
+    if (haveKey(b.id) || !heard(b.lit)) return;   // 還沒點過火的浮石：「營」照舊只是敲
     knock.quiet = true;   // 這一下不跳「要不要再多敲幾下」
     gotKey(b.id); E.state.brand = null;
     send({ in: 'brand' });
@@ -386,7 +392,7 @@ var Puzzle = (function () {
     (M.keys || []).forEach(function (k) { bloom(k, seen.indexOf(k.id) < 0 && !M.done); });   // 在別的地方找到、還沒回來看過的：慢慢擴散
     markSeen((M.keys || []).map(function (k) { return k.id; }));
     if (M.keys) M.keys.forEach(function (k) { gotKey(k.id); });
-    (M.hide || []).forEach(function (k) { if (k.find.in === 'brand' && on() && !E.state.brand) E.state.brand = { id: k.id, src: k.src }; });   // 剛從石門進來的人：首頁的「營」也要知道
+    (M.hide || []).forEach(function (k) { if (k.find.in === 'brand' && on() && (!E.state.brand || !E.state.brand.lit)) E.state.brand = { id: k.id, src: k.src, lit: k.lit }; });   // 剛從石門進來的人：首頁的「營」也要知道
     if (!M.done) M.stones.forEach(function (s, i) { stg.appendChild(stone(s, i)); });   // 解開中世紀後浮石已經飛走了
     stg.onclick = seek;
     root.appendChild(med.tray = el('div', 'pz-tray'));
@@ -453,6 +459,7 @@ var Puzzle = (function () {
     for (var i = 0; i < 14; i++) { var m = el('b', 'pz-mote'); m.style.setProperty('--a', (i * 360 / 14) + 'deg'); m.style.animationDelay = (i * 0.13).toFixed(2) + 's'; f.appendChild(m); }
     f.style.left = r.left + 'px'; f.style.top = r.top + 'px'; f.style.width = r.width + 'px'; f.style.height = r.height + 'px';
     root.appendChild(veil); root.appendChild(f);
+    if (b && s.src) markHeard(s.src);   // 聽過這顆浮石：它的鑰匙才找得到
     if (b) { b.style.visibility = 'hidden'; f.classList.add('pz-shake'); buzz(30); } else f.classList.add('pz-pop');   // 點浮石：先震一下
     var size = Math.min(window.innerWidth * 0.56, window.innerHeight * 0.3, 260), k = size / r.width;
     var dx = window.innerWidth / 2 - (r.left + r.width / 2), dy = window.innerHeight * 0.36 - (r.top + r.height / 2);
@@ -1082,6 +1089,7 @@ var Puzzle = (function () {
     door.onclick = function () {
       if (busy) return;
       busy = true; door.classList.add('pz-door-open');
+      if (stage() === 3) freshMed();   // 第一次進中世紀：捲軸一定自動打開（不管這支手機以前看過沒有）
       call('gate').then(function (v) { busy = false; setTimeout(function () { open(v); door.classList.remove('pz-door-open'); setStage(v.stage); }, reduced() ? 0 : 1500); },   // 門開完、大廳蓋上去之後才重畫頁面（不然畫面會跳回頂端）
         function (e) { busy = false; door.classList.remove('pz-door-open'); toast(e.message, true); });
     };
