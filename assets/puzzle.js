@@ -241,7 +241,8 @@ var Puzzle = (function () {
       }
       if (wrap.querySelector('.pz-ring[data-k="' + hit.join(',') + '"]')) return;
       ring(wrap, L, hit, true); wrap.lastChild.dataset.k = hit.join(',');
-      var pt = { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
+      // 送圈到的那個錯字的正中央（Daniel 11/28：原本送點的位置，手機上算中、後端範圍小一點算沒中，進度卡在歡迎信）
+      var pt = { x: Math.round((hit[0] + hit[2] / 2) / L.w * 10000) / 10000, y: Math.round((hit[1] + hit[3] / 2) / L.h * 10000) / 10000 };
       last = after(function () { return call('typo', { pts: [pt] }); }).catch(function (e2) { toast(e2.message, true); return {}; });   // 排隊在背景送（點星星也排在後面）
       if (wrap.querySelectorAll('.pz-ring').length >= need) { done = true; nightfall(p, last, v); }
     }
@@ -284,7 +285,10 @@ var Puzzle = (function () {
       wrap.classList.add('pz-pickable');
       wrap.onclick = function (e) {
         if (busy) return;
-        var r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        // 夜空圖等比例縮放、上下（或左右）會留邊：用 SVG 自己的座標換算，點哪裡就是哪裡（Daniel 11/28：原本換算沒扣掉留邊，差很遠）
+        var m = svg.getScreenCTM(); if (!m) return;
+        var sp = svg.createSVGPoint(); sp.x = e.clientX; sp.y = e.clientY; sp = sp.matrixTransform(m.inverse());
+        var x = sp.x / 1000, y = sp.y / 657;
         if (x < 0 || x > 1 || y < 0 || y > 1) return;
         var tp = dot(x * 1000, y * 657, 9, 'pz-tapstar'); svg.appendChild(tp); setTimeout(function () { tp.remove(); }, 900);
         // 點下去馬上亮起最近的那個星座（只是畫面；對不對由後端判斷）
