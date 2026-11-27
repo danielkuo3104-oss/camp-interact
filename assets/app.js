@@ -112,6 +112,7 @@
     }, function () {});
     var go = function () {
       err.textContent = '';
+      if (viaCode(name, btn)) return;   // 假登出中：姓名欄是不是暗號（不是就照一般登入，看起來一模一樣）
       if (!name.value.trim() || !idk.value.trim()) { err.textContent = '請填姓名與身分證字號'; return; }
       idk.value = idNorm(idk.value);
       if (idk.value.indexOf('@') < 0 && !/^[A-Z][A-Z0-9][0-9]{8}$/.test(idk.value)) { err.textContent = '身分證字號是 10 碼：英文字母開頭，例如 A123456789'; return; }
@@ -128,6 +129,41 @@
     screen(h('div', { class: 'login-wrap' }, h('div', { class: 'card login-card col' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, '營'), '學員端'), title,
       field('姓名', name), field('身分證字號', idk), err, btn, note, installTip())));
+  }
+
+  /** 假登出中按登入：先問一次姓名欄是不是解謎的暗號（Puzzle.code，後端判斷）。是就打開工業；不是就再按一次原本的登入
+   *  回 true＝這一次先不登入（等暗號的結果） */
+  function viaCode(name, btn) {
+    if (!S.fake || S.fake.asked || !name.value.trim() || !window.Puzzle) return false;
+    var f = S.fake; f.asked = true; btn.disabled = true;
+    Puzzle.code(name.value, function () { boot(); }).then(function (hit) {
+      btn.disabled = false;
+      if (hit) { fakeStop(); return; }   // 進工業了：關掉工業就回到 App（還是登入的）
+      btn.click();   // 不是暗號：照一般登入走（錯誤訊息和平常一樣）
+      f.asked = false;
+    });
+    return true;
+  }
+  /** 過關（解開中世紀）以後按登出：先「假登出」——顯示登入畫面，但 30 秒內可以回去（Daniel 11/27），時間到才真的登出 */
+  function fakeOut() {
+    stopAll();
+    side === 'worker' ? workerLogin() : studentLogin();
+    var n = 30, num = h('b', null, String(n));
+    var bar = h('div', { class: 'fake-out' }, h('span', null, num, ' 秒後完全登出'), h('button', { class: 'btn ghost sm', type: 'button', onclick: function () { fakeStop(); boot(); } }, '↩ 回去'));
+    var card = root.querySelector('.login-card'); if (card) card.appendChild(bar);
+    S.fake = { bar: bar, t: setInterval(function () {
+      n--; num.textContent = String(Math.max(0, n));
+      if (n <= 0) { fakeStop(); realOut(false); }
+    }, 1000) };
+  }
+  function fakeStop() { if (!S.fake) return; clearInterval(S.fake.t); if (S.fake.bar) S.fake.bar.remove(); S.fake = null; }
+  /** 真的登出；again：回到登入畫面（假登出倒數完就留在現在的登入畫面） */
+  function realOut(again) {
+    api('logout').catch(function () {}); stopAll(); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {}
+    // 共用手機：上一個人的區塊資料也清掉，下一個人登入不會先看到
+    jset(LK, null); Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
+    if (window.Puzzle) Puzzle.init({ camp: camp, side: side, preview: false, state: null });
+    if (again !== false) start();
   }
 
   /** 登入成功：按鈕維持不能按，等畫面載入（不要又亮起來讓人再按一次） */
@@ -158,6 +194,7 @@
     var btn = h('button', { class: 'btn primary' }, '登入');
     var go = function () {
       err.textContent = '';
+      if (viaCode(name, btn)) return;
       if (!dept.value.trim()) { err.textContent = '請選擇股別'; return; }
       busy(btn, function () { return api('workerLogin', camp, name.value, dept.value, pass.value); }).then(function (r) {
         loggedIn(btn, [name, dept, pass]);
@@ -208,6 +245,7 @@
   /** 從遊戲頁來登入的（back=game.html?…）：登入好就回到遊戲（例如用手機相機掃了關主 QR code、跑到另一個瀏覽器） */
   function backUrl() { var b = param('back') || ''; return /^game\.html\?[^<>"']*$/.test(b) ? b : ''; }
   function boot() {
+    fakeStop();
     if (backUrl() && store(TK) && !preview) { location.replace(backUrl()); return; }
     if (!preview) IA.token = store(TK);
     var ver = '';
@@ -267,10 +305,8 @@
   function logoutBtn() {
     if (preview) return null;
     return h('button', { class: 'btn sm', onclick: function () {
-      api('logout').catch(function () {}); stopAll(); store(TK, null); jset(BK, null); try { sessionStorage.removeItem(VK); } catch (e) {}
-      // 共用手機：上一個人的區塊資料也清掉，下一個人登入不會先看到
-      jset(LK, null); Object.keys(S.live).forEach(function (k) { delete S.live[k]; });
-      start();
+      if (window.Puzzle && Puzzle.canFake && Puzzle.canFake()) { fakeOut(); return; }   // 解謎過關的人：先假登出
+      realOut();
     } }, side === 'worker' ? '登出' : '離開');
   }
 

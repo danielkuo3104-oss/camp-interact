@@ -135,7 +135,7 @@ var OPK = {
   'backup.create': ['backup', 'create'], 'backup.delete': ['backup', 'delete'], 'backup.restore': ['backup', 'restore'],
   'front.action': ['front', 'create'],
   'egg.found': ['front', 'create'], 'egg.settings': ['camp', 'update'],
-  'puzzle.knock': ['front', 'create'], 'puzzle.view': ['front', 'create'], 'puzzle.typo': ['front', 'create'], 'puzzle.star': ['front', 'create'], 'puzzle.gate': ['front', 'create'], 'puzzle.seek': ['front', 'create'], 'puzzle.wheel': ['front', 'create'],
+  'puzzle.knock': ['front', 'create'], 'puzzle.view': ['front', 'create'], 'puzzle.typo': ['front', 'create'], 'puzzle.star': ['front', 'create'], 'puzzle.gate': ['front', 'create'], 'puzzle.seek': ['front', 'create'], 'puzzle.wheel': ['front', 'create'], 'puzzle.later': ['front', 'create'], 'puzzle.code': ['front', 'create'],
   'puzzle.reset': ['camp', 'delete']
 };
 

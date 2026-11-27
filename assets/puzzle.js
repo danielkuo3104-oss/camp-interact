@@ -9,6 +9,9 @@
  *   田園：一封信遞進來 → 點開 → 圈出 4 個錯字（夜中兩魚）→ 進入夜晚 → 在夜空點雙魚座 → 兩隻魚浮上來給提示。
  *   中世紀入口：學員「個人資訊」／工作人員「小隊資料」那一頁滑到底，繼續往下沉，海底有一扇石門。
  *   中世紀：浮石提示 → 找鑰匙（場景局部恢復彩色）→ 召喚機關輪 → 拖鑰匙入槽 → 內外環反向轉 → 下一關提示（見下面「中世紀」那段）。
+ *   中世紀後半（Daniel 11/27）：轉盤分裂吐提示、浮石飛走、出現影子 → 暗 → 翻面＝光 → 光束照山 3 秒＝地 → 水鑰匙滴在巨木 3 秒＝木；
+ *         每把鑰匙都有英文藝術字（要取的字母淡淡發光），集齊八把打開捲軸，字母飄出來排成暗號。
+ *   工業入口：過關後按登出是假登出（app.js 倒數 30 秒），姓名欄輸入暗號按登入 → Puzzle.code（後端判斷）。工業還是佔位。
  */
 var Puzzle = (function () {
   var E = null;            // { camp, side, preview, state: {stage, page}, changed() }
@@ -80,8 +83,8 @@ var Puzzle = (function () {
   function takeKey(v, k) {
     var M = v.med; gotKey(k.id);
     M.hide = (M.hide || []).filter(function (q) { return q.id !== k.id; });
-    if (!(M.keys || []).some(function (q) { return q.id === k.id; })) M.keys = (M.keys || []).concat([{ id: k.id, src: k.src, area: k.area }]);
-    (M.stones || []).forEach(function (s) { if (s.src.replace(/stone-/, 'stonec-') === k.lit) s.lit = k.lit; });
+    if (!(M.keys || []).some(function (q) { return q.id === k.id; })) M.keys = (M.keys || []).concat([{ id: k.id, src: k.src, area: k.area, word: k.word }]);
+    (M.stones || []).forEach(function (s) { if (s.src.replace(/stone-/, 'stonec-') === k.lit) { s.lit = k.lit; s.word = k.word; } });
   }
   /** 首頁點「營」：還沒拿過那把鑰匙就馬上浮出來 */
   function brandKey(mark) {
@@ -136,9 +139,15 @@ var Puzzle = (function () {
   }
 
   /* ---------------- 大廳 ---------------- */
-  function close() { if (med && med.cleanup) med.cleanup(); med = null; if (box) { box.remove(); box = null; document.documentElement.classList.remove('pz-open'); } }
-  function open(v, mode) {
+  var onShut = null;   // 大廳關掉時要做的事（從假登出進工業：關掉就回到 App）
+  function close() {
+    if (med && med.cleanup) med.cleanup(); med = null;
+    if (box) { box.remove(); box = null; document.documentElement.classList.remove('pz-open'); }
+    var f = onShut; onShut = null; if (f) f();
+  }
+  function open(v, mode, back) {
     close();
+    onShut = back || null;
     preload();
     box = el('div', 'pz-lobby');
     box.setAttribute('role', 'dialog');
@@ -153,6 +162,7 @@ var Puzzle = (function () {
     if (!box) return;
     if (med && med.cleanup) med.cleanup(); med = null;
     [].slice.call(box.children).forEach(function (c) { if (!c.classList.contains('pz-close')) c.remove(); });
+    if (mode === 'ind') { box.className = 'pz-lobby pz-ind'; industrial(v); return; }
     var castle = v.stage >= 4 && mode !== 'rural';
     box.className = 'pz-lobby ' + (castle ? 'pz-medieval' : v.stage >= 2 ? 'pz-rural pz-night' : 'pz-rural');
     if (castle) { medieval(v); return; }
@@ -377,7 +387,7 @@ var Puzzle = (function () {
     markSeen((M.keys || []).map(function (k) { return k.id; }));
     if (M.keys) M.keys.forEach(function (k) { gotKey(k.id); });
     (M.hide || []).forEach(function (k) { if (k.find.in === 'brand' && on() && !E.state.brand) E.state.brand = { id: k.id, src: k.src }; });   // 剛從石門進來的人：首頁的「營」也要知道
-    M.stones.forEach(function (s, i) { stg.appendChild(stone(s, i)); });
+    if (!M.done) M.stones.forEach(function (s, i) { stg.appendChild(stone(s, i)); });   // 解開中世紀後浮石已經飛走了
     stg.onclick = seek;
     root.appendChild(med.tray = el('div', 'pz-tray'));
     box.appendChild(root);
@@ -387,8 +397,9 @@ var Puzzle = (function () {
     fitStage();
     drawTray();
     if (M.scroll) scrollBtn(M.scroll);
-    var full4 = M.wheel && (M.done || (M.keys || []).length >= (M.need || 4));
-    if (full4) setTimeout(function () { if (med && med.root === root) summon(!!M.done); }, M.done ? 200 : 900);
+    var full4 = M.wheel && !M.done && (M.keys || []).length >= (M.need || 4);
+    if (full4) setTimeout(function () { if (med && med.root === root) summon(false); }, 900);
+    if (M.done) laterScene();   // 後四把：影子
     if (M.scroll && !M.done && !scrollSeen()) setTimeout(function () { if (med && med.root === root) scrollOpen(true); }, full4 ? 0 : 500);   // 第一次進中世紀：捲軸開場
   }
   /** 已經在城堡看過恢復彩色的鑰匙（只是動畫要不要再跑；存不了就每次都跑） */
@@ -433,16 +444,16 @@ var Puzzle = (function () {
     return b;
   }
   /** 點浮石：移到畫面中央、甦醒、吟唱提示；結束（或點一下）回原位 */
-  function chant(b, s) {
+  function chant(b, s, onEnd) {
     if (!med || med.busy) return;
     med.busy = true;
-    var r = b.getBoundingClientRect(), root = med.root;
+    var r = b ? b.getBoundingClientRect() : { left: window.innerWidth / 2 - 40, top: window.innerHeight * 0.36 - 40, width: 80, height: 80 }, root = med.root;
     var veil = el('div', 'pz-veil'), f = el('div', 'pz-focus'), im = el('img');
     im.src = s.lit || s.src; im.alt = ''; f.appendChild(im);
     for (var i = 0; i < 14; i++) { var m = el('b', 'pz-mote'); m.style.setProperty('--a', (i * 360 / 14) + 'deg'); m.style.animationDelay = (i * 0.13).toFixed(2) + 's'; f.appendChild(m); }
     f.style.left = r.left + 'px'; f.style.top = r.top + 'px'; f.style.width = r.width + 'px'; f.style.height = r.height + 'px';
     root.appendChild(veil); root.appendChild(f);
-    b.style.visibility = 'hidden';
+    if (b) { b.style.visibility = 'hidden'; f.classList.add('pz-shake'); buzz(30); } else f.classList.add('pz-pop');   // 點浮石：先震一下
     var size = Math.min(window.innerWidth * 0.56, window.innerHeight * 0.3, 260), k = size / r.width;
     var dx = window.innerWidth / 2 - (r.left + r.width / 2), dy = window.innerHeight * 0.36 - (r.top + r.height / 2);
     var fast = reduced(), lines = el('div', 'pz-chant');
@@ -457,6 +468,12 @@ var Puzzle = (function () {
         total += t.length * 0.07 + 0.6;
         lines.appendChild(p);
       });
+      if (s.word) {   // 唸完浮出英文藝術字（要取的字母淡淡發光）
+        var wd = wordEl(s.word); wd.classList.add('pz-word-in'); wd.style.animationDelay = (fast ? 0 : total + 0.2).toFixed(2) + 's';
+        lines.appendChild(wd);
+        setTimeout(function () { tone(880, 1400, 'triangle', 0.03); buzz(10); }, (fast ? 0 : total + 0.2) * 1000);
+        total += 1.4;
+      }
       root.appendChild(lines);
       ready = setTimeout(function () { lines.classList.add('pz-chant-done'); }, (fast ? 0 : total + 0.9) * 1000);   // 唸完不會自己收回，再點一次才收（Daniel 11/26）
     }, fast ? 50 : 950);
@@ -465,7 +482,7 @@ var Puzzle = (function () {
       if (gone) return; gone = true; clearTimeout(ready);
       lines.classList.add('off'); f.classList.remove('pz-awake'); veil.classList.remove('on');
       f.style.transform = 'none';
-      setTimeout(function () { f.remove(); veil.remove(); lines.remove(); b.style.visibility = ''; if (med) med.busy = false; }, fast ? 50 : 900);
+      setTimeout(function () { f.remove(); veil.remove(); lines.remove(); if (b) b.style.visibility = ''; if (med) med.busy = false; if (onEnd) onEnd(); }, fast ? 50 : 900);
     }
     veil.onclick = f.onclick = lines.onclick = function () { if (f.classList.contains('pz-awake')) back(); };
   }
@@ -496,16 +513,187 @@ var Puzzle = (function () {
       if (M.wheel && M.keys.length >= (M.need || 4)) setTimeout(function () { if (med === cur) summon(false); }, 3200);
     });
   }
-  /** 下面的袋子：找到的鑰匙（沒找到的位置空著） */
+  /** 上面的袋子：找到的鑰匙（沒找到的位置空著；解開中世紀後變 8 格）。點袋子：黑底展示所有鑰匙 */
   function drawTray(pending) {
-    var t = med.tray; t.textContent = '';
-    var have = {}; (med.M.keys || []).forEach(function (k) { have[k.id] = k; });
-    var n = med.M.need || 4, list = med.M.keys || [];
+    var t = med.tray, M = med.M; t.textContent = '';
+    var list = allKeys(M), n = M.done ? 8 : (M.need || 4), nx = M.done ? laterNext(M) : null;
+    t.classList.toggle('pz-tray-8', n > 4);
     for (var i = 0; i < n; i++) {
-      var k = list[i], c = el('div', 'pz-pouch' + (k ? '' : ' pz-empty') + (k && k.id === pending ? ' pz-pending' : ''));
-      if (k) { c.dataset.k = k.id; var im = el('img'); im.src = k.src; im.alt = ''; im.draggable = false; c.appendChild(im); }
+      var k = list[i], c = el('div', 'pz-pouch' + (k ? '' : ' pz-empty') + (k && (k.id === pending || (Array.isArray(pending) && pending.indexOf(k.id) >= 0)) ? ' pz-pending' : ''));
+      if (k) {
+        c.dataset.k = k.id; var im = el('img'); im.src = k.src; im.alt = ''; im.draggable = false; c.appendChild(im);
+        if (nx && k.id === 'light' && nx.how === 'aim') c.classList.add('pz-glowkey');   // 光：可以拖出去照
+        if (nx && k.id === 'water' && nx.how === 'drip') { c.classList.add('pz-drip'); c.appendChild(el('i', 'pz-drip-dot')); }   // 地吟唱完，水鑰匙開始滴水
+        if (M.done) toolDrag(c, k);
+      }
       t.appendChild(c);
     }
+    t.onclick = function () {
+      if (!med || t.classList.contains('pz-tray-drag') || med.wheel) return;
+      if (med.noTap) { med.noTap = false; return; }
+      gallery();
+    };
+  }
+  /** 所有拿到的鑰匙（前四把＋後四把） */
+  function allKeys(M) {
+    var out = (M.keys || []).slice();
+    if (M.done) (M.chain || []).forEach(function (c) { if ((M.later || []).indexOf(c.id) >= 0) out.push(c); });
+    return out;
+  }
+  /** 後四把：下一把要找的（一把接一把） */
+  function laterNext(M) { var h = M.later || []; return (M.chain || []).filter(function (c) { return h.indexOf(c.id) < 0; })[0] || null; }
+  function wordOf(M, id) { var k = (M.keys || []).concat(M.chain || []).filter(function (q) { return q.id === id; })[0]; return k && k.word; }
+  /** 英文藝術字：要取的那個字母上面一層淡淡的光 */
+  function wordEl(w) {
+    var d = el('div', 'pz-word'), im = el('img'); im.src = w.src; im.alt = ''; im.draggable = false; d.appendChild(im);
+    if (w.w && w.h) d.style.aspectRatio = w.w + ' / ' + w.h;
+    if (w.glow) { var g = el('i', 'pz-glow'); g.style.left = pct(w.glow[0]); g.style.width = pct(w.glow[1] - w.glow[0]); d.appendChild(g); }
+    return d;
+  }
+
+  /* ---------------- 中世紀後半：後四把鑰匙（Daniel 11/27） ----------------
+   *   影子（點）→ 暗 → 在鑰匙展示裡翻轉暗 → 光 → 把光拖出去，光束停在山上 3 秒 → 地 → 水鑰匙開始滴水，拖到巨木上 3 秒 → 木
+   *   都在手機上判斷，背景送 puzzle.later；光照、滴水中途離開歸零，只有畫面回饋（光束變亮、水滴變多） */
+  function laterScene() {
+    if (!med) return;
+    var nx = laterNext(med.M), old = med.stg.querySelector('.pz-shadow');
+    if (nx && nx.how === 'shadow' && nx.at) { if (!old) med.stg.appendChild(shadowEl(nx)); }
+    else if (old) old.remove();
+  }
+  function shadowEl(c) {
+    var b = el('button', 'pz-shadow'); b.type = 'button'; b.setAttribute('aria-label', '一個影子');
+    b.style.left = pct(c.at[0]); b.style.top = pct(c.at[1]); b.style.width = pct(c.at[2]);
+    var im = el('img'); im.src = c.src; im.alt = ''; im.draggable = false; b.appendChild(im);
+    b.onclick = function (e) {
+      e.stopPropagation();
+      if (!med || med.busy || med.gal || b.classList.contains('pz-shadow-go')) return;
+      b.classList.add('pz-shadow-go'); buzz(20); tone(196, 1400, 'sine', 0.04);
+      var r = b.getBoundingClientRect();
+      setTimeout(function () { b.remove(); }, 900);
+      gain(c, r.left + r.width / 2, r.top + r.height / 2);
+    };
+    return b;
+  }
+  /** 拿到後四把的其中一把：記進畫面資料、背景送後端；at 有位置就在那裡浮出來（點它才收下），收下後吟唱＋藝術字 */
+  function gain(c, x, y, noReveal) {
+    var cur = med, M = cur.M;
+    if ((M.later || []).indexOf(c.id) < 0) M.later = (M.later || []).concat([c.id]);
+    after(function () { return call('later', { k: c.id }); }).then(function (res) {
+      var nm = res && res.view && res.view.med; if (nm && nm.spell) cur.M.spell = nm.spell;   // 集齊八把：排序答案
+    }, function (e) { if (!/沒有反應/.test(e.message)) toast(e.message, true); });
+    drawTray(noReveal ? null : c.id);
+    if (noReveal) return;
+    reveal(c.src, x, y, cur.root, function () {
+      var p = cur.tray.querySelector('[data-k="' + c.id + '"]'); return p && p.getBoundingClientRect();
+    }, function () {
+      if (med !== cur) return;
+      var p = cur.tray.querySelector('[data-k="' + c.id + '"]'); if (p) p.classList.remove('pz-pending');
+      chant(null, c, function () { if (med === cur) { drawTray(); laterScene(); } });
+    });
+  }
+  /** 這把鑰匙現在能不能拖出去用：光（下一把是地）、水（下一把是木） */
+  function toolOf(id) {
+    var nx = med && laterNext(med.M); if (!nx) return null;
+    if (id === 'light' && nx.how === 'aim') return nx;
+    if (id === 'water' && nx.how === 'drip') return nx;
+    return null;
+  }
+  function beamLen() { return Math.min(window.innerHeight * 0.26, 220); }
+  /** 光束的尖端（或水滴落下的地方）是不是在目標的圓裡（底圖比例，和找鑰匙一樣以寬為單位） */
+  function onTarget(c, pt) {
+    var r = med.stg.getBoundingClientRect(), x = (pt.x - r.left) / r.width, y = (pt.y - r.top) / r.height;
+    var dx = x - c.at[0], dy = (y - c.at[1]) * (med.M.h / med.M.w);
+    return Math.sqrt(dx * dx + dy * dy) <= c.at[2];
+  }
+  /** 從袋子拖出光或水：光往上射出一束光，水往下滴；對準目標持續 hold 毫秒就拿到下一把。沒拖動＝點一下（打開鑰匙展示） */
+  function toolDrag(c, k) {
+    var g = null, sx = 0, sy = 0, moved = false, tool = null, raf = 0, t0 = 0, aim = null;
+    c.onpointerdown = function (e) {
+      tool = toolOf(k.id); if (!tool || !med || med.busy || med.gal || med.scroll) return;
+      e.preventDefault(); try { c.setPointerCapture(e.pointerId); } catch (x) {}
+      sx = e.clientX; sy = e.clientY; moved = false; t0 = 0; aim = null;
+      var light = k.id === 'light';
+      g = el('div', 'pz-tool ' + (light ? 'pz-tool-light' : 'pz-tool-water'));
+      if (light) { var bm = el('i', 'pz-beam'); bm.style.height = beamLen() + 'px'; g.appendChild(bm); }
+      else { var dr = el('i', 'pz-drops'); for (var i = 0; i < 8; i++) { var d = el('b'); d.style.left = (25 + Math.random() * 50).toFixed(0) + '%'; d.style.animationDelay = (i * 0.14).toFixed(2) + 's'; dr.appendChild(d); } g.appendChild(dr); }
+      var im = el('img'); im.src = k.src; im.alt = ''; im.draggable = false; g.appendChild(im);
+      g.style.display = 'none'; med.root.appendChild(g); pos(e);
+    };
+    function pos(e) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; aim = { x: e.clientX, y: e.clientY + (k.id === 'light' ? -beamLen() : 56) }; }
+    c.onpointermove = function (e) {
+      if (!g) return;
+      if (!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 8) { moved = true; g.style.display = ''; c.classList.add('pz-lift'); med.noTap = true; buzz(10); loop(); }
+      pos(e);
+    };
+    function loop() {
+      raf = requestAnimationFrame(function (t) {
+        if (!g || !med) return;
+        var p = 0;
+        if (aim && onTarget(tool, aim)) { if (!t0) t0 = t; p = Math.min(1, (t - t0) / (med.M.hold || 3000)); } else t0 = 0;   // 離開就歸零
+        g.style.setProperty('--p', p.toFixed(3)); g.classList.toggle('pz-hit', p > 0);
+        [].forEach.call(g.querySelectorAll('.pz-drops b'), function (d, i) { d.style.opacity = i < 2 + p * 6 ? 1 : 0; });
+        if (p >= 1) { var a = aim; stop(false); buzz([30, 40, 30]); gain(tool, a.x, a.y); return; }
+        loop();
+      });
+    }
+    function stop(back) {
+      cancelAnimationFrame(raf); var gg = g; g = null; c.classList.remove('pz-lift'); if (!gg) return;
+      if (!back) { gg.remove(); return; }
+      var r = c.getBoundingClientRect(); gg.classList.add('back'); gg.style.left = (r.left + r.width / 2) + 'px'; gg.style.top = (r.top + r.height / 2) + 'px';
+      setTimeout(function () { gg.remove(); }, 400);
+    }
+    c.onpointerup = c.onpointercancel = function () {
+      if (!g) return;
+      if (!moved) { stop(false); med.noTap = true; gallery(); return; }
+      stop(true);
+    };
+  }
+  /** 鑰匙展示：黑底，收集到的鑰匙漂浮著；點一把飛到中央、亮出藝術字；中央的暗再點一下會翻面（背面是光） */
+  function gallery() {
+    if (!med || med.gal || med.busy || med.wheel || med.scroll) return;
+    var cur = med, M = cur.M, all = allKeys(M); if (!all.length) return;
+    var g = el('div', 'pz-gal'), word = el('div', 'pz-gal-word'), sel = null;
+    var lightC = (M.chain || []).filter(function (c) { return c.id === 'light'; })[0];
+    var x = el('button', 'pz-gal-x', '✕'); x.type = 'button'; x.setAttribute('aria-label', '收起'); x.onclick = function (e) { e.stopPropagation(); shut(); };
+    g.appendChild(x);
+    var items = all.map(function (k, i) {
+      var b = el('button', 'pz-gal-key'); b.type = 'button'; b.setAttribute('aria-label', '一把鑰匙'); b.dataset.k = k.id;
+      var a = -Math.PI / 2 + i * 2 * Math.PI / all.length, home = { l: 50 + 34 * Math.cos(a), t: 45 + 26 * Math.sin(a) };
+      b.style.left = home.l.toFixed(2) + '%'; b.style.top = home.t.toFixed(2) + '%'; b.style.animationDelay = (-i * 0.7).toFixed(1) + 's';
+      var inn = el('span', 'pz-gal-in'), fr = el('img', 'pz-face'); fr.src = k.src; fr.alt = ''; fr.draggable = false; inn.appendChild(fr);
+      if (k.id === 'shadow' && lightC) { var bk = el('img', 'pz-face pz-back'); bk.src = lightC.src; bk.alt = ''; bk.draggable = false; inn.appendChild(bk); }
+      b.appendChild(inn);
+      var it = { k: k, b: b, home: home, flip: false };
+      b.onclick = function (e) { e.stopPropagation(); pick(it); };
+      g.appendChild(b);
+      return it;
+    });
+    g.appendChild(word);
+    g.onclick = function () { if (sel) unpick(); else shut(); };
+    cur.root.appendChild(g); cur.gal = g;
+    requestAnimationFrame(function () { requestAnimationFrame(function () { g.classList.add('on'); }); });
+    tone(330, 900, 'sine', 0.03);
+    function showWord(w) { word.textContent = ''; if (w) { var we = wordEl(w); we.classList.add('pz-word-in'); word.appendChild(we); } }
+    function pick(it) {
+      if (sel === it) { flip(it); return; }
+      if (sel) unpick();
+      sel = it; it.b.classList.add('on'); it.b.style.left = '50%'; it.b.style.top = '38%';
+      buzz(10); tone(660, 700, 'triangle', 0.03);
+      showWord(it.flip ? lightC.word : it.k.word);
+    }
+    function unpick() { var it = sel; sel = null; it.b.classList.remove('on'); it.b.style.left = it.home.l.toFixed(2) + '%'; it.b.style.top = it.home.t.toFixed(2) + '%'; word.textContent = ''; }
+    function flip(it) {
+      if (it.k.id !== 'shadow' || !lightC) { it.b.classList.remove('pz-nudge'); void it.b.offsetWidth; it.b.classList.add('pz-nudge'); return; }
+      it.flip = !it.flip; it.b.classList.toggle('pz-flipped', it.flip); buzz(15); tone(it.flip ? 784 : 392, 900, 'triangle', 0.03);
+      var nx = laterNext(cur.M);
+      if (it.flip && nx && nx.id === 'light') {   // 第一次翻過來：拿到光
+        word.textContent = '';
+        setTimeout(function () { if (med !== cur) return; shut(true); gain(lightC, 0, 0, true); chant(null, lightC, function () { if (med === cur) drawTray(); }); }, 1100);
+        return;
+      }
+      showWord(it.flip ? lightC.word : it.k.word);
+    }
+    function shut(fast) { if (cur.gal !== g) return; cur.gal = null; g.classList.remove('on'); setTimeout(function () { g.remove(); }, fast ? 0 : 500); }
   }
 
   /* 捲軸（Daniel 11/26）：第一次進中世紀時自己打開——封蠟捲軸落下、攤開成羊皮紙 → 英文傳說用魔法依序浮現
@@ -555,7 +743,8 @@ var Puzzle = (function () {
     }
     if (!first) {
       lay.classList.add('pz-scroll-quick', 'pz-scroll-ready');
-      show(sc.page, true);   // 從左上角打開：魔法文字再浮現一次（Daniel 11/26：動畫不要只有第一次）
+      show(sc.page, !cur.M.spell);   // 從左上角打開：魔法文字再浮現一次（Daniel 11/26：動畫不要只有第一次）
+      if (cur.M.spell) later(function () { spell(sc, cur, later); }, 500);   // 集齊八把：字母飄出來排好（不提示，有打開的人才看得到）
       return;
     }
     // 開場：捲軸落下 → 封蠟發光 → 攤開
@@ -582,6 +771,40 @@ var Puzzle = (function () {
         });
       }, fast ? 0 : 1600);
     }
+  }
+  /** 八個藝術字的字母：從羊皮紙上一個一個亮起來，再飄到上方排成暗號 */
+  function spell(sc, cur, later) {
+    var M = cur.M, ids = M.spell || [], ws = ids.map(function (id) { return wordOf(M, id); });
+    if (!ids.length || ws.some(function (w) { return !w || !w.glow || !w.w; })) return;
+    var row = el('div', 'pz-spell'); sc.lay.appendChild(row); sc.lay.classList.add('pz-spelling');   // 羊皮紙暗下來，字母在中間排好
+    var vw = window.innerWidth, H = Math.min(78, window.innerHeight * 0.09), gap = 2, items = [];
+    function widths() { return ws.map(function (w) { return (w.glow[1] - w.glow[0]) * w.w * H / w.h; }); }
+    var lw = widths(), tot = lw.reduce(function (a, b) { return a + b; }, 0) + gap * (ids.length - 1);
+    if (tot > vw - 24) { H = H * (vw - 24) / tot; lw = widths(); tot = vw - 24; }
+    var pr = sc.parch.getBoundingClientRect(), y = pr.top + pr.height * 0.42 - H / 2, x = (vw - tot) / 2, xs = [];
+    lw.forEach(function (w) { xs.push(x); x += w + gap; });
+    var band = el('i', 'pz-band'); band.style.top = (y - 14).toFixed(1) + 'px'; band.style.height = (H + 28).toFixed(1) + 'px'; row.appendChild(band);
+    later(function () { band.classList.add('in'); }, 50);
+    var ord = ids.map(function (_, i) { return i; }).sort(function () { return Math.random() - 0.5; }), n = ids.length;
+    ws.forEach(function (w, i) {
+      var L = el('div', 'pz-letter'), s = H / w.h, im = el('img');
+      L.style.width = lw[i].toFixed(1) + 'px'; L.style.height = H.toFixed(1) + 'px';
+      im.src = w.src; im.alt = ''; im.draggable = false; im.style.width = (w.w * s).toFixed(1) + 'px'; im.style.height = H.toFixed(1) + 'px'; im.style.left = (-w.glow[0] * w.w * s).toFixed(1) + 'px';
+      L.appendChild(im);
+      L.style.left = (pr.left + pr.width * (0.15 + Math.random() * 0.6)).toFixed(1) + 'px'; L.style.top = (pr.top + pr.height * (0.2 + Math.random() * 0.55)).toFixed(1) + 'px';
+      row.appendChild(L);
+      var k = ord.indexOf(i), it = { L: L, x: xs[i], shown: false, placed: false };
+      it.show = function () { if (it.shown) return; it.shown = true; L.classList.add('in'); };
+      it.place = function () { if (it.placed) return; it.show(); it.placed = true; L.classList.add('go'); L.style.left = it.x.toFixed(1) + 'px'; L.style.top = y.toFixed(1) + 'px'; };
+      items.push(it);
+      later(function () { if (!it.shown) { it.show(); tone(523 + k * 60, 700, 'triangle', 0.025); buzz(6); } }, 150 + k * 300);
+      later(function () { it.place(); }, 150 + n * 300 + 900 + i * 140);
+    });
+    // 點一下：還在飄就直接排好；排好了再點一下，字母散去、羊皮紙亮回來
+    var endT = 150 + n * 300 + 900 + n * 140 + 1300;
+    function off() { sc.skip = null; row.classList.add('off'); sc.lay.classList.remove('pz-spelling'); setTimeout(function () { row.remove(); }, 900); }
+    sc.skip = function () { items.forEach(function (it) { it.place(); }); sc.skip = off; };
+    later(function () { if (sc.skip && sc.skip !== off) sc.skip = off; tone(392, 1600, 'triangle', 0.03); setTimeout(function () { tone(587, 1800, 'triangle', 0.025); }, 220); }, endT);
   }
   /** 文字由上而下慢慢浮現 */
   function inkIn(sc, im, ms, done) {
@@ -762,10 +985,54 @@ var Puzzle = (function () {
       med.root.classList.remove('pz-quake'); med.root.classList.add('pz-med-done');
       W.wrap.classList.add('pz-wheel-end');
       if (!fast) { buzz([30, 40, 60]); tone(392, 1600, 'triangle', 0.04); setTimeout(function () { tone(587, 1800, 'triangle', 0.035); }, 250); }
-      nextHint(med.M.next || [], fast);
+      split(fast);
     }, ms + (fast ? 0 : 300));
   }
-  function nextHint(lines, still) {
+  /** 轉盤分裂成兩半、吐出提示；點一下：兩半沉下去，鑰匙回到袋子，浮石脫離飛走，畫面多出一個影子 */
+  function split(fast) {
+    var cur = med, W = cur.wheel, M = cur.M;
+    cur.busy = true;
+    var keyBy = {}; (M.keys || []).forEach(function (k) { keyBy[k.id] = k; });
+    var flies = W.slots.map(function (x) {
+      var r = x.el.getBoundingClientRect(), k = keyBy[x.s.fit]; if (!k) return null;
+      var im = el('img', 'pz-keyfly pz-hover'); im.src = k.src; im.alt = ''; im.style.left = (r.left + r.width / 2) + 'px'; im.style.top = (r.top + r.height / 2) + 'px';
+      cur.root.appendChild(im); return { el: im, id: k.id };
+    }).filter(Boolean);
+    var halves = [0, 1].map(function (i) {
+      var hh = W.wrap.cloneNode(true); hh.classList.add('pz-half', i ? 'pz-half-r' : 'pz-half-l');
+      [].forEach.call(hh.querySelectorAll('.pz-slot img'), function (q) { q.remove(); });
+      cur.root.appendChild(hh); return hh;
+    });
+    W.wrap.style.visibility = 'hidden';
+    if (!fast) { tone(70, 1800, 'sawtooth', 0.03, 40); buzz([40, 30, 80]); }
+    requestAnimationFrame(function () { requestAnimationFrame(function () { halves.forEach(function (hh) { hh.classList.add('go'); }); }); });
+    var hint = nextHint(M.next || [], fast), ready = false;
+    setTimeout(function () { if (med !== cur) return; ready = true; hint.classList.add('pz-tap-on'); }, fast ? 0 : (hint.t + 1) * 1000);
+    W.veil.onclick = hint.onclick = function () { if (ready) { ready = false; go(); } };
+    function go() {
+      hint.classList.add('off'); setTimeout(function () { hint.remove(); }, 700);
+      halves.forEach(function (hh) { hh.classList.add('sink'); }); setTimeout(function () { halves.forEach(function (hh) { hh.remove(); }); }, fast ? 0 : 1700);
+      W.veil.classList.remove('on'); setTimeout(function () { W.veil.remove(); }, 900);
+      W.wrap.remove(); cur.wheel = null; cur.root.classList.remove('pz-summoning');
+      [].forEach.call(cur.stg.querySelectorAll('.pz-stone'), function (st, i) {   // 浮石脫離飛走
+        st.style.setProperty('--fx', ((i % 2 ? 1 : -1) * (30 + i * 12)) + 'vw'); st.style.animationDelay = (i * 0.15) + 's';
+        st.classList.add('pz-stone-away'); setTimeout(function () { st.remove(); }, fast ? 0 : 2600);
+      });
+      if (!fast) tone(262, 1600, 'sine', 0.03, 523);
+      cur.tray.classList.remove('pz-tray-gone', 'pz-tray-drag');
+      drawTray(flies.map(function (f) { return f.id; }));   // 鑰匙飛回袋子（8 格）
+      flies.forEach(function (f, i) {
+        setTimeout(function () {
+          var p = cur.tray.querySelector('[data-k="' + f.id + '"]');
+          if (!p || fast) { f.el.remove(); if (p) p.classList.remove('pz-pending'); return; }
+          var r = p.getBoundingClientRect(); f.el.classList.add('go'); f.el.style.left = (r.left + r.width / 2) + 'px'; f.el.style.top = (r.top + r.height / 2) + 'px';
+          setTimeout(function () { f.el.remove(); p.classList.remove('pz-pending'); buzz(8); tone(880 + i * 60, 400, 'triangle', 0.025); }, 950);
+        }, fast ? 0 : 300 + i * 180);
+      });
+      setTimeout(function () { if (med !== cur) return; cur.busy = false; laterScene(); var sh = cur.stg.querySelector('.pz-shadow'); if (sh && !fast) sh.classList.add('pz-shadow-in'); }, fast ? 0 : 2200);
+    }
+  }
+  function nextHint(lines, still, parent) {
     var n = el('div', 'pz-next' + (still ? '' : ' pz-next-in')), t = 0;
     lines.forEach(function (s) {
       var p = el('p');
@@ -773,7 +1040,29 @@ var Puzzle = (function () {
       else [].forEach.call(s, function (ch, ci) { var sp = el('span', '', ch); sp.style.animationDelay = (t + ci * 0.06).toFixed(2) + 's'; p.appendChild(sp); });
       t += s.length * 0.06 + 0.5; n.appendChild(p);
     });
-    med.root.appendChild(n);
+    n.t = still ? 0 : t;
+    (parent || med.root).appendChild(n);
+    return n;
+  }
+  /* ---------------- 工業（還沒設計：背景＋佔位文字） ---------------- */
+  function industrial(v) {
+    var I = v.ind || {}, bg = el('i', 'pz-ind-bg');
+    if (I.bg) bg.style.backgroundImage = 'url("' + I.bg + '")';
+    box.appendChild(bg);
+    nextHint(I.text || [], reduced(), box).classList.add('pz-ind-text');
+    if (!reduced()) { tone(98, 2400, 'sawtooth', 0.02, 70); buzz([20, 60, 20]); }
+  }
+  /** 假登出（app.js）：過關（第 5 關）以後才有 */
+  function canFake() { return on() && !E.preview && stage() >= LOCK; }
+  /** 假登出時在姓名欄輸入的字：送後端判斷是不是暗號。對了就打開工業（關掉時呼叫 back）、回 true；不是回 false（照一般登入） */
+  function code(text, back) {
+    if (!canFake() || !String(text || '').trim()) return Promise.resolve(false);
+    return call('code', { code: String(text) }).then(function (res) {
+      if (!res || !res.ok || !res.view) return false;
+      E.state.stage = Math.max(E.state.stage || 0, res.view.stage || 0);   // 不呼叫 changed（App 現在是登入畫面）
+      open(res.view, 'ind', back);
+      return true;
+    }, function () { return false; });
   }
 
   /* ---------------- 中世紀入口：沉到海底的石門 ---------------- */
@@ -802,5 +1091,5 @@ var Puzzle = (function () {
   /** 重新打開大廳（例如從其他地方回來）；排在還沒送完的找鑰匙後面 */
   function reopen() { if (!on() || busy) return; busy = true; after(function () { return call('view'); }).then(function (v) { busy = false; setStage(v.stage); open(v); }, function (e) { busy = false; toast(e.message, true); }); }
 
-  return { init: init, decorate: decorate, tap: tap, isGatePage: isGatePage, abyss: abyss, reopen: reopen, close: close, _open: open };
+  return { init: init, decorate: decorate, tap: tap, isGatePage: isGatePage, abyss: abyss, reopen: reopen, close: close, canFake: canFake, code: code, _open: open };
 })();
